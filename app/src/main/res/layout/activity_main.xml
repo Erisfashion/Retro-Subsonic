@@ -34,7 +34,7 @@
                 android:layout_height="34dp"
                 android:layout_alignParentRight="true"
                 android:layout_centerVertical="true"
-                android:text="服务器设置 ▼"
+                android:text="服务器设置"
                 android:textSize="12sp" />
         </RelativeLayout>
 
@@ -88,7 +88,7 @@
                     android:id="@+id/btn_connect"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="保存连接" />
+                    android:text="保存并连接" />
             </LinearLayout>
         </LinearLayout>
 
@@ -140,7 +140,7 @@
                 android:text="搜索" />
         </LinearLayout>
 
-        <!-- 中部主体：左右双栏（左侧歌曲列表，右侧可展开的正在播放列表） -->
+        <!-- 主体：左侧歌曲列表 + 右侧当前播放队列 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -176,7 +176,7 @@
                         android:layout_height="30dp"
                         android:layout_alignParentRight="true"
                         android:layout_centerVertical="true"
-                        android:text="返回上层"
+                        android:text="返回列表"
                         android:textSize="11sp"
                         android:visibility="gone" />
                 </RelativeLayout>
@@ -218,8 +218,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="28dp"
                         android:layout_alignParentRight="true"
-                        android:text="关闭 ✕"
-                        android:textSize="10sp" />
+                        android:text="关闭"
+                        android:textSize="11sp" />
                 </RelativeLayout>
 
                 <ListView
@@ -247,7 +247,7 @@
                 android:id="@+id/btn_open_detail"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="💿 详情/歌词"
+                android:text="歌词/详情"
                 android:textSize="12sp" />
 
             <!-- 中间：歌曲标题、进度条与播放控制 -->
@@ -259,20 +259,15 @@
                 android:paddingLeft="8dp"
                 android:paddingRight="8dp">
 
-                <RelativeLayout
+                <TextView
+                    android:id="@+id/tv_current_song"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content">
-
-                    <TextView
-                        android:id="@+id/tv_current_song"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="未在播放"
-                        android:textColor="#ffffff"
-                        android:textSize="13sp"
-                        android:textStyle="bold"
-                        android:singleLine="true" />
-                </RelativeLayout>
+                    android:layout_height="wrap_content"
+                    android:text="未在播放"
+                    android:textColor="#ffffff"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:singleLine="true" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -297,6 +292,7 @@
                         android:paddingLeft="4dp" />
                 </LinearLayout>
 
+                <!-- 控制排：支持纯汉字与标准 ASCII 符号 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -307,28 +303,34 @@
                         android:id="@+id/btn_mode"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="🔁 列表循环"
+                        android:text="列表循环"
                         android:textSize="11sp" />
 
                     <Button
                         android:id="@+id/btn_prev"
-                        android:layout_width="65dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="⏮"
+                        android:minWidth="65dp"
+                        android:text="上一首"
+                        android:textSize="12sp"
                         android:layout_marginLeft="6dp" />
 
                     <Button
                         android:id="@+id/btn_play_pause"
-                        android:layout_width="75dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="▶ 播放"
+                        android:minWidth="75dp"
+                        android:text="播放"
+                        android:textSize="12sp"
                         android:layout_marginLeft="6dp" />
 
                     <Button
                         android:id="@+id/btn_next"
-                        android:layout_width="65dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="⏭"
+                        android:minWidth="65dp"
+                        android:text="下一首"
+                        android:textSize="12sp"
                         android:layout_marginLeft="6dp" />
                 </LinearLayout>
             </LinearLayout>
@@ -338,14 +340,14 @@
                 android:id="@+id/btn_toggle_queue"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="📋 播放列表"
+                android:text="播放列表"
                 android:textSize="12sp" />
 
         </LinearLayout>
 
     </LinearLayout>
 
-    <!-- 第二层：独立播放详情页（全屏覆盖，左侧封面控制，右侧歌词滚动） -->
+    <!-- 第二层：独立播放详情页（双栏大屏视效） -->
     <LinearLayout
         android:id="@+id/layout_detail_overlay"
         android:layout_width="match_parent"
@@ -366,7 +368,7 @@
                 android:layout_height="34dp"
                 android:layout_alignParentLeft="true"
                 android:layout_centerVertical="true"
-                android:text="▼ 收起"
+                android:text="收起详情"
                 android:textSize="12sp" />
 
             <TextView
@@ -379,7 +381,7 @@
                 android:textStyle="bold" />
         </RelativeLayout>
 
-        <!-- 平板双栏展示：左侧封面与详情控制，右侧歌词全文 -->
+        <!-- 平板双栏展示：左侧封面与控制，右侧动态滚动歌词 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -397,7 +399,6 @@
                 android:background="@drawable/bg_card"
                 android:padding="12dp">
 
-                <!-- 歌曲封面 -->
                 <ImageView
                     android:id="@+id/iv_detail_cover"
                     android:layout_width="220dp"
@@ -463,33 +464,39 @@
                         android:id="@+id/btn_detail_mode"
                         android:layout_width="wrap_content"
                         android:layout_height="40dp"
-                        android:text="🔁 列表循环"
+                        android:text="列表循环"
                         android:textSize="11sp" />
 
                     <Button
                         android:id="@+id/btn_detail_prev"
-                        android:layout_width="65dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="40dp"
-                        android:text="⏮"
+                        android:minWidth="65dp"
+                        android:text="上一首"
+                        android:textSize="12sp"
                         android:layout_marginLeft="6dp" />
 
                     <Button
                         android:id="@+id/btn_detail_play_pause"
-                        android:layout_width="75dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="40dp"
-                        android:text="▶ 播放"
+                        android:minWidth="75dp"
+                        android:text="播放"
+                        android:textSize="12sp"
                         android:layout_marginLeft="6dp" />
 
                     <Button
                         android:id="@+id/btn_detail_next"
-                        android:layout_width="65dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="40dp"
-                        android:text="⏭"
+                        android:minWidth="65dp"
+                        android:text="下一首"
+                        android:textSize="12sp"
                         android:layout_marginLeft="6dp" />
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 右栏：歌词显示区 -->
+            <!-- 右栏：支持平滑居中滚动的动态歌词区 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
@@ -502,25 +509,26 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="歌词内容"
+                    android:text="歌词"
                     android:textColor="#a0a5b5"
                     android:textSize="13sp"
                     android:layout_marginBottom="6dp" />
 
                 <ScrollView
+                    android:id="@+id/scroll_lyrics"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent">
+                    android:layout_height="match_parent"
+                    android:fillViewport="true"
+                    android:scrollbars="none">
 
-                    <TextView
-                        android:id="@+id/tv_lyrics"
+                    <LinearLayout
+                        android:id="@+id/layout_lyrics_container"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="暂无歌词"
-                        android:textColor="#e0e0e0"
-                        android:textSize="15sp"
-                        android:lineSpacingExtra="6dp"
+                        android:orientation="vertical"
                         android:gravity="center_horizontal"
-                        android:padding="8dp" />
+                        android:paddingTop="150dp"
+                        android:paddingBottom="150dp" />
                 </ScrollView>
             </LinearLayout>
 
