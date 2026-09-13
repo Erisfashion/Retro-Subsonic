@@ -44,8 +44,8 @@ import java.util.Map;
 
 public class MainActivity extends Activity {
 
-    private EditText etServer, etUsername, etPassword, etSearchKeyword;
-    private Button btnConnect, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
+    private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
+    private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
     private Button btnPrev, btnPlayPause, btnNext, btnMode, btnToggleQueue, btnCloseQueue, btnOpenDetail;
     private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime;
@@ -61,7 +61,6 @@ public class MainActivity extends Activity {
     private LinearLayout layoutDetailLyricsView, layoutDetailQueueView;
     private ListView lvDetailQueue;
 
-    // 屏幕常亮状态
     private boolean isKeepScreenOn = false;
 
     // 歌词滚动相关
@@ -105,7 +104,6 @@ public class MainActivity extends Activity {
     private ArrayList<Map<String, String>> listData = new ArrayList<Map<String, String>>();
     private SimpleAdapter adapter;
 
-    // 播放列表适配器（主侧边栏与详情页各持一份展示）
     private ArrayList<Map<String, String>> queueData = new ArrayList<Map<String, String>>();
     private SimpleAdapter queueAdapter;
     private SimpleAdapter detailQueueAdapter;
@@ -127,14 +125,22 @@ public class MainActivity extends Activity {
                 btnMode.setText(modeText);
                 btnDetailMode.setText(modeText);
 
+                boolean isBuffering = intent.getBooleanExtra("isBuffering", false);
+                int bufferPercent = intent.getIntExtra("bufferPercent", 0);
+
                 String songId = intent.getStringExtra("songId");
                 String title = intent.getStringExtra("title");
                 String artist = intent.getStringExtra("artist");
                 String coverArtId = intent.getStringExtra("coverArtId");
 
                 if (title != null) {
-                    tvCurrentSong.setText(title + " - " + artist);
-                    tvDetailTitle.setText(title);
+                    if (isBuffering) {
+                        tvCurrentSong.setText("缓存缓冲中 (" + bufferPercent + "%): " + title);
+                        tvDetailTitle.setText("缓存中 (" + bufferPercent + "%)...");
+                    } else {
+                        tvCurrentSong.setText(title + " - " + artist);
+                        tvDetailTitle.setText(title);
+                    }
                     tvDetailArtist.setText(artist);
 
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
@@ -173,7 +179,7 @@ public class MainActivity extends Activity {
         initViews();
         loadSavedConfig();
         setupListeners();
-        setupClickInterceptors(); // 拦截空白处点击，彻底防止穿透触发切歌
+        setupClickInterceptors();
     }
 
     @Override
@@ -196,8 +202,10 @@ public class MainActivity extends Activity {
         etUsername = (EditText) findViewById(R.id.et_username);
         etPassword = (EditText) findViewById(R.id.et_password);
         etSearchKeyword = (EditText) findViewById(R.id.et_search_keyword);
+        etCacheSize = (EditText) findViewById(R.id.et_cache_size);
 
         btnConnect = (Button) findViewById(R.id.btn_connect);
+        btnClearCache = (Button) findViewById(R.id.btn_clear_cache);
         btnToggleConfig = (Button) findViewById(R.id.btn_toggle_config);
         btnTabPlaylists = (Button) findViewById(R.id.btn_tab_playlists);
         btnTabSearch = (Button) findViewById(R.id.btn_tab_search);
@@ -276,15 +284,11 @@ public class MainActivity extends Activity {
         lvDetailQueue.setAdapter(detailQueueAdapter);
     }
 
-    // 为各层面板增加事件拦截，避免空白处点击落到底层列表上
     private void setupClickInterceptors() {
         View.OnClickListener consumeListener = new View.OnClickListener() {
             @Override
-            public void onClick(View v) {
-                // 仅拦截消费点击事件，不做任何动作
-            }
+            public void onClick(View v) {}
         };
-
         layoutDetailOverlay.setOnClickListener(consumeListener);
         layoutQueuePanel.setOnClickListener(consumeListener);
         layoutConfigPanel.setOnClickListener(consumeListener);
@@ -295,6 +299,7 @@ public class MainActivity extends Activity {
         etServer.setText(prefs.getString("server", "http://192.168.1.100:4533"));
         etUsername.setText(prefs.getString("user", "admin"));
         etPassword.setText(prefs.getString("pass", "admin"));
+        etCacheSize.setText(prefs.getString("cache_size_mb", "500"));
     }
 
     private void saveConfig() {
@@ -302,6 +307,7 @@ public class MainActivity extends Activity {
                 .putString("server", etServer.getText().toString().trim())
                 .putString("user", etUsername.getText().toString().trim())
                 .putString("pass", etPassword.getText().toString().trim())
+                .putString("cache_size_mb", etCacheSize.getText().toString().trim())
                 .commit();
     }
 
@@ -329,6 +335,16 @@ public class MainActivity extends Activity {
                 saveConfig();
                 layoutConfigPanel.setVisibility(View.GONE);
                 fetchPlaylists();
+            }
+        });
+
+        btnClearCache.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                long bytes = CacheManager.getUsedCacheBytes(MainActivity.this);
+                double mb = bytes / (1024.0 * 1024.0);
+                CacheManager.clearAllCache(MainActivity.this);
+                Toast.makeText(MainActivity.this, String.format("已清理缓存，释放 %.1f MB 空间", mb), Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -403,7 +419,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 详情页：屏幕常亮切换
         btnDetailKeepScreen.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -420,7 +435,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 详情页：歌词 / 播放列表视图切换
         btnDetailQueue.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -437,7 +451,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 歌词手动滑动监听
         scrollLyrics.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -456,7 +469,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 主列表点击
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -482,7 +494,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 侧边栏队列点击切歌
         AdapterView.OnItemClickListener queueItemClickListener = new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -495,7 +506,6 @@ public class MainActivity extends Activity {
         lvQueue.setOnItemClickListener(queueItemClickListener);
         lvDetailQueue.setOnItemClickListener(queueItemClickListener);
 
-        // 播放控制
         View.OnClickListener toggleListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
