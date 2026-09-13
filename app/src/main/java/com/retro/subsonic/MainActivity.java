@@ -2,18 +2,21 @@ package com.retro.subsonic;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.media.AudioManager;
-import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.SeekBar;
+import android.widget.SimpleAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -26,31 +29,28 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainActivity extends Activity {
 
     private EditText etServer, etUsername, etPassword, etSearchKeyword;
-    private Button btnConnect, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack, btnPlayPause;
-    private LinearLayout layoutSearchBar;
-    private TextView tvListTitle, tvCurrentSong;
+    private Button btnConnect, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
+    private Button btnPrev, btnPlayPause, btnNext;
+    private LinearLayout layoutConfigPanel, layoutSearchBar;
+    private TextView tvListTitle, tvCurrentSong, tvTime;
     private ListView listView;
+    private SeekBar seekBar;
 
     private SharedPreferences prefs;
-    private MediaPlayer mediaPlayer;
 
-    private ArrayList<Item> currentDataList = new ArrayList<Item>();
-    private ArrayAdapter<String> listAdapter;
-    private ArrayList<String> displayTitles = new ArrayList<String>();
-
-    private boolean isInsidePlaylist = false;
-
-    private static class Item {
+    private static class DisplayEntry {
         String id;
         String title;
         String subtitle;
         boolean isSong;
 
-        Item(String id, String title, String subtitle, boolean isSong) {
+        DisplayEntry(String id, String title, String subtitle, boolean isSong) {
             this.id = id;
             this.title = title;
             this.subtitle = subtitle;
@@ -58,9 +58,40 @@ public class MainActivity extends Activity {
         }
     }
 
+    private ArrayList<DisplayEntry> currentItems = new ArrayList<DisplayEntry>();
+    private ArrayList<Map<String, String>> listData = new ArrayList<Map<String, String>>();
+    private SimpleAdapter adapter;
+
+    private boolean isUserSeeking = false;
+
+    // 接收后台播放状态广播
+    private BroadcastReceiver statusReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (MusicService.BROADCAST_STATUS.equals(intent.getAction())) {
+                boolean isPlaying = intent.getBooleanExtra("isPlaying", false);
+                btnPlayPause.setText(isPlaying ? "⏸ 暂停" : "▶ 播放");
+
+                String title = intent.getStringExtra("title");
+                String artist = intent.getStringExtra("artist");
+                if (title != null) {
+                    tvCurrentSong.setText(title + " - " + artist);
+                }
+
+                int position = intent.getIntExtra("position", 0);
+                int duration = intent.getIntExtra("duration", 0);
+
+                if (!isUserSeeking && duration > 0) {
+                    seekBar.setMax(duration);
+                    seekBar.setProgress(position);
+                    tvTime.setText(formatTime(position) + " / " + formatTime(duration));
+                }
+            }
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // 捕获未捕获异常并弹出弹窗，方便精确定位问题
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
             @Override
             public void uncaughtException(Thread thread, final Throwable ex) {
@@ -68,14 +99,9 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         new AlertDialog.Builder(MainActivity.this)
-                                .setTitle("程序遇到错误")
-                                .setMessage(ex.toString() + "\n" + (ex.getCause() != null ? ex.getCause().toString() : ""))
-                                .setPositiveButton("关闭", new DialogInterface.OnClickListener() {
-                                    @Override
-                                    public void onClick(DialogInterface dialog, int which) {
-                                        finish();
-                                    }
-                                })
+                                .setTitle("错误提示")
+                                .setMessage(ex.toString())
+                                .setPositiveButton("确定", null)
                                 .show();
                     }
                 });
@@ -89,8 +115,21 @@ public class MainActivity extends Activity {
 
         initViews();
         loadSavedConfig();
-        setupPlayer();
         setupListeners();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        registerReceiver(statusReceiver, new IntentFilter(MusicService.BROADCAST_STATUS));
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        try {
+            unregisterReceiver(statusReceiver);
+        } catch (Exception ignored) {}
     }
 
     private void initViews() {
@@ -100,19 +139,35 @@ public class MainActivity extends Activity {
         etSearchKeyword = (EditText) findViewById(R.id.et_search_keyword);
 
         btnConnect = (Button) findViewById(R.id.btn_connect);
+        btnToggleConfig = (Button) findViewById(R.id.btn_toggle_config);
         btnTabPlaylists = (Button) findViewById(R.id.btn_tab_playlists);
         btnTabSearch = (Button) findViewById(R.id.btn_tab_search);
         btnSearchSubmit = (Button) findViewById(R.id.btn_search_submit);
         btnBack = (Button) findViewById(R.id.btn_back);
-        btnPlayPause = (Button) findViewById(R.id.btn_play_pause);
 
+        btnPrev = (Button) findViewById(R.id.btn_prev);
+        btnPlayPause = (Button) findViewById(R.id.btn_play_pause);
+        btnNext = (Button) findViewById(R.id.btn_next);
+
+        layoutConfigPanel = (LinearLayout) findViewById(R.id.layout_config_panel);
         layoutSearchBar = (LinearLayout) findViewById(R.id.layout_search_bar);
+
         tvListTitle = (TextView) findViewById(R.id.tv_list_title);
         tvCurrentSong = (TextView) findViewById(R.id.tv_current_song);
+        tvTime = (TextView) findViewById(R.id.tv_time);
+
+        seekBar = (SeekBar) findViewById(R.id.seek_bar);
         listView = (ListView) findViewById(R.id.list_view);
 
-        listAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, displayTitles);
-        listView.setAdapter(listAdapter);
+        // 双行展示，标题与歌手/曲目数分离排版
+        adapter = new SimpleAdapter(
+                this,
+                listData,
+                android.R.layout.simple_list_item_2,
+                new String[]{"title", "subtitle"},
+                new int[]{android.R.id.text1, android.R.id.text2}
+        );
+        listView.setAdapter(adapter);
     }
 
     private void loadSavedConfig() {
@@ -129,33 +184,26 @@ public class MainActivity extends Activity {
                 .commit();
     }
 
-    private void setupPlayer() {
-        mediaPlayer = new MediaPlayer();
-        mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-
-        mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-            @Override
-            public void onPrepared(MediaPlayer mp) {
-                mp.start();
-                btnPlayPause.setText("暂停");
-            }
-        });
-
-        mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
-            @Override
-            public boolean onError(MediaPlayer mp, int what, int extra) {
-                Toast.makeText(MainActivity.this, "播放失败: 格式不支持或网络异常", Toast.LENGTH_SHORT).show();
-                btnPlayPause.setText("播放");
-                return true;
-            }
-        });
-    }
-
     private void setupListeners() {
+        btnToggleConfig.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (layoutConfigPanel.getVisibility() == View.VISIBLE) {
+                    layoutConfigPanel.setVisibility(View.GONE);
+                    btnToggleConfig.setText("设置服务器 ▼");
+                } else {
+                    layoutConfigPanel.setVisibility(View.VISIBLE);
+                    btnToggleConfig.setText("收起设置 ▲");
+                }
+            }
+        });
+
         btnConnect.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 saveConfig();
+                layoutConfigPanel.setVisibility(View.GONE);
+                btnToggleConfig.setText("设置服务器 ▼");
                 fetchPlaylists();
             }
         });
@@ -164,7 +212,6 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) {
                 layoutSearchBar.setVisibility(View.GONE);
-                isInsidePlaylist = false;
                 btnBack.setVisibility(View.GONE);
                 tvListTitle.setText("歌单列表");
                 fetchPlaylists();
@@ -175,12 +222,11 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) {
                 layoutSearchBar.setVisibility(View.VISIBLE);
-                isInsidePlaylist = false;
                 btnBack.setVisibility(View.GONE);
                 tvListTitle.setText("搜索结果");
-                currentDataList.clear();
-                displayTitles.clear();
-                listAdapter.notifyDataSetChanged();
+                currentItems.clear();
+                listData.clear();
+                adapter.notifyDataSetChanged();
             }
         });
 
@@ -194,36 +240,88 @@ public class MainActivity extends Activity {
         btnBack.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                isInsidePlaylist = false;
                 btnBack.setVisibility(View.GONE);
                 tvListTitle.setText("歌单列表");
                 fetchPlaylists();
             }
         });
 
+        // 列表点击事件
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                if (position >= currentDataList.size()) return;
-                Item item = currentDataList.get(position);
-                if (!item.isSong) {
-                    fetchPlaylistSongs(item.id, item.title);
+                if (position >= currentItems.size()) return;
+                DisplayEntry entry = currentItems.get(position);
+                if (!entry.isSong) {
+                    // 点击歌单：获取歌曲
+                    fetchPlaylistSongs(entry.id, entry.title);
                 } else {
-                    playSong(item.id, item.title, item.subtitle);
+                    // 点击歌曲：将当前列表中所有歌曲组成连续播放队列，并从该首开始播
+                    ArrayList<MusicService.SongItem> queue = new ArrayList<MusicService.SongItem>();
+                    int clickedSongIndex = 0;
+                    for (int i = 0; i < currentItems.size(); i++) {
+                        DisplayEntry item = currentItems.get(i);
+                        if (item.isSong) {
+                            if (item.id.equals(entry.id)) {
+                                clickedSongIndex = queue.size();
+                            }
+                            queue.add(new MusicService.SongItem(item.id, item.title, item.subtitle, buildStreamUrl(item.id)));
+                        }
+                    }
+                    MusicService.setQueue(queue, clickedSongIndex, MainActivity.this);
                 }
             }
         });
 
+        // 播放控制
         btnPlayPause.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (mediaPlayer.isPlaying()) {
-                    mediaPlayer.pause();
-                    btnPlayPause.setText("播放");
-                } else {
-                    mediaPlayer.start();
-                    btnPlayPause.setText("暂停");
+                Intent intent = new Intent(MainActivity.this, MusicService.class);
+                intent.setAction(MusicService.ACTION_TOGGLE);
+                startService(intent);
+            }
+        });
+
+        btnNext.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(MainActivity.this, MusicService.class);
+                intent.setAction(MusicService.ACTION_NEXT);
+                startService(intent);
+            }
+        });
+
+        btnPrev.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(MainActivity.this, MusicService.class);
+                intent.setAction(MusicService.ACTION_PREV);
+                startService(intent);
+            }
+        });
+
+        // 进度条拖拽监听
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                if (fromUser) {
+                    tvTime.setText(formatTime(progress) + " / " + formatTime(sb.getMax()));
                 }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar sb) {
+                isUserSeeking = true;
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar sb) {
+                isUserSeeking = false;
+                Intent intent = new Intent(MainActivity.this, MusicService.class);
+                intent.setAction(MusicService.ACTION_SEEK);
+                intent.putExtra("position", sb.getProgress());
+                startService(intent);
             }
         });
     }
@@ -232,6 +330,12 @@ public class MainActivity extends Activity {
         String u = prefs.getString("user", "");
         String p = prefs.getString("pass", "");
         return "u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic&f=json";
+    }
+
+    private String buildStreamUrl(String songId) {
+        String base = prefs.getString("server", "");
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        return base + "/rest/stream.view?id=" + songId + "&" + getAuthParams();
     }
 
     private String requestApi(String pathWithParams) {
@@ -272,38 +376,45 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         if (jsonStr == null) {
-                            Toast.makeText(MainActivity.this, "连接失败，请检查地址或网络", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "连接失败，请检查设置与网络", Toast.LENGTH_SHORT).show();
                             return;
                         }
                         try {
                             JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
                             JSONObject playlistsObj = root.optJSONObject("playlists");
-                            currentDataList.clear();
-                            displayTitles.clear();
+                            currentItems.clear();
+                            listData.clear();
 
                             if (playlistsObj != null && playlistsObj.has("playlist")) {
                                 Object plObj = playlistsObj.get("playlist");
                                 if (plObj instanceof JSONArray) {
                                     JSONArray arr = (JSONArray) plObj;
                                     for (int i = 0; i < arr.length(); i++) {
-                                        JSONObject p = arr.getJSONObject(i);
-                                        currentDataList.add(new Item(p.getString("id"), p.getString("name"), "歌曲数: " + p.optInt("songCount", 0), false));
-                                        displayTitles.add("📁 " + p.getString("name") + " (" + p.optInt("songCount", 0) + " 首)");
+                                        addPlaylistRow(arr.getJSONObject(i));
                                     }
                                 } else if (plObj instanceof JSONObject) {
-                                    JSONObject p = (JSONObject) plObj;
-                                    currentDataList.add(new Item(p.getString("id"), p.getString("name"), "歌曲数: " + p.optInt("songCount", 0), false));
-                                    displayTitles.add("📁 " + p.getString("name") + " (" + p.optInt("songCount", 0) + " 首)");
+                                    addPlaylistRow((JSONObject) plObj);
                                 }
                             }
-                            listAdapter.notifyDataSetChanged();
+                            adapter.notifyDataSetChanged();
                         } catch (Exception e) {
-                            Toast.makeText(MainActivity.this, "解析失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "解析失败", Toast.LENGTH_SHORT).show();
                         }
                     }
                 });
             }
         }).start();
+    }
+
+    private void addPlaylistRow(JSONObject p) throws Exception {
+        String name = p.getString("name");
+        int count = p.optInt("songCount", 0);
+        currentItems.add(new DisplayEntry(p.getString("id"), name, "歌曲数量: " + count, false));
+
+        Map<String, String> row = new HashMap<String, String>();
+        row.put("title", "📁  " + name);
+        row.put("subtitle", count + " 首歌曲");
+        listData.add(row);
     }
 
     private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
@@ -318,30 +429,25 @@ public class MainActivity extends Activity {
                         try {
                             JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
                             JSONObject playlist = root.getJSONObject("playlist");
-                            currentDataList.clear();
-                            displayTitles.clear();
+                            currentItems.clear();
+                            listData.clear();
 
                             if (playlist.has("entry")) {
                                 Object entryObj = playlist.get("entry");
                                 if (entryObj instanceof JSONArray) {
                                     JSONArray arr = (JSONArray) entryObj;
                                     for (int i = 0; i < arr.length(); i++) {
-                                        JSONObject s = arr.getJSONObject(i);
-                                        currentDataList.add(new Item(s.getString("id"), s.getString("title"), s.optString("artist", "未知歌手"), true));
-                                        displayTitles.add("🎵 " + s.getString("title") + " - " + s.optString("artist", "未知歌手"));
+                                        addSongRow(arr.getJSONObject(i));
                                     }
                                 } else if (entryObj instanceof JSONObject) {
-                                    JSONObject s = (JSONObject) entryObj;
-                                    currentDataList.add(new Item(s.getString("id"), s.getString("title"), s.optString("artist", "未知歌手"), true));
-                                    displayTitles.add("🎵 " + s.getString("title") + " - " + s.optString("artist", "未知歌手"));
+                                    addSongRow((JSONObject) entryObj);
                                 }
                             }
-                            isInsidePlaylist = true;
                             btnBack.setVisibility(View.VISIBLE);
                             tvListTitle.setText("歌单: " + playlistName);
-                            listAdapter.notifyDataSetChanged();
+                            adapter.notifyDataSetChanged();
                         } catch (Exception e) {
-                            Toast.makeText(MainActivity.this, "读取歌单失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "加载歌单歌曲失败", Toast.LENGTH_SHORT).show();
                         }
                     }
                 });
@@ -364,23 +470,21 @@ public class MainActivity extends Activity {
                             try {
                                 JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
                                 JSONObject result = root.optJSONObject("searchResult3");
-                                currentDataList.clear();
-                                displayTitles.clear();
+                                currentItems.clear();
+                                listData.clear();
 
                                 if (result != null && result.has("song")) {
                                     JSONArray songs = result.getJSONArray("song");
                                     for (int i = 0; i < songs.length(); i++) {
-                                        JSONObject s = songs.getJSONObject(i);
-                                        currentDataList.add(new Item(s.getString("id"), s.getString("title"), s.optString("artist", "未知歌手"), true));
-                                        displayTitles.add("🎵 " + s.getString("title") + " - " + s.optString("artist", "未知歌手"));
+                                        addSongRow(songs.getJSONObject(i));
                                     }
                                 }
-                                listAdapter.notifyDataSetChanged();
-                                if (currentDataList.isEmpty()) {
-                                    Toast.makeText(MainActivity.this, "未找到相关歌曲", Toast.LENGTH_SHORT).show();
+                                adapter.notifyDataSetChanged();
+                                if (currentItems.isEmpty()) {
+                                    Toast.makeText(MainActivity.this, "无相关结果", Toast.LENGTH_SHORT).show();
                                 }
                             } catch (Exception e) {
-                                Toast.makeText(MainActivity.this, "解析搜索结果失败", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(MainActivity.this, "搜索失败", Toast.LENGTH_SHORT).show();
                             }
                         }
                     });
@@ -389,28 +493,20 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    private void playSong(String songId, String title, String artist) {
-        try {
-            tvCurrentSong.setText("正在加载: " + title + " - " + artist);
-            String base = prefs.getString("server", "");
-            if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-            String streamUrl = base + "/rest/stream.view?id=" + songId + "&" + getAuthParams();
+    private void addSongRow(JSONObject s) throws Exception {
+        String title = s.getString("title");
+        String artist = s.optString("artist", "未知艺术家");
+        currentItems.add(new DisplayEntry(s.getString("id"), title, artist, true));
 
-            mediaPlayer.reset();
-            mediaPlayer.setDataSource(streamUrl);
-            mediaPlayer.prepareAsync();
-            tvCurrentSong.setText("播放中: " + title + " - " + artist);
-        } catch (Exception e) {
-            Toast.makeText(this, "播放失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+        Map<String, String> row = new HashMap<String, String>();
+        row.put("title", "🎵  " + title);
+        row.put("subtitle", artist);
+        listData.add(row);
     }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (mediaPlayer != null) {
-            mediaPlayer.release();
-            mediaPlayer = null;
-        }
+    private String formatTime(int ms) {
+        int seconds = (ms / 1000) % 60;
+        int minutes = (ms / (1000 * 60)) % 60;
+        return String.format("%02d:%02d", minutes, seconds);
     }
 }
