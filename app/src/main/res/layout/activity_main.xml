@@ -51,7 +51,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#ccc"
+        android:background="#cccccc"
         android:layout_marginTop="4dp"
         android:layout_marginBottom="4dp" />
 
@@ -135,7 +135,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#ccc" />
+        android:background="#cccccc" />
 
     <!-- 底部控制栏 -->
     <LinearLayout
