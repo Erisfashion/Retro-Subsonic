@@ -8,7 +8,11 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Typeface;
 import android.os.Bundle;
+import android.os.Handler;
+import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.Button;
@@ -16,6 +20,7 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
@@ -31,6 +36,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -47,8 +54,27 @@ public class MainActivity extends Activity {
     // 详情页组件
     private Button btnCloseDetail, btnDetailPrev, btnDetailPlayPause, btnDetailNext, btnDetailMode;
     private ImageView ivDetailCover;
-    private TextView tvDetailTitle, tvDetailArtist, tvDetailTime, tvLyrics;
+    private TextView tvDetailTitle, tvDetailArtist, tvDetailTime;
     private SeekBar detailSeekBar;
+
+    // 歌词滚动相关
+    private ScrollView scrollLyrics;
+    private LinearLayout layoutLyricsContainer;
+    private Handler lyricHandler = new Handler();
+    private boolean isUserTouchingLyrics = false;
+    private int currentLyricIndex = -1;
+
+    private static class LyricRow {
+        long timeMs;
+        String text;
+        TextView view;
+
+        LyricRow(long timeMs, String text) {
+            this.timeMs = timeMs;
+            this.text = text;
+        }
+    }
+    private ArrayList<LyricRow> lyricRows = new ArrayList<LyricRow>();
 
     private SharedPreferences prefs;
 
@@ -72,7 +98,6 @@ public class MainActivity extends Activity {
     private ArrayList<Map<String, String>> listData = new ArrayList<Map<String, String>>();
     private SimpleAdapter adapter;
 
-    // 播放列表适配器
     private ArrayList<Map<String, String>> queueData = new ArrayList<Map<String, String>>();
     private SimpleAdapter queueAdapter;
 
@@ -84,11 +109,10 @@ public class MainActivity extends Activity {
         public void onReceive(Context context, Intent intent) {
             if (MusicService.BROADCAST_STATUS.equals(intent.getAction())) {
                 boolean isPlaying = intent.getBooleanExtra("isPlaying", false);
-                String playText = isPlaying ? "⏸ 暂停" : "▶ 播放";
+                String playText = isPlaying ? "暂停" : "播放";
                 btnPlayPause.setText(playText);
                 btnDetailPlayPause.setText(playText);
 
-                // 更新模式显示
                 int mode = intent.getIntExtra("mode", MusicService.MODE_LOOP_ALL);
                 String modeText = getModeString(mode);
                 btnMode.setText(modeText);
@@ -104,7 +128,6 @@ public class MainActivity extends Activity {
                     tvDetailTitle.setText(title);
                     tvDetailArtist.setText(artist);
 
-                    // 当切歌时自动加载新歌曲的封面和歌词
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
                         lastLoadedSongId = songId;
                         loadCoverArt(coverArtId != null ? coverArtId : songId);
@@ -124,6 +147,9 @@ public class MainActivity extends Activity {
                     String timeStr = formatTime(position) + " / " + formatTime(duration);
                     tvTime.setText(timeStr);
                     tvDetailTime.setText(timeStr);
+
+                    // 驱动歌词上下滚动高亮
+                    updateLyricPosition(position);
                 }
             }
         }
@@ -200,10 +226,11 @@ public class MainActivity extends Activity {
         tvDetailTitle = (TextView) findViewById(R.id.tv_detail_title);
         tvDetailArtist = (TextView) findViewById(R.id.tv_detail_artist);
         tvDetailTime = (TextView) findViewById(R.id.tv_detail_time);
-        tvLyrics = (TextView) findViewById(R.id.tv_lyrics);
         detailSeekBar = (SeekBar) findViewById(R.id.detail_seek_bar);
 
-        // 主列表适配器
+        scrollLyrics = (ScrollView) findViewById(R.id.scroll_lyrics);
+        layoutLyricsContainer = (LinearLayout) findViewById(R.id.layout_lyrics_container);
+
         adapter = new SimpleAdapter(
                 this,
                 listData,
@@ -213,7 +240,6 @@ public class MainActivity extends Activity {
         );
         listView.setAdapter(adapter);
 
-        // 侧边播放列表适配器
         queueAdapter = new SimpleAdapter(
                 this,
                 queueData,
@@ -239,9 +265,9 @@ public class MainActivity extends Activity {
     }
 
     private String getModeString(int mode) {
-        if (mode == MusicService.MODE_SHUFFLE) return "🔀 随机播放";
-        if (mode == MusicService.MODE_SINGLE) return "🔂 单曲循环";
-        return "🔁 列表循环";
+        if (mode == MusicService.MODE_SHUFFLE) return "随机播放";
+        if (mode == MusicService.MODE_SINGLE) return "单曲循环";
+        return "列表循环";
     }
 
     private void setupListeners() {
@@ -250,10 +276,8 @@ public class MainActivity extends Activity {
             public void onClick(View v) {
                 if (layoutConfigPanel.getVisibility() == View.VISIBLE) {
                     layoutConfigPanel.setVisibility(View.GONE);
-                    btnToggleConfig.setText("服务器设置 ▼");
                 } else {
                     layoutConfigPanel.setVisibility(View.VISIBLE);
-                    btnToggleConfig.setText("收起设置 ▲");
                 }
             }
         });
@@ -263,7 +287,6 @@ public class MainActivity extends Activity {
             public void onClick(View v) {
                 saveConfig();
                 layoutConfigPanel.setVisibility(View.GONE);
-                btnToggleConfig.setText("服务器设置 ▼");
                 fetchPlaylists();
             }
         });
@@ -306,7 +329,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 侧边当前列表控制
         btnToggleQueue.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -326,7 +348,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 详情页打开与关闭
         btnOpenDetail.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -341,7 +362,25 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 主列表点击
+        // 歌词手动滑动监听：滑动时暂停自动对齐，松开 3 秒后恢复
+        scrollLyrics.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+                    isUserTouchingLyrics = true;
+                    lyricHandler.removeCallbacksAndMessages(null);
+                } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                    lyricHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            isUserTouchingLyrics = false;
+                        }
+                    }, 3000);
+                }
+                return false;
+            }
+        });
+
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -358,7 +397,6 @@ public class MainActivity extends Activity {
                             if (item.id.equals(entry.id)) {
                                 clickedSongIndex = queue.size();
                             }
-                            // 此处确保传入 5 个参数（包含 item.coverArt）
                             queue.add(new MusicService.SongItem(item.id, item.title, item.subtitle, buildStreamUrl(item.id), item.coverArt));
                         }
                     }
@@ -368,7 +406,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 侧边当前列表点击：立即切歌
         lvQueue.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -379,7 +416,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 播放控制按钮统一绑定
         View.OnClickListener toggleListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -416,7 +452,6 @@ public class MainActivity extends Activity {
         btnMode.setOnClickListener(modeListener);
         btnDetailMode.setOnClickListener(modeListener);
 
-        // 进度条监听
         SeekBar.OnSeekBarChangeListener seekListener = new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
@@ -454,7 +489,7 @@ public class MainActivity extends Activity {
             MusicService.SongItem item = list.get(i);
             Map<String, String> row = new HashMap<String, String>();
             if (i == currentPlaying) {
-                row.put("title", "▶ " + (i + 1) + ". " + item.title);
+                row.put("title", ">> " + (i + 1) + ". " + item.title);
             } else {
                 row.put("title", (i + 1) + ". " + item.title);
             }
@@ -495,8 +530,17 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    // 解析与载入歌词
     private void loadLyrics(final String artist, final String title) {
-        tvLyrics.setText("歌词加载中...");
+        lyricRows.clear();
+        currentLyricIndex = -1;
+        layoutLyricsContainer.removeAllViews();
+        TextView loadingTv = new TextView(this);
+        loadingTv.setText("歌词加载中...");
+        loadingTv.setTextColor(0xFF888888);
+        loadingTv.setGravity(Gravity.CENTER);
+        layoutLyricsContainer.addView(loadingTv);
+
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -507,7 +551,7 @@ public class MainActivity extends Activity {
                         @Override
                         public void run() {
                             if (jsonStr == null) {
-                                tvLyrics.setText("（暂无歌词）");
+                                showSimpleLyric("暂无歌词");
                                 return;
                             }
                             try {
@@ -521,20 +565,146 @@ public class MainActivity extends Activity {
                                     } else if (lyricsObj instanceof String) {
                                         text = (String) lyricsObj;
                                     }
-                                    if (text.length() > 0) {
-                                        tvLyrics.setText(text);
+
+                                    if (text != null && text.trim().length() > 0) {
+                                        buildLyricsView(text);
                                         return;
                                     }
                                 }
-                                tvLyrics.setText("（未检索到歌词）");
+                                showSimpleLyric("未找到匹配歌词");
                             } catch (Exception e) {
-                                tvLyrics.setText("（暂无歌词）");
+                                showSimpleLyric("歌词解析失败");
                             }
                         }
                     });
                 } catch (Exception ignored) {}
             }
         }).start();
+    }
+
+    private void showSimpleLyric(String msg) {
+        layoutLyricsContainer.removeAllViews();
+        TextView tv = new TextView(this);
+        tv.setText(msg);
+        tv.setTextColor(0xFF888888);
+        tv.setTextSize(15);
+        tv.setGravity(Gravity.CENTER);
+        layoutLyricsContainer.addView(tv);
+    }
+
+    // 解析 LRC 时间戳并生成 TextView 列表
+    private void buildLyricsView(String rawText) {
+        layoutLyricsContainer.removeAllViews();
+        lyricRows.clear();
+        currentLyricIndex = -1;
+
+        String[] lines = rawText.split("\n");
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (line.length() == 0) continue;
+            int closeBracket = line.indexOf(']');
+            if (line.startsWith("[") && closeBracket > 1) {
+                String timePart = line.substring(1, closeBracket);
+                long timeMs = parseTime(timePart);
+                if (timeMs >= 0) {
+                    String content = line.substring(closeBracket + 1).trim();
+                    if (content.length() == 0) content = "···";
+                    lyricRows.add(new LyricRow(timeMs, content));
+                }
+            }
+        }
+
+        if (lyricRows.isEmpty()) {
+            // 如果非标准 LRC，按普通文本逐行输出
+            for (String raw : lines) {
+                if (raw.trim().length() == 0) continue;
+                TextView tv = new TextView(this);
+                tv.setText(raw.trim());
+                tv.setTextColor(0xFFCCCCCC);
+                tv.setTextSize(15);
+                tv.setGravity(Gravity.CENTER);
+                tv.setPadding(0, 10, 0, 10);
+                layoutLyricsContainer.addView(tv);
+            }
+            return;
+        }
+
+        // 按时间排序
+        Collections.sort(lyricRows, new Comparator<LyricRow>() {
+            @Override
+            public int compare(LyricRow a, LyricRow b) {
+                return Long.valueOf(a.timeMs).compareTo(b.timeMs);
+            }
+        });
+
+        // 渲染歌词行控件
+        for (LyricRow row : lyricRows) {
+            TextView tv = new TextView(this);
+            tv.setText(row.text);
+            tv.setTextColor(0xFF777777); // 默认灰色
+            tv.setTextSize(15);
+            tv.setGravity(Gravity.CENTER);
+            tv.setPadding(0, 12, 0, 12);
+            row.view = tv;
+            layoutLyricsContainer.addView(tv);
+        }
+    }
+
+    private long parseTime(String timeStr) {
+        try {
+            String[] parts = timeStr.split(":");
+            if (parts.length >= 2) {
+                long min = Long.parseLong(parts[0]);
+                float sec = Float.parseFloat(parts[1]);
+                return (long) (min * 60 * 1000 + sec * 1000);
+            }
+        } catch (Exception ignored) {}
+        return -1;
+    }
+
+    // 实时跟随当前播放进度滚动并居中高亮
+    private void updateLyricPosition(int currentPosMs) {
+        if (lyricRows.isEmpty() || isUserTouchingLyrics) return;
+
+        int targetIndex = -1;
+        for (int i = 0; i < lyricRows.size(); i++) {
+            if (currentPosMs >= lyricRows.get(i).timeMs) {
+                targetIndex = i;
+            } else {
+                break;
+            }
+        }
+
+        if (targetIndex != currentLyricIndex && targetIndex >= 0) {
+            // 恢复前一行样式
+            if (currentLyricIndex >= 0 && currentLyricIndex < lyricRows.size()) {
+                LyricRow oldRow = lyricRows.get(currentLyricIndex);
+                if (oldRow.view != null) {
+                    oldRow.view.setTextColor(0xFF777777);
+                    oldRow.view.setTextSize(15);
+                    oldRow.view.setTypeface(Typeface.DEFAULT);
+                }
+            }
+
+            // 高亮当前行（青色、加粗放大）
+            currentLyricIndex = targetIndex;
+            final LyricRow curRow = lyricRows.get(currentLyricIndex);
+            if (curRow.view != null) {
+                curRow.view.setTextColor(0xFF00E5FF);
+                curRow.view.setTextSize(18);
+                curRow.view.setTypeface(Typeface.DEFAULT_BOLD);
+
+                // 计算居中滚动偏移量并平滑滚动
+                scrollLyrics.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        int scrollY = curRow.view.getTop() - (scrollLyrics.getHeight() / 2) + (curRow.view.getHeight() / 2);
+                        if (scrollY < 0) scrollY = 0;
+                        scrollLyrics.smoothScrollTo(0, scrollY);
+                    }
+                });
+            }
+        }
     }
 
     private String getAuthParams() {
@@ -623,7 +793,7 @@ public class MainActivity extends Activity {
         currentItems.add(new DisplayEntry(p.getString("id"), name, "歌曲: " + count, null, false));
 
         Map<String, String> row = new HashMap<String, String>();
-        row.put("title", "📁  " + name);
+        row.put("title", "[歌单] " + name);
         row.put("subtitle", count + " 首歌曲");
         listData.add(row);
     }
@@ -706,7 +876,7 @@ public class MainActivity extends Activity {
         currentItems.add(new DisplayEntry(s.getString("id"), title, artist, coverArt, true));
 
         Map<String, String> row = new HashMap<String, String>();
-        row.put("title", "🎵  " + title);
+        row.put("title", title);
         row.put("subtitle", artist);
         listData.add(row);
     }
