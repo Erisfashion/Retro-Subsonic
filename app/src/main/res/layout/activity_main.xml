@@ -38,7 +38,7 @@
                 android:textSize="12sp" />
         </RelativeLayout>
 
-        <!-- 可折叠的服务器配置面板 -->
+        <!-- 可折叠的服务器配置面板（包含缓存大小与清理） -->
         <LinearLayout
             android:id="@+id/layout_config_panel"
             android:layout_width="match_parent"
@@ -85,11 +85,53 @@
                     android:textColorHint="#777777"
                     android:inputType="textPassword"
                     android:singleLine="true" />
+            </LinearLayout>
+
+            <!-- 缓存容量控制排 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="4dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="本地缓存上限 (MB):"
+                    android:textColor="#cccccc"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/et_cache_size"
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:text="500"
+                    android:hint="500"
+                    android:textColor="#ffffff"
+                    android:textColorHint="#777777"
+                    android:inputType="number"
+                    android:gravity="center"
+                    android:singleLine="true"
+                    android:layout_marginLeft="6dp" />
+
+                <Button
+                    android:id="@+id/btn_clear_cache"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="清理缓存"
+                    android:textSize="11sp"
+                    android:layout_marginLeft="10dp" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
 
                 <Button
                     android:id="@+id/btn_connect"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="36dp"
                     android:text="保存并连接" />
             </LinearLayout>
         </LinearLayout>
