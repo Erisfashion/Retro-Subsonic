@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.EditText;
@@ -46,16 +47,22 @@ public class MainActivity extends Activity {
     private EditText etServer, etUsername, etPassword, etSearchKeyword;
     private Button btnConnect, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
     private Button btnPrev, btnPlayPause, btnNext, btnMode, btnToggleQueue, btnCloseQueue, btnOpenDetail;
-    private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay;
+    private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime;
     private ListView listView, lvQueue;
     private SeekBar seekBar;
 
     // 详情页组件
     private Button btnCloseDetail, btnDetailPrev, btnDetailPlayPause, btnDetailNext, btnDetailMode;
+    private Button btnDetailKeepScreen, btnDetailQueue;
     private ImageView ivDetailCover;
     private TextView tvDetailTitle, tvDetailArtist, tvDetailTime;
     private SeekBar detailSeekBar;
+    private LinearLayout layoutDetailLyricsView, layoutDetailQueueView;
+    private ListView lvDetailQueue;
+
+    // 屏幕常亮状态
+    private boolean isKeepScreenOn = false;
 
     // 歌词滚动相关
     private ScrollView scrollLyrics;
@@ -98,8 +105,10 @@ public class MainActivity extends Activity {
     private ArrayList<Map<String, String>> listData = new ArrayList<Map<String, String>>();
     private SimpleAdapter adapter;
 
+    // 播放列表适配器（主侧边栏与详情页各持一份展示）
     private ArrayList<Map<String, String>> queueData = new ArrayList<Map<String, String>>();
     private SimpleAdapter queueAdapter;
+    private SimpleAdapter detailQueueAdapter;
 
     private boolean isUserSeeking = false;
     private String lastLoadedSongId = "";
@@ -164,6 +173,7 @@ public class MainActivity extends Activity {
         initViews();
         loadSavedConfig();
         setupListeners();
+        setupClickInterceptors(); // 拦截空白处点击，彻底防止穿透触发切歌
     }
 
     @Override
@@ -206,6 +216,7 @@ public class MainActivity extends Activity {
         layoutSearchBar = (LinearLayout) findViewById(R.id.layout_search_bar);
         layoutQueuePanel = (LinearLayout) findViewById(R.id.layout_queue_panel);
         layoutDetailOverlay = (LinearLayout) findViewById(R.id.layout_detail_overlay);
+        layoutBottomPlayer = (LinearLayout) findViewById(R.id.layout_bottom_player);
 
         tvListTitle = (TextView) findViewById(R.id.tv_list_title);
         tvCurrentSong = (TextView) findViewById(R.id.tv_current_song);
@@ -221,11 +232,18 @@ public class MainActivity extends Activity {
         btnDetailPlayPause = (Button) findViewById(R.id.btn_detail_play_pause);
         btnDetailNext = (Button) findViewById(R.id.btn_detail_next);
         btnDetailMode = (Button) findViewById(R.id.btn_detail_mode);
+        btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
+        btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
+
         ivDetailCover = (ImageView) findViewById(R.id.iv_detail_cover);
         tvDetailTitle = (TextView) findViewById(R.id.tv_detail_title);
         tvDetailArtist = (TextView) findViewById(R.id.tv_detail_artist);
         tvDetailTime = (TextView) findViewById(R.id.tv_detail_time);
         detailSeekBar = (SeekBar) findViewById(R.id.detail_seek_bar);
+
+        layoutDetailLyricsView = (LinearLayout) findViewById(R.id.layout_detail_lyrics_view);
+        layoutDetailQueueView = (LinearLayout) findViewById(R.id.layout_detail_queue_view);
+        lvDetailQueue = (ListView) findViewById(R.id.lv_detail_queue);
 
         scrollLyrics = (ScrollView) findViewById(R.id.scroll_lyrics);
         layoutLyricsContainer = (LinearLayout) findViewById(R.id.layout_lyrics_container);
@@ -247,6 +265,30 @@ public class MainActivity extends Activity {
                 new int[]{android.R.id.text1, android.R.id.text2}
         );
         lvQueue.setAdapter(queueAdapter);
+
+        detailQueueAdapter = new SimpleAdapter(
+                this,
+                queueData,
+                android.R.layout.simple_list_item_2,
+                new String[]{"title", "subtitle"},
+                new int[]{android.R.id.text1, android.R.id.text2}
+        );
+        lvDetailQueue.setAdapter(detailQueueAdapter);
+    }
+
+    // 为各层面板增加事件拦截，避免空白处点击落到底层列表上
+    private void setupClickInterceptors() {
+        View.OnClickListener consumeListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // 仅拦截消费点击事件，不做任何动作
+            }
+        };
+
+        layoutDetailOverlay.setOnClickListener(consumeListener);
+        layoutQueuePanel.setOnClickListener(consumeListener);
+        layoutConfigPanel.setOnClickListener(consumeListener);
+        layoutBottomPlayer.setOnClickListener(consumeListener);
     }
 
     private void loadSavedConfig() {
@@ -361,6 +403,41 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 详情页：屏幕常亮切换
+        btnDetailKeepScreen.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                isKeepScreenOn = !isKeepScreenOn;
+                if (isKeepScreenOn) {
+                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    btnDetailKeepScreen.setText("常亮: 开");
+                    Toast.makeText(MainActivity.this, "已开启屏幕常亮", Toast.LENGTH_SHORT).show();
+                } else {
+                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    btnDetailKeepScreen.setText("常亮: 关");
+                    Toast.makeText(MainActivity.this, "已关闭屏幕常亮", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+        // 详情页：歌词 / 播放列表视图切换
+        btnDetailQueue.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (layoutDetailQueueView.getVisibility() == View.VISIBLE) {
+                    layoutDetailQueueView.setVisibility(View.GONE);
+                    layoutDetailLyricsView.setVisibility(View.VISIBLE);
+                    btnDetailQueue.setText("播放列表");
+                } else {
+                    refreshQueueList();
+                    layoutDetailLyricsView.setVisibility(View.GONE);
+                    layoutDetailQueueView.setVisibility(View.VISIBLE);
+                    btnDetailQueue.setText("查看歌词");
+                }
+            }
+        });
+
+        // 歌词手动滑动监听
         scrollLyrics.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -379,6 +456,7 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 主列表点击
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -404,7 +482,8 @@ public class MainActivity extends Activity {
             }
         });
 
-        lvQueue.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        // 侧边栏队列点击切歌
+        AdapterView.OnItemClickListener queueItemClickListener = new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 Intent intent = new Intent(MainActivity.this, MusicService.class);
@@ -412,8 +491,11 @@ public class MainActivity extends Activity {
                 intent.putExtra("target_index", position);
                 startService(intent);
             }
-        });
+        };
+        lvQueue.setOnItemClickListener(queueItemClickListener);
+        lvDetailQueue.setOnItemClickListener(queueItemClickListener);
 
+        // 播放控制
         View.OnClickListener toggleListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -495,6 +577,7 @@ public class MainActivity extends Activity {
             queueData.add(row);
         }
         queueAdapter.notifyDataSetChanged();
+        detailQueueAdapter.notifyDataSetChanged();
     }
 
     private void loadCoverArt(final String coverId) {
