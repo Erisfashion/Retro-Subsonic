@@ -148,7 +148,6 @@ public class MainActivity extends Activity {
                     tvTime.setText(timeStr);
                     tvDetailTime.setText(timeStr);
 
-                    // 驱动歌词上下滚动高亮
                     updateLyricPosition(position);
                 }
             }
@@ -216,7 +215,7 @@ public class MainActivity extends Activity {
         listView = (ListView) findViewById(R.id.list_view);
         lvQueue = (ListView) findViewById(R.id.lv_queue);
 
-        // 详情页组件
+        // 详情页组件初始化
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
         btnDetailPrev = (Button) findViewById(R.id.btn_detail_prev);
         btnDetailPlayPause = (Button) findViewById(R.id.btn_detail_play_pause);
@@ -362,7 +361,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 歌词手动滑动监听：滑动时暂停自动对齐，松开 3 秒后恢复
         scrollLyrics.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -530,7 +528,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 解析与载入歌词
     private void loadLyrics(final String artist, final String title) {
         lyricRows.clear();
         currentLyricIndex = -1;
@@ -592,7 +589,6 @@ public class MainActivity extends Activity {
         layoutLyricsContainer.addView(tv);
     }
 
-    // 解析 LRC 时间戳并生成 TextView 列表
     private void buildLyricsView(String rawText) {
         layoutLyricsContainer.removeAllViews();
         lyricRows.clear();
@@ -615,7 +611,6 @@ public class MainActivity extends Activity {
         }
 
         if (lyricRows.isEmpty()) {
-            // 如果非标准 LRC，按普通文本逐行输出
             for (String raw : lines) {
                 if (raw.trim().length() == 0) continue;
                 TextView tv = new TextView(this);
@@ -629,7 +624,6 @@ public class MainActivity extends Activity {
             return;
         }
 
-        // 按时间排序
         Collections.sort(lyricRows, new Comparator<LyricRow>() {
             @Override
             public int compare(LyricRow a, LyricRow b) {
@@ -637,11 +631,10 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 渲染歌词行控件
         for (LyricRow row : lyricRows) {
             TextView tv = new TextView(this);
             tv.setText(row.text);
-            tv.setTextColor(0xFF777777); // 默认灰色
+            tv.setTextColor(0xFF777777);
             tv.setTextSize(15);
             tv.setGravity(Gravity.CENTER);
             tv.setPadding(0, 12, 0, 12);
@@ -662,7 +655,6 @@ public class MainActivity extends Activity {
         return -1;
     }
 
-    // 实时跟随当前播放进度滚动并居中高亮
     private void updateLyricPosition(int currentPosMs) {
         if (lyricRows.isEmpty() || isUserTouchingLyrics) return;
 
@@ -676,7 +668,6 @@ public class MainActivity extends Activity {
         }
 
         if (targetIndex != currentLyricIndex && targetIndex >= 0) {
-            // 恢复前一行样式
             if (currentLyricIndex >= 0 && currentLyricIndex < lyricRows.size()) {
                 LyricRow oldRow = lyricRows.get(currentLyricIndex);
                 if (oldRow.view != null) {
@@ -686,7 +677,6 @@ public class MainActivity extends Activity {
                 }
             }
 
-            // 高亮当前行（青色、加粗放大）
             currentLyricIndex = targetIndex;
             final LyricRow curRow = lyricRows.get(currentLyricIndex);
             if (curRow.view != null) {
@@ -694,7 +684,6 @@ public class MainActivity extends Activity {
                 curRow.view.setTextSize(18);
                 curRow.view.setTypeface(Typeface.DEFAULT_BOLD);
 
-                // 计算居中滚动偏移量并平滑滚动
                 scrollLyrics.post(new Runnable() {
                     @Override
                     public void run() {
