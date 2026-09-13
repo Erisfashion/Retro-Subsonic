@@ -26,7 +26,6 @@ public class MusicService extends Service {
 
     public static final String BROADCAST_STATUS = "com.retro.subsonic.STATUS_CHANGE";
 
-    // 播放模式常量
     public static final int MODE_LOOP_ALL = 0; // 列表循环
     public static final int MODE_SHUFFLE = 1;  // 随机播放
     public static final int MODE_SINGLE = 2;   // 单曲循环
@@ -40,12 +39,10 @@ public class MusicService extends Service {
         public String streamUrl;
         public String coverArtId;
 
-        // 兼容 4 参数调用
         public SongItem(String id, String title, String artist, String streamUrl) {
             this(id, title, artist, streamUrl, null);
         }
 
-        // 完整 5 参数（包含封面 ID）
         public SongItem(String id, String title, String artist, String streamUrl, String coverArtId) {
             this.id = id;
             this.title = title;
@@ -104,7 +101,6 @@ public class MusicService extends Service {
         mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mp) {
-                // 根据播放模式自动连播
                 handleCompletion();
             }
         });
@@ -148,7 +144,6 @@ public class MusicService extends Service {
                     mediaPlayer.seekTo(pos);
                 }
             } else if (ACTION_CYCLE_MODE.equals(act)) {
-                // 循环切换模式：0 -> 1 -> 2 -> 0
                 currentMode = (currentMode + 1) % 3;
                 broadcastStatus();
             }
@@ -160,10 +155,8 @@ public class MusicService extends Service {
         if (playlist.isEmpty()) return;
 
         if (currentMode == MODE_SINGLE) {
-            // 单曲循环
             playCurrent();
         } else if (currentMode == MODE_SHUFFLE) {
-            // 随机播放
             if (playlist.size() > 1) {
                 int nextIdx;
                 do {
@@ -173,7 +166,6 @@ public class MusicService extends Service {
             }
             playCurrent();
         } else {
-            // 列表循环
             playNext();
         }
     }
