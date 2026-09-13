@@ -1,0 +1,416 @@
+package com.retro.subsonic;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.content.SharedPreferences;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.os.Bundle;
+import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+
+public class MainActivity extends Activity {
+
+    private EditText etServer, etUsername, etPassword, etSearchKeyword;
+    private Button btnConnect, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack, btnPlayPause;
+    private LinearLayout layoutSearchBar;
+    private TextView tvListTitle, tvCurrentSong;
+    private ListView listView;
+
+    private SharedPreferences prefs;
+    private MediaPlayer mediaPlayer;
+
+    private ArrayList<Item> currentDataList = new ArrayList<Item>();
+    private ArrayAdapter<String> listAdapter;
+    private ArrayList<String> displayTitles = new ArrayList<String>();
+
+    private boolean isInsidePlaylist = false;
+
+    private static class Item {
+        String id;
+        String title;
+        String subtitle;
+        boolean isSong;
+
+        Item(String id, String title, String subtitle, boolean isSong) {
+            this.id = id;
+            this.title = title;
+            this.subtitle = subtitle;
+            this.isSong = isSong;
+        }
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        // 捕获未捕获异常并弹出弹窗，方便精确定位问题
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread thread, final Throwable ex) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("程序遇到错误")
+                                .setMessage(ex.toString() + "\n" + (ex.getCause() != null ? ex.getCause().toString() : ""))
+                                .setPositiveButton("关闭", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog, int which) {
+                                        finish();
+                                    }
+                                })
+                                .show();
+                    }
+                });
+            }
+        });
+
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        prefs = getSharedPreferences("subsonic_cfg", MODE_PRIVATE);
+
+        initViews();
+        loadSavedConfig();
+        setupPlayer();
+        setupListeners();
+    }
+
+    private void initViews() {
+        etServer = (EditText) findViewById(R.id.et_server);
+        etUsername = (EditText) findViewById(R.id.et_username);
+        etPassword = (EditText) findViewById(R.id.et_password);
+        etSearchKeyword = (EditText) findViewById(R.id.et_search_keyword);
+
+        btnConnect = (Button) findViewById(R.id.btn_connect);
+        btnTabPlaylists = (Button) findViewById(R.id.btn_tab_playlists);
+        btnTabSearch = (Button) findViewById(R.id.btn_tab_search);
+        btnSearchSubmit = (Button) findViewById(R.id.btn_search_submit);
+        btnBack = (Button) findViewById(R.id.btn_back);
+        btnPlayPause = (Button) findViewById(R.id.btn_play_pause);
+
+        layoutSearchBar = (LinearLayout) findViewById(R.id.layout_search_bar);
+        tvListTitle = (TextView) findViewById(R.id.tv_list_title);
+        tvCurrentSong = (TextView) findViewById(R.id.tv_current_song);
+        listView = (ListView) findViewById(R.id.list_view);
+
+        listAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, displayTitles);
+        listView.setAdapter(listAdapter);
+    }
+
+    private void loadSavedConfig() {
+        etServer.setText(prefs.getString("server", "http://192.168.1.100:4533"));
+        etUsername.setText(prefs.getString("user", "admin"));
+        etPassword.setText(prefs.getString("pass", "admin"));
+    }
+
+    private void saveConfig() {
+        prefs.edit()
+                .putString("server", etServer.getText().toString().trim())
+                .putString("user", etUsername.getText().toString().trim())
+                .putString("pass", etPassword.getText().toString().trim())
+                .commit();
+    }
+
+    private void setupPlayer() {
+        mediaPlayer = new MediaPlayer();
+        mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+
+        mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+            @Override
+            public void onPrepared(MediaPlayer mp) {
+                mp.start();
+                btnPlayPause.setText("暂停");
+            }
+        });
+
+        mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
+            @Override
+            public boolean onError(MediaPlayer mp, int what, int extra) {
+                Toast.makeText(MainActivity.this, "播放失败: 格式不支持或网络异常", Toast.LENGTH_SHORT).show();
+                btnPlayPause.setText("播放");
+                return true;
+            }
+        });
+    }
+
+    private void setupListeners() {
+        btnConnect.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                saveConfig();
+                fetchPlaylists();
+            }
+        });
+
+        btnTabPlaylists.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                layoutSearchBar.setVisibility(View.GONE);
+                isInsidePlaylist = false;
+                btnBack.setVisibility(View.GONE);
+                tvListTitle.setText("歌单列表");
+                fetchPlaylists();
+            }
+        });
+
+        btnTabSearch.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                layoutSearchBar.setVisibility(View.VISIBLE);
+                isInsidePlaylist = false;
+                btnBack.setVisibility(View.GONE);
+                tvListTitle.setText("搜索结果");
+                currentDataList.clear();
+                displayTitles.clear();
+                listAdapter.notifyDataSetChanged();
+            }
+        });
+
+        btnSearchSubmit.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                searchSongs(etSearchKeyword.getText().toString().trim());
+            }
+        });
+
+        btnBack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                isInsidePlaylist = false;
+                btnBack.setVisibility(View.GONE);
+                tvListTitle.setText("歌单列表");
+                fetchPlaylists();
+            }
+        });
+
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= currentDataList.size()) return;
+                Item item = currentDataList.get(position);
+                if (!item.isSong) {
+                    fetchPlaylistSongs(item.id, item.title);
+                } else {
+                    playSong(item.id, item.title, item.subtitle);
+                }
+            }
+        });
+
+        btnPlayPause.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mediaPlayer.isPlaying()) {
+                    mediaPlayer.pause();
+                    btnPlayPause.setText("播放");
+                } else {
+                    mediaPlayer.start();
+                    btnPlayPause.setText("暂停");
+                }
+            }
+        });
+    }
+
+    private String getAuthParams() {
+        String u = prefs.getString("user", "");
+        String p = prefs.getString("pass", "");
+        return "u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic&f=json";
+    }
+
+    private String requestApi(String pathWithParams) {
+        String base = prefs.getString("server", "");
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String fullUrl = base + "/rest/" + pathWithParams;
+
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(fullUrl);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            reader.close();
+            return sb.toString();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void fetchPlaylists() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getPlaylists.view?" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) {
+                            Toast.makeText(MainActivity.this, "连接失败，请检查地址或网络", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject playlistsObj = root.optJSONObject("playlists");
+                            currentDataList.clear();
+                            displayTitles.clear();
+
+                            if (playlistsObj != null && playlistsObj.has("playlist")) {
+                                Object plObj = playlistsObj.get("playlist");
+                                if (plObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) plObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        JSONObject p = arr.getJSONObject(i);
+                                        currentDataList.add(new Item(p.getString("id"), p.getString("name"), "歌曲数: " + p.optInt("songCount", 0), false));
+                                        displayTitles.add("📁 " + p.getString("name") + " (" + p.optInt("songCount", 0) + " 首)");
+                                    }
+                                } else if (plObj instanceof JSONObject) {
+                                    JSONObject p = (JSONObject) plObj;
+                                    currentDataList.add(new Item(p.getString("id"), p.getString("name"), "歌曲数: " + p.optInt("songCount", 0), false));
+                                    displayTitles.add("📁 " + p.getString("name") + " (" + p.optInt("songCount", 0) + " 首)");
+                                }
+                            }
+                            listAdapter.notifyDataSetChanged();
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "解析失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getPlaylist.view?id=" + playlistId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject playlist = root.getJSONObject("playlist");
+                            currentDataList.clear();
+                            displayTitles.clear();
+
+                            if (playlist.has("entry")) {
+                                Object entryObj = playlist.get("entry");
+                                if (entryObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) entryObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        JSONObject s = arr.getJSONObject(i);
+                                        currentDataList.add(new Item(s.getString("id"), s.getString("title"), s.optString("artist", "未知歌手"), true));
+                                        displayTitles.add("🎵 " + s.getString("title") + " - " + s.optString("artist", "未知歌手"));
+                                    }
+                                } else if (entryObj instanceof JSONObject) {
+                                    JSONObject s = (JSONObject) entryObj;
+                                    currentDataList.add(new Item(s.getString("id"), s.getString("title"), s.optString("artist", "未知歌手"), true));
+                                    displayTitles.add("🎵 " + s.getString("title") + " - " + s.optString("artist", "未知歌手"));
+                                }
+                            }
+                            isInsidePlaylist = true;
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText("歌单: " + playlistName);
+                            listAdapter.notifyDataSetChanged();
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "读取歌单失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void searchSongs(final String query) {
+        if (query.length() == 0) return;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String encoded = URLEncoder.encode(query, "UTF-8");
+                    final String jsonStr = requestApi("search3.view?query=" + encoded + "&" + getAuthParams());
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (jsonStr == null) return;
+                            try {
+                                JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                                JSONObject result = root.optJSONObject("searchResult3");
+                                currentDataList.clear();
+                                displayTitles.clear();
+
+                                if (result != null && result.has("song")) {
+                                    JSONArray songs = result.getJSONArray("song");
+                                    for (int i = 0; i < songs.length(); i++) {
+                                        JSONObject s = songs.getJSONObject(i);
+                                        currentDataList.add(new Item(s.getString("id"), s.getString("title"), s.optString("artist", "未知歌手"), true));
+                                        displayTitles.add("🎵 " + s.getString("title") + " - " + s.optString("artist", "未知歌手"));
+                                    }
+                                }
+                                listAdapter.notifyDataSetChanged();
+                                if (currentDataList.isEmpty()) {
+                                    Toast.makeText(MainActivity.this, "未找到相关歌曲", Toast.LENGTH_SHORT).show();
+                                }
+                            } catch (Exception e) {
+                                Toast.makeText(MainActivity.this, "解析搜索结果失败", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    });
+                } catch (Exception ignored) {}
+            }
+        }).start();
+    }
+
+    private void playSong(String songId, String title, String artist) {
+        try {
+            tvCurrentSong.setText("正在加载: " + title + " - " + artist);
+            String base = prefs.getString("server", "");
+            if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+            String streamUrl = base + "/rest/stream.view?id=" + songId + "&" + getAuthParams();
+
+            mediaPlayer.reset();
+            mediaPlayer.setDataSource(streamUrl);
+            mediaPlayer.prepareAsync();
+            tvCurrentSong.setText("播放中: " + title + " - " + artist);
+        } catch (Exception e) {
+            Toast.makeText(this, "播放失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mediaPlayer != null) {
+            mediaPlayer.release();
+            mediaPlayer = null;
+        }
+    }
+}
