@@ -358,6 +358,7 @@ public class MainActivity extends Activity {
                             if (item.id.equals(entry.id)) {
                                 clickedSongIndex = queue.size();
                             }
+                            // 此处确保传入 5 个参数（包含 item.coverArt）
                             queue.add(new MusicService.SongItem(item.id, item.title, item.subtitle, buildStreamUrl(item.id), item.coverArt));
                         }
                     }
