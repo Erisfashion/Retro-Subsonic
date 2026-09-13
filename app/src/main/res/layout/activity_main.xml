@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="10dp">
+
+    <!-- 服务器设置栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <EditText
+            android:id="@+id/et_server"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="服务器地址 (如 http://192.168.1.100:4533)"
+            android:singleLine="true" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/et_username"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="用户名"
+                android:singleLine="true" />
+
+            <EditText
+                android:id="@+id/et_password"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="密码"
+                android:inputType="textPassword"
+                android:singleLine="true" />
+
+            <Button
+                android:id="@+id/btn_connect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="连接" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#ccc"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="4dp" />
+
+    <!-- 导航切换 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_tab_playlists"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="我的歌单" />
+
+        <Button
+            android:id="@+id/btn_tab_search"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="搜索歌曲" />
+    </LinearLayout>
+
+    <!-- 搜索栏 -->
+    <LinearLayout
+        android:id="@+id/layout_search_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <EditText
+            android:id="@+id/et_search_keyword"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="输入歌曲名称或歌手"
+            android:singleLine="true" />
+
+        <Button
+            android:id="@+id/btn_search_submit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="搜索" />
+    </LinearLayout>
+
+    <!-- 列表标题与后退按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp">
+
+        <TextView
+            android:id="@+id/tv_list_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="歌单列表"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btn_back"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="返回上层"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- 内容展示列表 -->
+    <ListView
+        android:id="@+id/list_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#ccc" />
+
+    <!-- 底部控制栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingTop="6dp">
+
+        <TextView
+            android:id="@+id/tv_current_song"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="未播放"
+            android:singleLine="true"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btn_play_pause"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="播放" />
+    </LinearLayout>
+
+</LinearLayout>
