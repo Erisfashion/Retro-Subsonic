@@ -13,6 +13,7 @@ import android.os.PowerManager;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Random;
 
 public class MusicService extends Service {
 
@@ -21,8 +22,14 @@ public class MusicService extends Service {
     public static final String ACTION_PREV = "com.retro.subsonic.PREV";
     public static final String ACTION_NEXT = "com.retro.subsonic.NEXT";
     public static final String ACTION_SEEK = "com.retro.subsonic.SEEK";
+    public static final String ACTION_CYCLE_MODE = "com.retro.subsonic.CYCLE_MODE";
 
     public static final String BROADCAST_STATUS = "com.retro.subsonic.STATUS_CHANGE";
+
+    // 播放模式常量
+    public static final int MODE_LOOP_ALL = 0; // 列表循环
+    public static final int MODE_SHUFFLE = 1;  // 随机播放
+    public static final int MODE_SINGLE = 2;   // 单曲循环
 
     private static final int NOTIFICATION_ID = 1001;
 
@@ -31,20 +38,36 @@ public class MusicService extends Service {
         public String title;
         public String artist;
         public String streamUrl;
+        public String coverArtId;
 
-        public SongItem(String id, String title, String artist, String streamUrl) {
+        public SongItem(String id, String title, String artist, String streamUrl, String coverArtId) {
             this.id = id;
             this.title = title;
             this.artist = artist;
             this.streamUrl = streamUrl;
+            this.coverArtId = coverArtId;
         }
     }
 
     private static ArrayList<SongItem> playlist = new ArrayList<SongItem>();
     private static int currentIndex = -1;
+    private static int currentMode = MODE_LOOP_ALL;
 
     private MediaPlayer mediaPlayer;
     private Handler progressHandler = new Handler();
+    private Random random = new Random();
+
+    public static ArrayList<SongItem> getPlaylist() {
+        return playlist;
+    }
+
+    public static int getCurrentIndex() {
+        return currentIndex;
+    }
+
+    public static int getCurrentMode() {
+        return currentMode;
+    }
 
     public static void setQueue(ArrayList<SongItem> list, int index, Context context) {
         playlist.clear();
@@ -75,8 +98,8 @@ public class MusicService extends Service {
         mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mp) {
-                // 单曲播完，自动切换下一首进行连续播放
-                playNext();
+                // 根据播放模式自动连播
+                handleCompletion();
             }
         });
 
@@ -96,6 +119,10 @@ public class MusicService extends Service {
         if (intent != null && intent.getAction() != null) {
             String act = intent.getAction();
             if (ACTION_PLAY_INDEX.equals(act)) {
+                int explicitIndex = intent.getIntExtra("target_index", -1);
+                if (explicitIndex >= 0) {
+                    currentIndex = explicitIndex;
+                }
                 playCurrent();
             } else if (ACTION_TOGGLE.equals(act)) {
                 if (mediaPlayer.isPlaying()) {
@@ -114,9 +141,35 @@ public class MusicService extends Service {
                 if (mediaPlayer != null) {
                     mediaPlayer.seekTo(pos);
                 }
+            } else if (ACTION_CYCLE_MODE.equals(act)) {
+                // 循环切换模式：0 -> 1 -> 2 -> 0
+                currentMode = (currentMode + 1) % 3;
+                broadcastStatus();
             }
         }
         return START_NOT_STICKY;
+    }
+
+    private void handleCompletion() {
+        if (playlist.isEmpty()) return;
+
+        if (currentMode == MODE_SINGLE) {
+            // 单曲循环
+            playCurrent();
+        } else if (currentMode == MODE_SHUFFLE) {
+            // 随机播放
+            if (playlist.size() > 1) {
+                int nextIdx;
+                do {
+                    nextIdx = random.nextInt(playlist.size());
+                } while (nextIdx == currentIndex);
+                currentIndex = nextIdx;
+            }
+            playCurrent();
+        } else {
+            // 列表循环
+            playNext();
+        }
     }
 
     private void playCurrent() {
@@ -135,13 +188,25 @@ public class MusicService extends Service {
 
     private void playNext() {
         if (playlist.isEmpty()) return;
-        currentIndex = (currentIndex + 1) % playlist.size();
+        if (currentMode == MODE_SHUFFLE && playlist.size() > 1) {
+            int nextIdx;
+            do {
+                nextIdx = random.nextInt(playlist.size());
+            } while (nextIdx == currentIndex);
+            currentIndex = nextIdx;
+        } else {
+            currentIndex = (currentIndex + 1) % playlist.size();
+        }
         playCurrent();
     }
 
     private void playPrev() {
         if (playlist.isEmpty()) return;
-        currentIndex = (currentIndex - 1 + playlist.size()) % playlist.size();
+        if (currentMode == MODE_SHUFFLE && playlist.size() > 1) {
+            currentIndex = random.nextInt(playlist.size());
+        } else {
+            currentIndex = (currentIndex - 1 + playlist.size()) % playlist.size();
+        }
         playCurrent();
     }
 
@@ -190,13 +255,17 @@ public class MusicService extends Service {
 
     private void broadcastStatus() {
         Intent b = new Intent(BROADCAST_STATUS);
+        b.putExtra("mode", currentMode);
         if (mediaPlayer != null && currentIndex >= 0 && currentIndex < playlist.size()) {
             SongItem song = playlist.get(currentIndex);
+            b.putExtra("songId", song.id);
+            b.putExtra("coverArtId", song.coverArtId);
             b.putExtra("title", song.title);
             b.putExtra("artist", song.artist);
             b.putExtra("isPlaying", mediaPlayer.isPlaying());
             b.putExtra("position", mediaPlayer.getCurrentPosition());
             b.putExtra("duration", mediaPlayer.getDuration());
+            b.putExtra("currentIndex", currentIndex);
         } else {
             b.putExtra("isPlaying", false);
         }
