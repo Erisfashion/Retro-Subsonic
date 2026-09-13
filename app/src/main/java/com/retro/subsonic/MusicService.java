@@ -40,6 +40,12 @@ public class MusicService extends Service {
         public String streamUrl;
         public String coverArtId;
 
+        // 兼容 4 参数调用
+        public SongItem(String id, String title, String artist, String streamUrl) {
+            this(id, title, artist, streamUrl, null);
+        }
+
+        // 完整 5 参数（包含封面 ID）
         public SongItem(String id, String title, String artist, String streamUrl, String coverArtId) {
             this.id = id;
             this.title = title;
