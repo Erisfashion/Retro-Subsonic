@@ -1,0 +1,2 @@
+rootProject.name = "RetroSubsonic"
+include ':app'
