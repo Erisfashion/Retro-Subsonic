@@ -1,0 +1,31 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.retro.subsonic'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "com.retro.subsonic"
+        minSdk 16           // 支持 Android 4.1 ~ 4.2.2 Jelly Bean
+        targetSdk 28        // 保持经典存储与权限策略
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    // 零第三方大库依赖，彻底杜绝 x86 ABI 动态库不兼容与 Dalvik Dex 分包问题
+}
