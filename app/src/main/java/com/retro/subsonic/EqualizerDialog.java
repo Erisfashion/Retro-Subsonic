@@ -38,6 +38,10 @@ public class EqualizerDialog {
     }
 
     public void show() {
+        // 用户主动打开面板时，记录激活标志
+        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
+                .edit().putBoolean("user_eq_active", true).commit();
+
         dialog = new Dialog(context, android.R.style.Theme_Holo_Dialog_NoActionBar);
         dialog.setContentView(R.layout.dialog_equalizer);
         dialog.setCanceledOnTouchOutside(true);
@@ -156,15 +160,15 @@ public class EqualizerDialog {
 
         if (eq == null) {
             TextView tv = new TextView(context);
-            tv.setText("当前设备暂不支持硬件 EQ 调节");
+            tv.setText("请在歌曲播放中调节音效 (原声直通)");
             tv.setTextColor(0xFF888888);
             layoutEqBands.addView(tv);
             return;
         }
 
         short numBands = eq.getNumberOfBands();
-        final short minLevel = eq.getBandLevelRange()[0]; // 通常 -1500 mB
-        final short maxLevel = eq.getBandLevelRange()[1]; // 通常 +1500 mB
+        final short minLevel = eq.getBandLevelRange()[0];
+        final short maxLevel = eq.getBandLevelRange()[1];
         final int range = maxLevel - minLevel;
 
         for (short i = 0; i < numBands; i++) {
@@ -220,7 +224,6 @@ public class EqualizerDialog {
             bandValTexts.add(tvVal);
         }
 
-        // 重置按钮
         Button btnReset = (Button) dialog.findViewById(R.id.btn_eq_reset);
         btnReset.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -229,7 +232,6 @@ public class EqualizerDialog {
             }
         });
 
-        // 常用预设曲线绑定 (单位 dB)
         dialog.findViewById(R.id.btn_preset_pop).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { applyPresetCurve(new int[]{2, 1, -1, 2, 3}); }
         });
