@@ -129,6 +129,7 @@ public class MainActivity extends Activity {
 
                 boolean isBuffering = intent.getBooleanExtra("isBuffering", false);
                 int bufferPercent = intent.getIntExtra("bufferPercent", 0);
+                int retryCount = intent.getIntExtra("retryCount", 0);
 
                 String songId = intent.getStringExtra("songId");
                 String title = intent.getStringExtra("title");
@@ -137,7 +138,10 @@ public class MainActivity extends Activity {
                 String quality = intent.getStringExtra("quality");
 
                 if (title != null) {
-                    if (isBuffering) {
+                    if (retryCount > 0) {
+                        tvCurrentSong.setText("加载超时，重试中 (" + retryCount + "/3): " + title);
+                        tvDetailTitle.setText("重试中 (" + retryCount + "/3)...");
+                    } else if (isBuffering) {
                         tvCurrentSong.setText("缓存缓冲中 (" + bufferPercent + "%): " + title);
                         tvDetailTitle.setText("缓存中 (" + bufferPercent + "%)...");
                     } else {
@@ -242,7 +246,6 @@ public class MainActivity extends Activity {
         listView = (ListView) findViewById(R.id.list_view);
         lvQueue = (ListView) findViewById(R.id.lv_queue);
 
-        // 详情页组件初始化
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
         btnDetailPrev = (Button) findViewById(R.id.btn_detail_prev);
         btnDetailPlayPause = (Button) findViewById(R.id.btn_detail_play_pause);
@@ -358,7 +361,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 打开音效调节弹窗
         View.OnClickListener eqListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -976,7 +978,6 @@ public class MainActivity extends Activity {
         String artist = s.optString("artist", "未知艺术家");
         String coverArt = s.optString("coverArt", null);
 
-        // 提取格式与码率信息
         int bitRate = s.optInt("bitRate", 0);
         String suffix = s.optString("suffix", "").toUpperCase();
         String quality;
