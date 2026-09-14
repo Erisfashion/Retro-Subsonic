@@ -129,6 +129,7 @@ public class MainActivity extends Activity {
                 btnDetailMode.setText(modeText);
 
                 boolean isBuffering = intent.getBooleanExtra("isBuffering", false);
+                int bufferPercent = intent.getIntExtra("bufferPercent", 0);
                 int retryCount = intent.getIntExtra("retryCount", 0);
                 int maxRetries = intent.getIntExtra("maxRetries", 3);
 
@@ -140,11 +141,11 @@ public class MainActivity extends Activity {
 
                 if (title != null) {
                     if (retryCount > 0) {
-                        tvCurrentSong.setText("重试加载中 (" + retryCount + "/" + maxRetries + "): " + title);
+                        tvCurrentSong.setText("重试连接中 (" + retryCount + "/" + maxRetries + "): " + title);
                         tvDetailTitle.setText("重试中 (" + retryCount + "/" + maxRetries + ")...");
                     } else if (isBuffering) {
-                        tvCurrentSong.setText("正在加载: " + title);
-                        tvDetailTitle.setText("正在加载...");
+                        tvCurrentSong.setText("正在获取音频 (" + bufferPercent + "%): " + title);
+                        tvDetailTitle.setText("解析缓冲中 (" + bufferPercent + "%)...");
                     } else {
                         tvCurrentSong.setText(title + " - " + artist);
                         tvDetailTitle.setText(title);
@@ -335,6 +336,15 @@ public class MainActivity extends Activity {
         if (mode == MusicService.MODE_SHUFFLE) return "随机播放";
         if (mode == MusicService.MODE_SINGLE) return "单曲循环";
         return "列表循环";
+    }
+
+    // 关键修正：stream.view 严禁传入 f=json，并且强制追加 format=mp3 进行转码保证兼容
+    private String buildStreamUrl(String songId) {
+        String base = prefs.getString("server", "");
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String u = prefs.getString("user", "");
+        String p = prefs.getString("pass", "");
+        return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic&format=mp3&estimateContentLength=true";
     }
 
     private void setupListeners() {
@@ -822,12 +832,6 @@ public class MainActivity extends Activity {
         String u = prefs.getString("user", "");
         String p = prefs.getString("pass", "");
         return "u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic&f=json";
-    }
-
-    private String buildStreamUrl(String songId) {
-        String base = prefs.getString("server", "");
-        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-        return base + "/rest/stream.view?id=" + songId + "&" + getAuthParams();
     }
 
     private String requestApi(String pathWithParams) {
