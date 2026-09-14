@@ -26,22 +26,20 @@ public class AudioEffectsManager {
         return instance;
     }
 
-    // 仅在用户手动启用音效时安全挂载，杜绝 mediaserver 崩溃
+    // 每次切歌生成新的 SessionId 时，强制将保存的所有参数推送到新 Session
     public synchronized void attachSession(int sessionId, Context context) {
         if (sessionId <= 0) return;
-        if (sessionId == currentSessionId && equalizer != null) return;
-
+        
         detach();
         currentSessionId = sessionId;
 
         SharedPreferences sp = context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE);
         boolean eqUserEnabled = sp.getBoolean("user_eq_active", false);
-        if (!eqUserEnabled) return; // 默认不启用，保证原声直通最稳
 
-        // 1. 均衡器
+        // 1. 挂载均衡器并强制还原各频段增益
         try {
             equalizer = new Equalizer(0, sessionId);
-            equalizer.setEnabled(true);
+            equalizer.setEnabled(eqUserEnabled);
             short bands = equalizer.getNumberOfBands();
             for (short b = 0; b < bands; b++) {
                 int level = sp.getInt("band_" + b, 0);
@@ -51,33 +49,33 @@ public class AudioEffectsManager {
             equalizer = null;
         }
 
-        // 2. 重低音增强
+        // 2. 挂载重低音增强并还原增益
         try {
             bassBoost = new BassBoost(0, sessionId);
             boolean bassEnabled = sp.getBoolean("bass_enabled", false);
-            bassBoost.setEnabled(bassEnabled);
+            bassBoost.setEnabled(bassEnabled && eqUserEnabled);
             int strength = sp.getInt("bass_strength", 0);
             bassBoost.setStrength((short) strength);
         } catch (Throwable t) {
             bassBoost = null;
         }
 
-        // 3. 3D 立体声环绕
+        // 3. 挂载 3D 立体声环绕并还原深度
         try {
             virtualizer = new Virtualizer(0, sessionId);
             boolean virtEnabled = sp.getBoolean("virt_enabled", false);
-            virtualizer.setEnabled(virtEnabled);
+            virtualizer.setEnabled(virtEnabled && eqUserEnabled);
             int strength = sp.getInt("virt_strength", 0);
             virtualizer.setStrength((short) strength);
         } catch (Throwable t) {
             virtualizer = null;
         }
 
-        // 4. 环境混响 (必须挂在 Session 0 全局混音上，绝不能挂在 MediaPlayer Session 上)
+        // 4. 挂载环境混响并还原预设 (Session 0 全局辅助混音总线)
         try {
             presetReverb = new PresetReverb(0, 0);
             short revPreset = (short) sp.getInt("reverb_preset", PresetReverb.PRESET_NONE);
-            if (revPreset != PresetReverb.PRESET_NONE) {
+            if (revPreset != PresetReverb.PRESET_NONE && eqUserEnabled) {
                 presetReverb.setEnabled(true);
                 presetReverb.setPreset(revPreset);
             } else {
@@ -93,56 +91,79 @@ public class AudioEffectsManager {
     }
 
     public void setBandLevel(short band, short level, Context context) {
+        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("user_eq_active", true)
+                .putInt("band_" + band, level)
+                .commit();
+
         if (equalizer != null) {
             try {
+                equalizer.setEnabled(true);
                 equalizer.setBandLevel(band, level);
-                context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                        .edit().putInt("band_" + band, level).commit();
             } catch (Throwable ignored) {}
         }
     }
 
     public void setBassBoost(boolean enabled, int strength, Context context) {
+        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("user_eq_active", true)
+                .putBoolean("bass_enabled", enabled)
+                .putInt("bass_strength", strength)
+                .commit();
+
         if (bassBoost != null) {
             try {
                 bassBoost.setEnabled(enabled);
                 bassBoost.setStrength((short) strength);
-                context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                        .edit().putBoolean("bass_enabled", enabled)
-                        .putInt("bass_strength", strength).commit();
             } catch (Throwable ignored) {}
         }
     }
 
-    public boolean isBassBoostEnabled() {
-        return bassBoost != null && bassBoost.getEnabled();
+    public boolean isBassBoostEnabled(Context context) {
+        return context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
+                .getBoolean("bass_enabled", false);
     }
 
-    public int getBassStrength() {
-        return bassBoost != null ? bassBoost.getRoundedStrength() : 0;
+    public int getBassStrength(Context context) {
+        return context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
+                .getInt("bass_strength", 0);
     }
 
     public void setVirtualizer(boolean enabled, int strength, Context context) {
+        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("user_eq_active", true)
+                .putBoolean("virt_enabled", enabled)
+                .putInt("virt_strength", strength)
+                .commit();
+
         if (virtualizer != null) {
             try {
                 virtualizer.setEnabled(enabled);
                 virtualizer.setStrength((short) strength);
-                context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                        .edit().putBoolean("virt_enabled", enabled)
-                        .putInt("virt_strength", strength).commit();
             } catch (Throwable ignored) {}
         }
     }
 
-    public boolean isVirtualizerEnabled() {
-        return virtualizer != null && virtualizer.getEnabled();
+    public boolean isVirtualizerEnabled(Context context) {
+        return context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
+                .getBoolean("virt_enabled", false);
     }
 
-    public int getVirtualizerStrength() {
-        return virtualizer != null ? virtualizer.getRoundedStrength() : 0;
+    public int getVirtualizerStrength(Context context) {
+        return context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
+                .getInt("virt_strength", 0);
     }
 
     public void setReverbPreset(short preset, Context context) {
+        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("user_eq_active", true)
+                .putInt("reverb_preset", preset)
+                .commit();
+
         if (presetReverb != null) {
             try {
                 if (preset == PresetReverb.PRESET_NONE) {
@@ -151,8 +172,6 @@ public class AudioEffectsManager {
                     presetReverb.setEnabled(true);
                     presetReverb.setPreset(preset);
                 }
-                context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                        .edit().putInt("reverb_preset", preset).commit();
             } catch (Throwable ignored) {}
         }
     }
