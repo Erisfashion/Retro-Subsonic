@@ -26,47 +26,56 @@ public class AudioEffectsManager {
         return instance;
     }
 
+    // 仅在用户手动启用音效时安全挂载，杜绝 mediaserver 崩溃
     public synchronized void attachSession(int sessionId, Context context) {
         if (sessionId <= 0) return;
         if (sessionId == currentSessionId && equalizer != null) return;
 
-        release();
+        detach();
         currentSessionId = sessionId;
 
         SharedPreferences sp = context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE);
+        boolean eqUserEnabled = sp.getBoolean("user_eq_active", false);
+        if (!eqUserEnabled) return; // 默认不启用，保证原声直通最稳
 
-        // 1. 初始化均衡器 (Equalizer)
+        // 1. 均衡器
         try {
             equalizer = new Equalizer(0, sessionId);
             equalizer.setEnabled(true);
             short bands = equalizer.getNumberOfBands();
             for (short b = 0; b < bands; b++) {
-                int level = sp.getInt("band_" + b, 0); // 单位 millibel (mB)
+                int level = sp.getInt("band_" + b, 0);
                 equalizer.setBandLevel(b, (short) level);
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            equalizer = null;
+        }
 
-        // 2. 初始化重低音增强 (BassBoost)
+        // 2. 重低音增强
         try {
             bassBoost = new BassBoost(0, sessionId);
             boolean bassEnabled = sp.getBoolean("bass_enabled", false);
             bassBoost.setEnabled(bassEnabled);
             int strength = sp.getInt("bass_strength", 0);
             bassBoost.setStrength((short) strength);
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            bassBoost = null;
+        }
 
-        // 3. 初始化 3D 立体声环绕 (Virtualizer)
+        // 3. 3D 立体声环绕
         try {
             virtualizer = new Virtualizer(0, sessionId);
             boolean virtEnabled = sp.getBoolean("virt_enabled", false);
             virtualizer.setEnabled(virtEnabled);
             int strength = sp.getInt("virt_strength", 0);
             virtualizer.setStrength((short) strength);
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            virtualizer = null;
+        }
 
-        // 4. 初始化环境混响 (PresetReverb)
+        // 4. 环境混响 (必须挂在 Session 0 全局混音上，绝不能挂在 MediaPlayer Session 上)
         try {
-            presetReverb = new PresetReverb(0, sessionId);
+            presetReverb = new PresetReverb(0, 0);
             short revPreset = (short) sp.getInt("reverb_preset", PresetReverb.PRESET_NONE);
             if (revPreset != PresetReverb.PRESET_NONE) {
                 presetReverb.setEnabled(true);
@@ -74,7 +83,9 @@ public class AudioEffectsManager {
             } else {
                 presetReverb.setEnabled(false);
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            presetReverb = null;
+        }
     }
 
     public Equalizer getEqualizer() {
@@ -151,7 +162,7 @@ public class AudioEffectsManager {
                 .getInt("reverb_preset", PresetReverb.PRESET_NONE);
     }
 
-    public synchronized void release() {
+    public synchronized void detach() {
         try { if (equalizer != null) equalizer.release(); } catch (Throwable ignored) {}
         try { if (bassBoost != null) bassBoost.release(); } catch (Throwable ignored) {}
         try { if (virtualizer != null) virtualizer.release(); } catch (Throwable ignored) {}
