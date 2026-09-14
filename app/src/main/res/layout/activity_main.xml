@@ -53,7 +53,7 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- 可折叠服务器配置面板 -->
+        <!-- 可折叠服务器配置面板（已加入下载路径与超时/缓存设置） -->
         <LinearLayout
             android:id="@+id/layout_config_panel"
             android:layout_width="match_parent"
@@ -103,6 +103,7 @@
                     android:singleLine="true" />
             </LinearLayout>
 
+            <!-- 超时与重试配置行 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -152,6 +153,34 @@
                     android:layout_marginLeft="4dp" />
             </LinearLayout>
 
+            <!-- 下载保存路径配置行 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="下载保存路径:"
+                    android:textColor="#cccccc"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/et_download_path"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="/sdcard/Music"
+                    android:textColor="#ffffff"
+                    android:textColorHint="#777777"
+                    android:singleLine="true"
+                    android:layout_marginLeft="4dp" />
+            </LinearLayout>
+
+            <!-- 缓存设置行与保存按钮 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -732,7 +761,7 @@
                         android:id="@+id/btn_detail_next"
                         android:layout_width="wrap_content"
                         android:layout_height="40dp"
-                        minWidth="60dp"
+                        android:minWidth="60dp"
                         android:text="下一首"
                         android:textSize="12sp"
                         android:layout_marginLeft="4dp" />
