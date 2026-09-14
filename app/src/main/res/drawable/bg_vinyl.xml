@@ -1,29 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 外圈黑胶唱片大圆盘 -->
+    <!-- 外圈金属边框 -->
     <item>
         <shape android:shape="oval">
-            <solid android:color="#101114" />
-            <stroke android:width="2dp" android:color="#2c2f38" />
-            <size android:width="240dp" android:height="240dp" />
+            <solid android:color="#2c2e35" />
+            <size android:width="210dp" android:height="210dp" />
         </shape>
     </item>
-    <!-- 唱片音轨沟槽细微纹理环 1 -->
-    <item android:top="16dp" android:bottom="16dp" android:left="16dp" android:right="16dp">
+    <!-- 唱片炭黑本体 -->
+    <item android:top="2dp" android:bottom="2dp" android:left="2dp" android:right="2dp">
         <shape android:shape="oval">
-            <stroke android:width="1dp" android:color="#1a1c22" />
+            <solid android:color="#121316" />
         </shape>
     </item>
-    <!-- 唱片音轨沟槽细微纹理环 2 -->
-    <item android:top="32dp" android:bottom="32dp" android:left="32dp" android:right="32dp">
+    <!-- 细密同心音轨纹理 1 -->
+    <item android:top="10dp" android:bottom="10dp" android:left="10dp" android:right="10dp">
         <shape android:shape="oval">
-            <stroke android:width="1dp" android:color="#242730" />
+            <stroke android:width="1dp" android:color="#1e2026" />
         </shape>
     </item>
-    <!-- 唱片音轨沟槽细微纹理环 3 -->
-    <item android:top="48dp" android:bottom="48dp" android:left="48dp" android:right="48dp">
+    <!-- 细密同心音轨纹理 2 -->
+    <item android:top="20dp" android:bottom="20dp" android:left="20dp" android:right="20dp">
         <shape android:shape="oval">
-            <stroke android:width="1dp" android:color="#1a1c22" />
+            <stroke android:width="1dp" android:color="#262832" />
+        </shape>
+    </item>
+    <!-- 细密同心音轨纹理 3 -->
+    <item android:top="30dp" android:bottom="30dp" android:left="30dp" android:right="30dp">
+        <shape android:shape="oval">
+            <stroke android:width="1dp" android:color="#181a20" />
+        </shape>
+    </item>
+    <!-- 细密同心音轨纹理 4 -->
+    <item android:top="38dp" android:bottom="38dp" android:left="38dp" android:right="38dp">
+        <shape android:shape="oval">
+            <stroke android:width="1dp" android:color="#22242d" />
+        </shape>
+    </item>
+    <!-- 中心贴纸外沿倒角 -->
+    <item android:top="44dp" android:bottom="44dp" android:left="44dp" android:right="44dp">
+        <shape android:shape="oval">
+            <stroke android:width="2dp" android:color="#0b0c0e" />
         </shape>
     </item>
 </layer-list>
