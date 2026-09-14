@@ -249,6 +249,28 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // 全局崩溃兜底，避免系统直接显示“已停止运行”对话框
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread thread, final Throwable ex) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("程序遇到错误")
+                                .setMessage(ex.toString() + "\n" + (ex.getCause() != null ? ex.getCause().toString() : ""))
+                                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog, int which) {
+                                        finish();
+                                    }
+                                })
+                                .show();
+                    }
+                });
+            }
+        });
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -259,8 +281,8 @@ public class MainActivity extends Activity {
         loadFavSet();
         loadLocalPlaylists();
 
+        // 核心时序修复：先初始化视图并完成 HeaderView 挂载，最后再执行 setAdapter
         initViews();
-        setupPullToRefresh();
         setupVinylAnimation();
         updateCoverDisplayMode();
         loadSavedConfig();
@@ -272,7 +294,6 @@ public class MainActivity extends Activity {
         syncServerFavoritesQuietly();
     }
 
-    // 原生轻量级下拉刷新逻辑
     private void setupPullToRefresh() {
         refreshHeaderView = new LinearLayout(this);
         refreshHeaderView.setOrientation(LinearLayout.HORIZONTAL);
@@ -292,6 +313,7 @@ public class MainActivity extends Activity {
         refreshTextView.setPadding((int) (8 * density), 0, 0, 0);
         refreshHeaderView.addView(refreshTextView);
 
+        // 严格遵循 Android 4.2.2 规范：addHeaderView 必须在 setAdapter 之前执行
         listView.addHeaderView(refreshHeaderView, null, false);
         hideRefreshHeader();
 
@@ -496,7 +518,6 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
-    // 核心修复：彻底解决“我的收藏”无法移出歌曲的问题（即刻更新视图 + 云端 unstar.view 同步）
     private void serverStarSong(final String songId, final boolean toStar) {
         if (songId == null || songId.length() == 0) return;
 
@@ -507,7 +528,6 @@ public class MainActivity extends Activity {
             favSongIds.remove(songId);
             Toast.makeText(this, "已从【我的收藏】移出♡", Toast.LENGTH_SHORT).show();
 
-            // 若当前页面正处于“我的收藏”，立即从当前列表剔除该项！
             if (tvListTitle.getText().toString().contains("我的收藏")) {
                 for (int i = 0; i < currentItems.size(); i++) {
                     if (songId.equals(currentItems.get(i).id)) {
@@ -714,6 +734,9 @@ public class MainActivity extends Activity {
 
         scrollLyrics = (ScrollView) findViewById(R.id.scroll_lyrics);
         layoutLyricsContainer = (LinearLayout) findViewById(R.id.layout_lyrics_container);
+
+        // 核心修复点：必须先调用 setupPullToRefresh 完成 addHeaderView，严禁在 addHeaderView 前 setAdapter
+        setupPullToRefresh();
 
         adapter = new SimpleAdapter(
                 this,
@@ -1094,7 +1117,6 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "已加入【" + listName + "】", Toast.LENGTH_SHORT).show();
     }
 
-    // 核心修复：移出“我的收藏”时，双向剔除并在云端执行 unstar
     private void removeFromCurrentView(int position, DisplayEntry entry) {
         if (tvListTitle.getText().toString().contains("我的收藏")) {
             serverStarSong(entry.id, false);
@@ -1375,7 +1397,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 包含下拉刷新 HeaderView 的准确索引点击
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1403,7 +1424,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 包含下拉刷新 HeaderView 的准确索引长按
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1765,21 +1785,18 @@ public class MainActivity extends Activity {
                         currentItems.clear();
                         listData.clear();
 
-                        // 1. 顶置“我的收藏”
                         currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步服务器标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
                         Map<String, String> favRow = new HashMap<String, String>();
                         favRow.put("title", "♥  我的收藏");
                         favRow.put("subtitle", "已同步服务器标星 (" + favSongIds.size() + "首)");
                         listData.add(favRow);
 
-                        // 2. 顶置“精选歌单”
                         currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "本地定制精选 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
                         Map<String, String> featRow = new HashMap<String, String>();
                         featRow.put("title", "⭐  精选歌单");
                         featRow.put("subtitle", "本地定制精选 (" + featuredSongs.size() + "首)");
                         listData.add(featRow);
 
-                        // 3. 顶置“车载歌单”
                         currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行必听车载曲库 (" + carSongs.size() + "首)", null, "本地歌单", false));
                         Map<String, String> carRow = new HashMap<String, String>();
                         carRow.put("title", "🚗  车载歌单");
