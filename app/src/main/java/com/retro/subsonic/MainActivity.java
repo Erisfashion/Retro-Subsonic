@@ -478,7 +478,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 触发下载指定的歌曲
+    // 触发下载指定的歌曲（已修正 Java 7 内部类 final 变量限制）
     private void downloadSongItem(final DisplayEntry entry) {
         Toast.makeText(this, "开始下载: " + entry.title, Toast.LENGTH_SHORT).show();
         new Thread(new Runnable() {
@@ -497,7 +497,7 @@ public class MainActivity extends Activity {
                     conn.setReadTimeout(15000);
                     conn.connect();
 
-                    int code = conn.getResponseCode();
+                    final int code = conn.getResponseCode(); // 添加 final
                     if (code == 200 || code == 206) {
                         InputStream is = conn.getInputStream();
                         FileOutputStream fos = new FileOutputStream(tmp);
@@ -538,10 +538,11 @@ public class MainActivity extends Activity {
                     }
                     conn.disconnect();
                 } catch (Exception e) {
+                    final String errMsg = e.getMessage(); // 提取为 final 变量传递
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            Toast.makeText(MainActivity.this, "下载异常: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "下载异常: " + errMsg, Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
