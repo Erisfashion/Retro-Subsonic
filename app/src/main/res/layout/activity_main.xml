@@ -349,6 +349,7 @@
                         android:visibility="gone" />
                 </RelativeLayout>
 
+                <!-- 支持下拉刷新的 ListView -->
                 <ListView
                     android:id="@+id/list_view"
                     android:layout_width="match_parent"
@@ -582,12 +583,11 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 重新排布后的顶栏：下载与音效居左排布 -->
+        <!-- 顶栏：下载与音效居左排布 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
 
-            <!-- 顶部左侧排布：收起、关闭软件、下载、音效 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -652,7 +652,6 @@
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
-            <!-- 顶部右侧排布：常亮开关与播放列表 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -693,7 +692,7 @@
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
 
-            <!-- 左栏：黑胶唱片转动 / 方形大封面切换 + 信息 + 控制排 + 底部触控空白区 -->
+            <!-- 左栏：大黑胶唱片 + 均衡垂直重心布局 -->
             <LinearLayout
                 android:id="@+id/layout_cover_container"
                 android:layout_width="0dp"
@@ -706,27 +705,27 @@
                 android:clickable="true"
                 android:focusable="true">
 
-                <!-- 模式 A：黑胶唱机展示区 (旋转黑胶盘 + 真实唱针覆盖) -->
+                <!-- 模式 A：放大后的黑胶唱片盒 (260dp x 280dp) -->
                 <FrameLayout
                     android:id="@+id/layout_vinyl_container"
-                    android:layout_width="230dp"
-                    android:layout_height="250dp"
+                    android:layout_width="260dp"
+                    android:layout_height="280dp"
                     android:clickable="true"
                     android:focusable="true">
 
-                    <!-- 黑胶唱片旋转盘 -->
+                    <!-- 黑胶唱片旋转大底盘 (240dp x 240dp) -->
                     <FrameLayout
                         android:id="@+id/fl_vinyl_disc"
-                        android:layout_width="210dp"
-                        android:layout_height="210dp"
+                        android:layout_width="240dp"
+                        android:layout_height="240dp"
                         android:layout_gravity="bottom|center_horizontal"
                         android:background="@drawable/bg_vinyl">
 
-                        <!-- 唱片中心的圆形封面图 -->
+                        <!-- 中心圆形封面 (140dp x 140dp) -->
                         <ImageView
                             android:id="@+id/iv_vinyl_circular_cover"
-                            android:layout_width="120dp"
-                            android:layout_height="120dp"
+                            android:layout_width="140dp"
+                            android:layout_height="140dp"
                             android:layout_gravity="center"
                             android:scaleType="centerCrop"
                             android:src="@android:drawable/ic_menu_report_image" />
@@ -741,11 +740,11 @@
                         android:focusable="true" />
                 </FrameLayout>
 
-                <!-- 模式 B：方形大封面 (与黑胶盘等大：210dp x 210dp) -->
+                <!-- 模式 B：等大四方形静态封面 (240dp x 240dp) -->
                 <ImageView
                     android:id="@+id/iv_square_cover"
-                    android:layout_width="210dp"
-                    android:layout_height="210dp"
+                    android:layout_width="240dp"
+                    android:layout_height="240dp"
                     android:layout_marginTop="20dp"
                     android:layout_marginBottom="20dp"
                     android:scaleType="centerCrop"
@@ -808,6 +807,12 @@
                     android:paddingTop="2dp"
                     android:paddingBottom="2dp"
                     android:layout_marginTop="4dp" />
+
+                <!-- 弹性自适应填充：平缓将进度条和按键排推向视觉黄金下段 -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
 
                 <!-- 进度条与时间 -->
                 <LinearLayout
@@ -890,15 +895,14 @@
                         android:layout_marginLeft="6dp" />
                 </LinearLayout>
 
-                <!-- 核心：播放按钮下方的空白区域，点击即可快速切换歌词/播放列表 -->
+                <!-- 播放控制下方的空白轻触区域，高度适中 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_bottom_blank"
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
+                    android:layout_height="38dp"
                     android:orientation="vertical"
                     android:gravity="center"
-                    android:minHeight="45dp"
+                    android:layout_marginTop="4dp"
                     android:clickable="true"
                     android:focusable="true">
 
@@ -911,7 +915,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 右栏：歌词（带字号放大缩小控制） / 播放队列切换区 -->
+            <!-- 右栏：歌词 / 播放队列切换区 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
@@ -945,7 +949,6 @@
                             android:textColor="#a0a5b5"
                             android:textSize="13sp" />
 
-                        <!-- 歌词字号缩小- / 增大+ 按钮 -->
                         <LinearLayout
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
