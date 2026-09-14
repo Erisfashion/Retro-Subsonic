@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 第 1 层：曜石黑现代圆角方块基座 (Squircle) + 微光边框 -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="18dp" />
+            <gradient
+                android:startColor="#1e222c"
+                android:centerColor="#12141a"
+                android:endColor="#0a0c10"
+                android:angle="270" />
+            <stroke android:width="1.5dp" android:color="#2c3344" />
+        </shape>
+    </item>
+
+    <!-- 第 2 层：黑胶唱片外圈大圆盘 -->
+    <item
+        android:top="7dp"
+        android:bottom="7dp"
+        android:left="7dp"
+        android:right="7dp">
+        <shape android:shape="oval">
+            <solid android:color="#101116" />
+            <stroke android:width="1.5dp" android:color="#202430" />
+        </shape>
+    </item>
+
+    <!-- 第 3 层：黑胶外层精细音轨 -->
+    <item
+        android:top="13dp"
+        android:bottom="13dp"
+        android:left="13dp"
+        android:right="13dp">
+        <shape android:shape="oval">
+            <stroke android:width="1dp" android:color="#191c24" />
+        </shape>
+    </item>
+
+    <!-- 第 4 层：黑胶内层精细音轨 -->
+    <item
+        android:top="19dp"
+        android:bottom="19dp"
+        android:left="19dp"
+        android:right="19dp">
+        <shape android:shape="oval">
+            <stroke android:width="1dp" android:color="#252a36" />
+        </shape>
+    </item>
+
+    <!-- 第 5 层：中心电光青紫发烧碟标 -->
+    <item
+        android:top="23dp"
+        android:bottom="23dp"
+        android:left="23dp"
+        android:right="23dp">
+        <shape android:shape="oval">
+            <gradient
+                android:startColor="#00e5ff"
+                android:centerColor="#3d5afe"
+                android:endColor="#8a2be2"
+                android:angle="135" />
+            <stroke android:width="1dp" android:color="#101116" />
+        </shape>
+    </item>
+
+    <!-- 第 6 层：中心金属轴心孔 -->
+    <item
+        android:top="31dp"
+        android:bottom="31dp"
+        android:left="31dp"
+        android:right="31dp">
+        <shape android:shape="oval">
+            <solid android:color="#0a0c10" />
+            <stroke android:width="1.5dp" android:color="#ffffff" />
+        </shape>
+    </item>
+</layer-list>
