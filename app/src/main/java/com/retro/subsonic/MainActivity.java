@@ -62,6 +62,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
+import javax.net.ssl.HttpsURLConnection;
+
 public class MainActivity extends Activity {
 
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
@@ -75,7 +77,7 @@ public class MainActivity extends Activity {
     private ListView listView, lvQueue;
     private SeekBar seekBar;
 
-    // 原生轻量级下拉刷新组件
+    // 原生下拉刷新组件
     private LinearLayout refreshHeaderView;
     private ProgressBar refreshProgressBar;
     private TextView refreshTextView;
@@ -272,6 +274,9 @@ public class MainActivity extends Activity {
         });
 
         super.onCreate(savedInstanceState);
+        // 强制开启全局 TLS 1.2 握手，杜绝 CDN 握手失败
+        TLSSocketFactory.install();
+
         setContentView(R.layout.activity_main);
 
         prefs = getSharedPreferences("subsonic_cfg", MODE_PRIVATE);
@@ -518,6 +523,7 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
+    // 移出“我的收藏”时，双向剔除并在云端执行 unstar
     private void serverStarSong(final String songId, final boolean toStar) {
         if (songId == null || songId.length() == 0) return;
 
@@ -629,6 +635,7 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(statusReceiver); } catch (Exception ignored) {}
     }
 
+    // 全层级物理返回键导航
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
@@ -735,7 +742,7 @@ public class MainActivity extends Activity {
         scrollLyrics = (ScrollView) findViewById(R.id.scroll_lyrics);
         layoutLyricsContainer = (LinearLayout) findViewById(R.id.layout_lyrics_container);
 
-        // 核心修复点：必须先调用 setupPullToRefresh 完成 addHeaderView，严禁在 addHeaderView 前 setAdapter
+        // 严格保证时序：必须先 setupPullToRefresh 完成 addHeaderView，再调用 setAdapter
         setupPullToRefresh();
 
         adapter = new SimpleAdapter(
@@ -969,6 +976,11 @@ public class MainActivity extends Activity {
         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-cn) AppleWebKit/534.30");
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(20000);
+
+        if (conn instanceof HttpsURLConnection) {
+            ((HttpsURLConnection) conn).setSSLSocketFactory(new TLSSocketFactory());
+        }
+
         conn.connect();
 
         int code = conn.getResponseCode();
@@ -1754,6 +1766,10 @@ public class MainActivity extends Activity {
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(8000);
+
+            if (conn instanceof HttpsURLConnection) {
+                ((HttpsURLConnection) conn).setSSLSocketFactory(new TLSSocketFactory());
+            }
 
             BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
             StringBuilder sb = new StringBuilder();
