@@ -1,8 +1,10 @@
 package com.retro.subsonic;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
@@ -48,6 +50,7 @@ public class MainActivity extends Activity {
     private EditText etTimeoutSec, etRetryCount;
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
     private Button btnPrev, btnPlayPause, btnNext, btnMode, btnToggleQueue, btnCloseQueue, btnOpenDetail, btnOpenEq;
+    private Button btnExitApp;
     private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime;
     private ListView listView, lvQueue;
@@ -143,9 +146,17 @@ public class MainActivity extends Activity {
                     if (retryCount > 0) {
                         tvCurrentSong.setText("重试连接中 (" + retryCount + "/" + maxRetries + "): " + title);
                         tvDetailTitle.setText("重试中 (" + retryCount + "/" + maxRetries + ")...");
+                    } else if (isPlaying) {
+                        if (isBuffering && bufferPercent < 100) {
+                            tvCurrentSong.setText(title + " - " + artist + " (缓冲 " + bufferPercent + "%)");
+                            tvDetailTitle.setText(title + " (缓冲 " + bufferPercent + "%)");
+                        } else {
+                            tvCurrentSong.setText(title + " - " + artist);
+                            tvDetailTitle.setText(title);
+                        }
                     } else if (isBuffering) {
-                        tvCurrentSong.setText("正在获取音频 (" + bufferPercent + "%): " + title);
-                        tvDetailTitle.setText("解析缓冲中 (" + bufferPercent + "%)...");
+                        tvCurrentSong.setText("正在解析缓冲 (" + bufferPercent + "%): " + title);
+                        tvDetailTitle.setText("正在起播 (" + bufferPercent + "%)...");
                     } else {
                         tvCurrentSong.setText(title + " - " + artist);
                         tvDetailTitle.setText(title);
@@ -226,6 +237,7 @@ public class MainActivity extends Activity {
         btnTabSearch = (Button) findViewById(R.id.btn_tab_search);
         btnSearchSubmit = (Button) findViewById(R.id.btn_search_submit);
         btnBack = (Button) findViewById(R.id.btn_back);
+        btnExitApp = (Button) findViewById(R.id.btn_exit_app);
 
         btnPrev = (Button) findViewById(R.id.btn_prev);
         btnPlayPause = (Button) findViewById(R.id.btn_play_pause);
@@ -338,7 +350,6 @@ public class MainActivity extends Activity {
         return "列表循环";
     }
 
-    // 构建纯净标准的 Subsonic 原生流地址，确保兼容所有自建源、反向代理与各种音乐代理源
     private String buildStreamUrl(String songId) {
         String base = prefs.getString("server", "");
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
@@ -353,6 +364,30 @@ public class MainActivity extends Activity {
     }
 
     private void setupListeners() {
+        // 关闭软件按钮
+        btnExitApp.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("关闭软件")
+                        .setMessage("确定要退出并彻底关闭播放器吗？")
+                        .setPositiveButton("退出", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                try {
+                                    Intent stopIntent = new Intent(MainActivity.this, MusicService.class);
+                                    stopIntent.setAction(MusicService.ACTION_STOP);
+                                    startService(stopIntent);
+                                } catch (Exception ignored) {}
+                                finish();
+                                System.exit(0);
+                            }
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
+            }
+        });
+
         btnToggleConfig.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
