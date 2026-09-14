@@ -23,11 +23,13 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.animation.Animation;
 import android.view.animation.LinearInterpolator;
 import android.view.animation.RotateAnimation;
 import android.widget.AdapterView;
+import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -38,6 +40,7 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -66,11 +69,18 @@ import javax.net.ssl.HttpsURLConnection;
 
 public class MainActivity extends Activity {
 
+    // 码率常量定义与映射
+    private static final String[] BITRATE_LABELS = new String[]{"128K", "192K", "320K", "FLAC"};
+    private static final String[] BITRATE_VALUES = new String[]{"128", "192", "320", "flac"};
+
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
     private EditText etTimeoutSec, etRetryCount, etDownloadPath;
+    private Spinner spinnerConfigBitrate, spinnerDetailBitrate; // 码率下拉框组件
+    private boolean isSpinnersInitializing = true; // 防重复触发标志
+
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
     private Button btnMode, btnOpenEq;
-    private ImageView btnPrev, btnPlayPause, btnNext; // 升级为圆形图标组件
+    private ImageView btnPrev, btnPlayPause, btnNext;
     private Button btnToggleQueue, btnCloseQueue, btnOpenDetail;
     private Button btnExitApp, btnDetailExitApp, btnBottomFav, btnDetailFav, btnDetailDownload;
     private Button btnLyricDec, btnLyricInc;
@@ -94,7 +104,7 @@ public class MainActivity extends Activity {
 
     // 详情页组件
     private Button btnCloseDetail, btnDetailMode, btnDetailEq;
-    private ImageView btnDetailPrev, btnDetailPlayPause, btnDetailNext; // 升级为圆形图标组件
+    private ImageView btnDetailPrev, btnDetailPlayPause, btnDetailNext;
     private Button btnDetailKeepScreen, btnDetailQueue;
     private FrameLayout layoutVinylContainer, flVinylDisc;
     private ImageView ivVinylCircularCover, ivSquareCover;
@@ -178,9 +188,7 @@ public class MainActivity extends Activity {
                 boolean isPlaying = intent.getBooleanExtra("isPlaying", false);
                 isCurrentSongPlaying = isPlaying;
 
-                // 动态更新现代矢量播放/暂停图标
                 updatePlayPauseIcons(isPlaying);
-
                 updateVinylAnimationState();
 
                 int mode = intent.getIntExtra("mode", MusicService.MODE_LOOP_ALL);
@@ -220,9 +228,9 @@ public class MainActivity extends Activity {
                     }
                     tvDetailArtist.setText(artist);
 
-                    if (quality != null && quality.length() > 0) {
-                        tvDetailQuality.setText(quality);
-                    }
+                    // 优先展示所选的自定义码率
+                    String currentBitrate = getSavedBitrate();
+                    tvDetailQuality.setText(getBitrateDisplay(currentBitrate));
 
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
                         lastLoadedSongId = songId;
@@ -289,6 +297,7 @@ public class MainActivity extends Activity {
 
         initViews();
         setupControlIcons();
+        setupBitrateSpinners(); // 挂载码率选择器
         setupVinylAnimation();
         updateCoverDisplayMode();
         loadSavedConfig();
@@ -299,23 +308,170 @@ public class MainActivity extends Activity {
         syncServerFavoritesQuietly();
     }
 
-    // 初始化所有圆形控制按钮的矢量图景
+    private String getSavedBitrate() {
+        return prefs.getString("default_bitrate", "320");
+    }
+
+    private int getBitrateIndex(String val) {
+        for (int i = 0; i < BITRATE_VALUES.length; i++) {
+            if (BITRATE_VALUES[i].equalsIgnoreCase(val)) {
+                return i;
+            }
+        }
+        return 2; // 默认 320K
+    }
+
+    private String getBitrateDisplay(String val) {
+        if ("128".equalsIgnoreCase(val)) return "128K MP3";
+        if ("192".equalsIgnoreCase(val)) return "192K MP3";
+        if ("320".equalsIgnoreCase(val)) return "320K MP3";
+        if ("flac".equalsIgnoreCase(val)) return "FLAC 无损";
+        return "320K MP3";
+    }
+
+    // 针对 Android 4.2.2 深度优化的深色主题 Spinner 适配器
+    private class BitrateSpinnerAdapter extends BaseAdapter {
+        private String[] items;
+
+        BitrateSpinnerAdapter(String[] items) {
+            this.items = items;
+        }
+
+        @Override
+        public int getCount() { return items.length; }
+
+        @Override
+        public Object getItem(int position) { return items[position]; }
+
+        @Override
+        public long getItemId(int position) { return position; }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            TextView tv;
+            if (convertView instanceof TextView) {
+                tv = (TextView) convertView;
+            } else {
+                tv = new TextView(MainActivity.this);
+                tv.setTextSize(12);
+                tv.setGravity(Gravity.CENTER);
+                tv.setPadding(6, 2, 6, 2);
+            }
+            tv.setTextColor(0xFF00E5FF);
+            tv.setText(items[position] + " ▾");
+            return tv;
+        }
+
+        @Override
+        public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            TextView tv;
+            if (convertView instanceof TextView) {
+                tv = (TextView) convertView;
+            } else {
+                tv = new TextView(MainActivity.this);
+                tv.setTextSize(13);
+                tv.setGravity(Gravity.CENTER_VERTICAL);
+                tv.setPadding(24, 18, 24, 18);
+                tv.setBackgroundColor(0xFF1E222B);
+            }
+            tv.setTextColor(0xFFE0E0E0);
+            tv.setText(items[position]);
+            return tv;
+        }
+    }
+
+    private void setupBitrateSpinners() {
+        BitrateSpinnerAdapter adapterConfig = new BitrateSpinnerAdapter(BITRATE_LABELS);
+        BitrateSpinnerAdapter adapterDetail = new BitrateSpinnerAdapter(BITRATE_LABELS);
+
+        spinnerConfigBitrate.setAdapter(adapterConfig);
+        spinnerDetailBitrate.setAdapter(adapterDetail);
+
+        int initialIndex = getBitrateIndex(getSavedBitrate());
+        spinnerConfigBitrate.setSelection(initialIndex);
+        spinnerDetailBitrate.setSelection(initialIndex);
+
+        AdapterView.OnItemSelectedListener listener = new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (isSpinnersInitializing) {
+                    return;
+                }
+                String newBitrate = BITRATE_VALUES[position];
+                String oldBitrate = getSavedBitrate();
+
+                if (!newBitrate.equals(oldBitrate)) {
+                    prefs.edit().putString("default_bitrate", newBitrate).commit();
+
+                    // 同步另一个下拉框
+                    if (parent == spinnerConfigBitrate) {
+                        spinnerDetailBitrate.setSelection(position);
+                    } else {
+                        spinnerConfigBitrate.setSelection(position);
+                    }
+
+                    tvDetailQuality.setText(getBitrateDisplay(newBitrate));
+                    onBitrateChanged(newBitrate, BITRATE_LABELS[position]);
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        };
+
+        spinnerConfigBitrate.setOnItemSelectedListener(listener);
+        spinnerDetailBitrate.setOnItemSelectedListener(listener);
+
+        // 延迟重置初始化标志，避免组件启动误触发切码率
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                isSpinnersInitializing = false;
+            }
+        }, 500);
+    }
+
+    // 用户在详情页切换码率时的联动更新
+    private void onBitrateChanged(String newBitrate, String label) {
+        Toast.makeText(this, "播放码率已切换为: " + label, Toast.LENGTH_SHORT).show();
+
+        ArrayList<MusicService.SongItem> queue = MusicService.getPlaylist();
+        int curIdx = MusicService.getCurrentIndex();
+
+        if (queue != null && curIdx >= 0 && curIdx < queue.size()) {
+            MusicService.SongItem currentSong = queue.get(curIdx);
+
+            // 1. 清除此歌曲已缓冲的旧文件
+            File cachedFile = CacheManager.getSongFile(MainActivity.this, currentSong.id);
+            if (cachedFile.exists()) {
+                cachedFile.delete();
+            }
+
+            // 2. 更新此曲在队列中的流媒体地址（附加新码率）
+            currentSong.streamUrl = buildStreamUrl(currentSong.id, newBitrate);
+            currentSong.quality = getBitrateDisplay(newBitrate);
+
+            // 3. 立即重载起播当前曲目
+            Intent intent = new Intent(MainActivity.this, MusicService.class);
+            intent.setAction(MusicService.ACTION_PLAY_INDEX);
+            intent.putExtra("target_index", curIdx);
+            startService(intent);
+        }
+    }
+
     private void setupControlIcons() {
         int darkIconColor = 0xFF10141A;
         int lightIconColor = 0xFFE2E8F0;
 
-        // 底栏图标
         btnPrev.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 18, lightIconColor));
         btnNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 18, lightIconColor));
         btnPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 22, darkIconColor));
 
-        // 详情页大尺寸图标
         btnDetailPrev.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 22, lightIconColor));
         btnDetailNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 22, lightIconColor));
         btnDetailPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 28, darkIconColor));
     }
 
-    // 播放/暂停动态切换
     private void updatePlayPauseIcons(boolean isPlaying) {
         int darkIconColor = 0xFF10141A;
         if (isPlaying) {
@@ -695,6 +851,9 @@ public class MainActivity extends Activity {
         etRetryCount = (EditText) findViewById(R.id.et_retry_count);
         etDownloadPath = (EditText) findViewById(R.id.et_download_path);
 
+        spinnerConfigBitrate = (Spinner) findViewById(R.id.spinner_config_bitrate);
+        spinnerDetailBitrate = (Spinner) findViewById(R.id.spinner_detail_bitrate);
+
         btnConnect = (Button) findViewById(R.id.btn_connect);
         btnClearCache = (Button) findViewById(R.id.btn_clear_cache);
         btnToggleConfig = (Button) findViewById(R.id.btn_toggle_config);
@@ -848,15 +1007,33 @@ public class MainActivity extends Activity {
     }
 
     private String buildStreamUrl(String songId) {
+        return buildStreamUrl(songId, getSavedBitrate());
+    }
+
+    // 根据选择的码率自动配置 Subsonic maxBitRate 串流参数
+    private String buildStreamUrl(String songId, String bitrate) {
         String base = prefs.getString("server", "");
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         String u = prefs.getString("user", "");
         String p = prefs.getString("pass", "");
+
+        String bitrateParam = "";
+        if ("128".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=128";
+        } else if ("192".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=192";
+        } else if ("320".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=320";
+        } else {
+            // FLAC / 无损：不设限制，服务端原样输出无损源码
+            bitrateParam = "";
+        }
+
         try {
             String encodedId = URLEncoder.encode(songId, "UTF-8");
-            return base + "/rest/stream.view?id=" + encodedId + "&u=" + URLEncoder.encode(u, "UTF-8") + "&p=" + URLEncoder.encode(p, "UTF-8") + "&v=1.12.0&c=RetroSubsonic";
+            return base + "/rest/stream.view?id=" + encodedId + "&u=" + URLEncoder.encode(u, "UTF-8") + "&p=" + URLEncoder.encode(p, "UTF-8") + "&v=1.12.0&c=RetroSubsonic" + bitrateParam;
         } catch (Exception e) {
-            return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic";
+            return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic" + bitrateParam;
         }
     }
 
@@ -1434,7 +1611,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 包含下拉刷新 HeaderView 的准确索引点击
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1462,7 +1638,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 包含下拉刷新 HeaderView 的准确索引长按
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1487,7 +1662,6 @@ public class MainActivity extends Activity {
         lvQueue.setOnItemClickListener(queueItemClickListener);
         lvDetailQueue.setOnItemClickListener(queueItemClickListener);
 
-        // 现代微动触感与点击事件绑定
         View.OnTouchListener touchFeedbackListener = new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
