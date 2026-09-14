@@ -162,7 +162,6 @@ public class MainActivity extends Activity {
                 btnPlayPause.setText(playText);
                 btnDetailPlayPause.setText(playText);
 
-                // 更新黑胶唱片转动状态
                 updateVinylAnimationState();
 
                 int mode = intent.getIntExtra("mode", MusicService.MODE_LOOP_ALL);
@@ -253,14 +252,13 @@ public class MainActivity extends Activity {
         setupListeners();
         setupClickInterceptors();
 
-        // 默认进入首页显示我的歌单
         fetchPlaylists();
         syncServerFavoritesQuietly();
     }
 
     private void setupVinylAnimation() {
         vinylRotateAnim = new RotateAnimation(0f, 360f, Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
-        vinylRotateAnim.setDuration(12000); // 12秒一圈匀速转动
+        vinylRotateAnim.setDuration(12000);
         vinylRotateAnim.setRepeatCount(Animation.INFINITE);
         vinylRotateAnim.setInterpolator(new LinearInterpolator());
     }
@@ -276,7 +274,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 核心：在黑胶唱机模式与方形大封面模式间切换
     private void updateCoverDisplayMode() {
         if (isVinylDisplayMode) {
             layoutVinylContainer.setVisibility(View.VISIBLE);
@@ -445,7 +442,6 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(statusReceiver); } catch (Exception ignored) {}
     }
 
-    // 全层级物理返回键导航
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
@@ -662,7 +658,6 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    // 无论从哪里打开播放列表，均精准自动居中滚动到当前歌曲
     private void scrollQueueToCenter(final ListView lv) {
         final int idx = MusicService.getCurrentIndex();
         if (idx >= 0 && lv != null) {
@@ -975,7 +970,6 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "歌词字号: " + lyricBaseFontSize + "sp", Toast.LENGTH_SHORT).show();
     }
 
-    // 核心安全裁切：生成完全圆形的专辑封面位图
     private Bitmap getCircularBitmap(Bitmap bitmap) {
         if (bitmap == null) return null;
         int width = bitmap.getWidth();
@@ -1051,7 +1045,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 点击黑胶唱机任意区域或方形大封面，互相切换显示模式
         View.OnClickListener coverToggleListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1063,7 +1056,6 @@ public class MainActivity extends Activity {
         viewTonearm.setOnClickListener(coverToggleListener);
         ivSquareCover.setOnClickListener(coverToggleListener);
 
-        // 核心新增：点击播放按钮下方的空白区域切换 歌词 / 播放列表
         layoutDetailBottomBlank.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1593,28 +1585,24 @@ public class MainActivity extends Activity {
                         currentItems.clear();
                         listData.clear();
 
-                        // 1. 顶置“我的收藏”
                         currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步服务器标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
                         Map<String, String> favRow = new HashMap<String, String>();
                         favRow.put("title", "♥  我的收藏");
                         favRow.put("subtitle", "已同步服务器标星 (" + favSongIds.size() + "首)");
                         listData.add(favRow);
 
-                        // 2. 顶置“精选歌单”
                         currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "本地定制精选 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
                         Map<String, String> featRow = new HashMap<String, String>();
                         featRow.put("title", "⭐  精选歌单");
                         featRow.put("subtitle", "本地定制精选 (" + featuredSongs.size() + "首)");
                         listData.add(featRow);
 
-                        // 3. 顶置“车载歌单”
                         currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行必听车载曲库 (" + carSongs.size() + "首)", null, "本地歌单", false));
                         Map<String, String> carRow = new HashMap<String, String>();
                         carRow.put("title", "🚗  车载歌单");
                         carRow.put("subtitle", "出行必听车载曲库 (" + carSongs.size() + "首)");
                         listData.add(carRow);
 
-                        // 4. 加载服务器歌单
                         if (jsonStr != null) {
                             try {
                                 JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
