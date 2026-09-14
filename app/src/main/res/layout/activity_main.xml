@@ -12,7 +12,7 @@
         android:orientation="vertical"
         android:padding="8dp">
 
-        <!-- 顶栏：标题与服务器设置开关 -->
+        <!-- 顶栏：标题、关闭软件按钮与服务器设置开关 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp"
@@ -28,14 +28,30 @@
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/btn_toggle_config"
+            <LinearLayout
                 android:layout_width="wrap_content"
-                android:layout_height="34dp"
+                android:layout_height="wrap_content"
                 android:layout_alignParentRight="true"
                 android:layout_centerVertical="true"
-                android:text="服务器设置"
-                android:textSize="12sp" />
+                android:orientation="horizontal">
+
+                <!-- 新增：关闭软件退出按钮 -->
+                <Button
+                    android:id="@+id/btn_exit_app"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="关闭软件"
+                    android:textColor="#ff6666"
+                    android:textSize="12sp"
+                    android:layout_marginRight="6dp" />
+
+                <Button
+                    android:id="@+id/btn_toggle_config"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="服务器设置"
+                    android:textSize="12sp" />
+            </LinearLayout>
         </RelativeLayout>
 
         <!-- 可折叠服务器配置面板 -->
