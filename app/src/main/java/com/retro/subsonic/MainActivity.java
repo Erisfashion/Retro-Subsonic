@@ -48,6 +48,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -69,13 +70,12 @@ import javax.net.ssl.HttpsURLConnection;
 
 public class MainActivity extends Activity {
 
-    // 码率常量定义与映射：增加“默认不变”选项
     private static final String[] BITRATE_LABELS = new String[]{"默认不变", "128K", "192K", "320K", "FLAC"};
     private static final String[] BITRATE_VALUES = new String[]{"auto", "128", "192", "320", "flac"};
 
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
     private EditText etTimeoutSec, etRetryCount, etDownloadPath;
-    private Spinner spinnerConfigBitrate, spinnerDetailBitrate; // 码率下拉框组件
+    private Spinner spinnerConfigBitrate, spinnerDetailBitrate;
     private boolean isSpinnersInitializing = true;
 
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
@@ -89,7 +89,7 @@ public class MainActivity extends Activity {
     private ListView listView, lvQueue;
     private SeekBar seekBar;
 
-    // 原生下拉刷新组件
+    // 下拉刷新组件
     private LinearLayout refreshHeaderView;
     private ProgressBar refreshProgressBar;
     private TextView refreshTextView;
@@ -115,9 +115,10 @@ public class MainActivity extends Activity {
     private LinearLayout layoutDetailLyricsView, layoutDetailQueueView;
     private ListView lvDetailQueue;
 
-    // 封面模式：黑胶唱机模式 vs 静态方形模式
+    // 封面模式与位图缓存（增加内存防爆保护）
     private boolean isVinylDisplayMode = true;
     private Bitmap currentRawCoverBitmap;
+    private Bitmap currentCircularCoverBitmap;
 
     // 黑胶旋转动画控制
     private RotateAnimation vinylRotateAnim;
@@ -228,7 +229,6 @@ public class MainActivity extends Activity {
                     }
                     tvDetailArtist.setText(artist);
 
-                    // 优先展示“默认不变”所对应的原曲音质标签或选定码率
                     String currentBitrate = getSavedBitrate();
                     tvDetailQuality.setText(getBitrateDisplay(currentBitrate, quality));
 
@@ -309,7 +309,7 @@ public class MainActivity extends Activity {
     }
 
     private String getSavedBitrate() {
-        return prefs.getString("default_bitrate", "auto"); // 默认选择“默认不变 (auto)”
+        return prefs.getString("default_bitrate", "auto");
     }
 
     private int getBitrateIndex(String val) {
@@ -318,7 +318,7 @@ public class MainActivity extends Activity {
                 return i;
             }
         }
-        return 0; // 默认第一项“默认不变”
+        return 0;
     }
 
     private String getBitrateDisplay(String val, String originalQuality) {
@@ -335,7 +335,6 @@ public class MainActivity extends Activity {
         return (originalQuality != null && originalQuality.length() > 0) ? originalQuality : "原曲音质";
     }
 
-    // 针对 Android 4.2.2 深度优化的深色主题 Spinner 适配器
     private class BitrateSpinnerAdapter extends BaseAdapter {
         private String[] items;
 
@@ -451,17 +450,14 @@ public class MainActivity extends Activity {
         if (queue != null && curIdx >= 0 && curIdx < queue.size()) {
             MusicService.SongItem currentSong = queue.get(curIdx);
 
-            // 清除旧缓存
             File cachedFile = CacheManager.getSongFile(MainActivity.this, currentSong.id);
             if (cachedFile.exists()) {
                 cachedFile.delete();
             }
 
-            // 更新流地址与音质显示
             currentSong.streamUrl = buildStreamUrl(currentSong.id, newBitrate);
             currentSong.quality = getBitrateDisplay(newBitrate, currentSong.quality);
 
-            // 重新起播
             Intent intent = new Intent(MainActivity.this, MusicService.class);
             intent.setAction(MusicService.ACTION_PLAY_INDEX);
             intent.putExtra("target_index", curIdx);
@@ -1020,7 +1016,6 @@ public class MainActivity extends Activity {
         return buildStreamUrl(songId, getSavedBitrate());
     }
 
-    // 默认不变模式下不附加任何 maxBitRate/format 参数，保留原汁原味源码输出
     private String buildStreamUrl(String songId, String bitrate) {
         String base = prefs.getString("server", "");
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
@@ -1037,7 +1032,6 @@ public class MainActivity extends Activity {
         } else if ("flac".equalsIgnoreCase(bitrate)) {
             bitrateParam = "&format=flac";
         } else {
-            // "auto": 默认不变，不改变原来的码率，完全不传额外转码限制参数
             bitrateParam = "";
         }
 
@@ -1391,27 +1385,45 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "歌词字号: " + lyricBaseFontSize + "sp", Toast.LENGTH_SHORT).show();
     }
 
-    private Bitmap getCircularBitmap(Bitmap bitmap) {
-        if (bitmap == null) return null;
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        int size = Math.min(width, height);
+    // 核心安全裁切与缩放：严格将圆形位图尺寸限制在 240×240，彻底避免 OOM
+    private Bitmap getCircularBitmap(Bitmap bitmap, int targetSize) {
+        if (bitmap == null || bitmap.isRecycled()) return null;
+        if (targetSize <= 0) targetSize = 240;
 
-        Bitmap output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Bitmap output = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(output);
 
         Paint paint = new Paint();
         paint.setAntiAlias(true);
 
-        float r = size / 2f;
+        float r = targetSize / 2f;
         canvas.drawCircle(r, r, r, paint);
 
         paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
-        Rect srcRect = new Rect((width - size) / 2, (height - size) / 2, (width + size) / 2, (height + size) / 2);
-        Rect dstRect = new Rect(0, 0, size, size);
+        int srcW = bitmap.getWidth();
+        int srcH = bitmap.getHeight();
+        int minEdge = Math.min(srcW, srcH);
+        Rect srcRect = new Rect((srcW - minEdge) / 2, (srcH - minEdge) / 2, (srcW + minEdge) / 2, (srcH + minEdge) / 2);
+        Rect dstRect = new Rect(0, 0, targetSize, targetSize);
         canvas.drawBitmap(bitmap, srcRect, dstRect, paint);
 
         return output;
+    }
+
+    // 核心防爆计算：按目标大小动态阶梯计算 inSampleSize
+    private int calculateInSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
+        final int height = options.outHeight;
+        final int width = options.outWidth;
+        int inSampleSize = 1;
+
+        if (height > reqHeight || width > reqWidth) {
+            final int halfHeight = height / 2;
+            final int halfWidth = width / 2;
+            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+                inSampleSize *= 2;
+            }
+        }
+        return Math.max(1, inSampleSize);
     }
 
     private void setupListeners() {
@@ -1774,6 +1786,7 @@ public class MainActivity extends Activity {
         detailQueueAdapter.notifyDataSetChanged();
     }
 
+    // 核心安全解码：支持双重降采样，将显存占用压至 ~200KB 并主动回收旧位图
     private void loadCoverArt(final String coverId) {
         if (coverId == null || coverId.length() == 0) {
             ivVinylCircularCover.setImageResource(android.R.drawable.ic_menu_report_image);
@@ -1797,23 +1810,54 @@ public class MainActivity extends Activity {
                     }
 
                     InputStream is = conn.getInputStream();
-                    final Bitmap bitmap = BitmapFactory.decodeStream(is);
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    byte[] buffer = new byte[8192];
+                    int len;
+                    while ((len = is.read(buffer)) != -1) {
+                        baos.write(buffer, 0, len);
+                    }
+                    byte[] imageBytes = baos.toByteArray();
+                    baos.close();
                     is.close();
                     conn.disconnect();
 
-                    if (bitmap != null) {
-                        currentRawCoverBitmap = bitmap;
-                        final Bitmap circularBitmap = getCircularBitmap(bitmap);
+                    if (imageBytes != null && imageBytes.length > 0) {
+                        // 1. 只读取原始边界尺寸
+                        BitmapFactory.Options opts = new BitmapFactory.Options();
+                        opts.inJustDecodeBounds = true;
+                        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, opts);
 
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                ivVinylCircularCover.setImageBitmap(circularBitmap);
-                                ivSquareCover.setImageBitmap(currentRawCoverBitmap);
-                            }
-                        });
+                        // 2. 目标最大 300x300，阶梯计算采样率
+                        opts.inSampleSize = calculateInSampleSize(opts, 300, 300);
+                        opts.inJustDecodeBounds = false;
+                        opts.inPreferredConfig = Bitmap.Config.RGB_565; // 节省 50% 内存
+
+                        final Bitmap safeDecodedBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, opts);
+                        if (safeDecodedBitmap != null) {
+                            // 3. 将黑胶圆形封面限制在 240×240 像素
+                            final Bitmap safeCircularBitmap = getCircularBitmap(safeDecodedBitmap, 240);
+
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    // 4. 即时回收旧位图引用
+                                    if (currentRawCoverBitmap != null && !currentRawCoverBitmap.isRecycled()) {
+                                        currentRawCoverBitmap.recycle();
+                                    }
+                                    if (currentCircularCoverBitmap != null && !currentCircularCoverBitmap.isRecycled()) {
+                                        currentCircularCoverBitmap.recycle();
+                                    }
+
+                                    currentRawCoverBitmap = safeDecodedBitmap;
+                                    currentCircularCoverBitmap = safeCircularBitmap;
+
+                                    ivVinylCircularCover.setImageBitmap(currentCircularCoverBitmap);
+                                    ivSquareCover.setImageBitmap(currentRawCoverBitmap);
+                                }
+                            });
+                        }
                     }
-                } catch (Exception ignored) {}
+                } catch (Throwable ignored) {}
             }
         }).start();
     }
@@ -2320,5 +2364,19 @@ public class MainActivity extends Activity {
         int seconds = (ms / 1000) % 60;
         int minutes = (ms / (1000 * 60)) % 60;
         return String.format("%02d:%02d", minutes, seconds);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // 界面退出时主动释放位图内存
+        if (currentRawCoverBitmap != null && !currentRawCoverBitmap.isRecycled()) {
+            currentRawCoverBitmap.recycle();
+            currentRawCoverBitmap = null;
+        }
+        if (currentCircularCoverBitmap != null && !currentCircularCoverBitmap.isRecycled()) {
+            currentCircularCoverBitmap.recycle();
+            currentCircularCoverBitmap = null;
+        }
     }
 }
