@@ -14,23 +14,13 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.widget.Toast;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.io.Serializable;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.Random;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -45,6 +35,7 @@ public class MusicService extends Service {
     public static final String ACTION_NEXT = "com.retro.subsonic.NEXT";
     public static final String ACTION_SEEK = "com.retro.subsonic.SEEK";
     public static final String ACTION_CYCLE_MODE = "com.retro.subsonic.CYCLE_MODE";
+    public static final String ACTION_STOP = "com.retro.subsonic.STOP";
 
     public static final String BROADCAST_STATUS = "com.retro.subsonic.STATUS_CHANGE";
 
@@ -85,20 +76,21 @@ public class MusicService extends Service {
     private Handler mainHandler = new Handler(Looper.getMainLooper());
     private Random random = new Random();
 
-    private Thread downloadThread;
-    private volatile boolean cancelDownload = false;
+    // 边下边播本地代理
+    private LocalStreamProxy currentProxy;
 
     private boolean isBuffering = false;
     private int bufferPercent = 0;
-    private boolean isPlaybackStarted = false; // 严格记录播放就绪状态
+    private boolean isPlaybackStarted = false;
     private int retryCount = 0;
     private boolean isRetrying = false;
 
+    // 20秒超时看门狗：仅在起播前计时！
     private Runnable timeoutRunnable = new Runnable() {
         @Override
         public void run() {
             if (!isPlaybackStarted) {
-                triggerRetry("连接超时 (" + getTimeoutSeconds() + "秒)");
+                triggerRetry("加载起播超时 (" + getTimeoutSeconds() + "秒)");
             }
         }
     };
@@ -188,11 +180,11 @@ public class MusicService extends Service {
         mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
             @Override
             public void onPrepared(MediaPlayer mp) {
+                // 核心：一旦起播，立刻取消 20 秒超时计时！之后无损文件再大也不会触发超时！
                 mainHandler.removeCallbacks(timeoutRunnable);
-                isPlaybackStarted = true; // 只有执行到这里，播放器才真正进入 PREPARED/STARTED 状态
+                isPlaybackStarted = true;
                 retryCount = 0;
                 isRetrying = false;
-                isBuffering = false;
 
                 mp.start();
                 AudioEffectsManager.getInstance().attachSession(mp.getAudioSessionId(), getApplicationContext());
@@ -212,13 +204,9 @@ public class MusicService extends Service {
         mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
             @Override
             public boolean onError(MediaPlayer mp, int what, int extra) {
-                // 核心拦截：-38 为 INVALID_OPERATION，直接忽略，绝不触发切歌死循环！
-                if (what == -38 || extra == -38) {
-                    return true;
-                }
-                isBuffering = false;
+                if (what == -38 || extra == -38) return true; // 拦截无效状态调用
                 if (!isPlaybackStarted) {
-                    triggerRetry("播放器报错 (what:" + what + ", extra:" + extra + ")");
+                    triggerRetry("音频文件解码错误 (code:" + what + ")");
                 }
                 return true;
             }
@@ -229,7 +217,12 @@ public class MusicService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && intent.getAction() != null) {
             String act = intent.getAction();
-            if (ACTION_PLAY_INDEX.equals(act)) {
+            if (ACTION_STOP.equals(act)) {
+                // 彻底退出软件
+                stopForeground(true);
+                stopSelf();
+                return START_NOT_STICKY;
+            } else if (ACTION_PLAY_INDEX.equals(act)) {
                 int explicitIndex = intent.getIntExtra("target_index", -1);
                 if (explicitIndex >= 0) {
                     currentIndex = explicitIndex;
@@ -289,7 +282,7 @@ public class MusicService extends Service {
         isRetrying = true;
 
         mainHandler.removeCallbacks(timeoutRunnable);
-        cancelDownload = true;
+        stopCurrentProxy();
 
         final int maxRetries = getMaxRetryCount();
         retryCount++;
@@ -320,12 +313,19 @@ public class MusicService extends Service {
         }
     }
 
+    private void stopCurrentProxy() {
+        if (currentProxy != null) {
+            try { currentProxy.stop(); } catch (Exception ignored) {}
+            currentProxy = null;
+        }
+    }
+
     private synchronized void playCurrent(boolean isRetry) {
         if (!isRetry) {
             retryCount = 0;
         }
         isPlaybackStarted = false;
-        cancelDownload = true;
+        stopCurrentProxy();
 
         mainHandler.removeCallbacks(timeoutRunnable);
         mainHandler.postDelayed(timeoutRunnable, getTimeoutSeconds() * 1000L);
@@ -338,227 +338,82 @@ public class MusicService extends Service {
 
         recreateMediaPlayer();
 
-        // 1. 如果已有有效缓存，直接秒开
+        // 1. 如果已完整缓存，本地直接秒开
         if (CacheManager.isSongCached(this, song.id)) {
             File cached = CacheManager.getSongFile(this, song.id);
             if (startPlayFile(cached)) {
                 isBuffering = false;
+                bufferPercent = 100;
                 broadcastStatus();
                 return;
             }
         }
 
-        // 2. 未缓存：进入下载与智能穿透链路
+        // 2. 未缓存：启动 LocalStreamProxy 边缓冲边播放！
         isBuffering = true;
         bufferPercent = 0;
         broadcastStatus();
 
-        downloadThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                cancelDownload = false;
-                final File tmpFile = CacheManager.getTempFile(MusicService.this, song.id);
-                final File targetFile = CacheManager.getSongFile(MusicService.this, song.id);
-                if (tmpFile.exists()) tmpFile.delete();
-
-                String finalReason = fetchAndResolveAudioStream(song.streamUrl, tmpFile, 0);
-
-                if ("OK".equals(finalReason) && !cancelDownload && CacheManager.isValidAudioFile(tmpFile)) {
-                    if (tmpFile.renameTo(targetFile)) {
-                        targetFile.setLastModified(System.currentTimeMillis());
-
-                        SharedPreferences sp = getSharedPreferences("subsonic_cfg", MODE_PRIVATE);
-                        int maxMb = 500;
-                        try {
-                            maxMb = Integer.parseInt(sp.getString("cache_size_mb", "500"));
-                        } catch (Exception ignored) {}
-                        CacheManager.trimCache(MusicService.this, maxMb * 1024L * 1024L, song.id);
-
-                        mainHandler.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (!cancelDownload) {
-                                    startPlayFile(targetFile);
-                                }
-                            }
-                        });
-                        return;
-                    }
-                }
-
-                if (!cancelDownload) {
-                    final String err = (finalReason != null && !"OK".equals(finalReason)) ? finalReason : "未能获取到有效音频数据";
+        try {
+            currentProxy = new LocalStreamProxy(this, song.id, song.streamUrl, new LocalStreamProxy.ProxyListener() {
+                @Override
+                public void onProgress(final int percent) {
                     mainHandler.post(new Runnable() {
                         @Override
                         public void run() {
-                            triggerRetry(err);
+                            bufferPercent = percent;
+                            broadcastStatus();
                         }
                     });
                 }
-            }
-        });
-        downloadThread.start();
-    }
 
-    private String fetchAndResolveAudioStream(String targetUrl, File destFile, int depth) {
-        if (depth > 6 || cancelDownload) return "重定向过多或已取消";
-
-        HttpURLConnection conn = null;
-        InputStream is = null;
-        FileOutputStream fos = null;
-
-        try {
-            URL url = new URL(targetUrl);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setInstanceFollowRedirects(false);
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-cn) AppleWebKit/534.30");
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(15000);
-            conn.connect();
-
-            int code = conn.getResponseCode();
-
-            if (code == 301 || code == 302 || code == 303 || code == 307) {
-                String location = conn.getHeaderField("Location");
-                conn.disconnect();
-                if (location != null && location.length() > 0) {
-                    URL redirectUrl = new URL(url, location);
-                    return fetchAndResolveAudioStream(redirectUrl.toString(), destFile, depth + 1);
+                @Override
+                public void onCached(File cachedFile) {
+                    mainHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            isBuffering = false;
+                            bufferPercent = 100;
+                            broadcastStatus();
+                        }
+                    });
                 }
-                return "重定向地址为空 (HTTP " + code + ")";
-            }
 
-            if (code != 200 && code != 206) {
-                return "服务器响应异常 (HTTP " + code + ")";
-            }
-
-            int totalLength = conn.getContentLength();
-            is = conn.getInputStream();
-
-            byte[] previewBuf = new byte[2048];
-            int previewRead = is.read(previewBuf);
-            if (previewRead <= 0) return "接收到的数据为空";
-
-            String previewStr = new String(previewBuf, 0, previewRead, "UTF-8").trim();
-
-            if (previewStr.startsWith("{") || previewStr.startsWith("[")) {
-                StringBuilder sb = new StringBuilder(previewStr);
-                byte[] temp = new byte[4096];
-                int l;
-                while ((l = is.read(temp)) != -1) {
-                    sb.append(new String(temp, 0, l, "UTF-8"));
+                @Override
+                public void onError(final String reason) {
+                    mainHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (!isPlaybackStarted) {
+                                triggerRetry(reason);
+                            }
+                        }
+                    });
                 }
-                String jsonText = sb.toString();
+            });
 
-                try {
-                    JSONObject root = new JSONObject(jsonText);
-                    JSONObject sub = root.optJSONObject("subsonic-response");
-                    if (sub != null && "failed".equals(sub.optString("status"))) {
-                        JSONObject err = sub.optJSONObject("error");
-                        return "服务端拒绝: " + (err != null ? err.optString("message") : "认证或参数错误");
-                    }
-
-                    String directUrl = findAudioUrlInJson(root);
-                    if (directUrl != null) {
-                        showToastOnMain("成功解析出音频直链，正在缓冲...");
-                        conn.disconnect();
-                        return fetchAndResolveAudioStream(directUrl, destFile, depth + 1);
-                    }
-                    return "JSON 中未包含有效播放直链";
-                } catch (Exception e) {
-                    return "服务端返回了未知 JSON 结构";
-                }
-            }
-
-            if (previewStr.startsWith("<?xml") || previewStr.contains("<subsonic-response")) {
-                Matcher m = Pattern.compile("message=\"([^\"]+)\"").matcher(previewStr);
-                if (m.find()) {
-                    return "服务端报错: " + m.group(1);
-                }
-                return "服务端返回了 XML 错误";
-            }
-
-            if (previewStr.startsWith("<!DOCTYPE") || previewStr.startsWith("<html")) {
-                return "服务端返回了网页(可能触发防盗链)";
-            }
-
-            fos = new FileOutputStream(destFile);
-            fos.write(previewBuf, 0, previewRead);
-            long downloaded = previewRead;
-            long lastBroadcastTime = 0;
-
-            byte[] buf = new byte[8192];
-            int r;
-            while ((r = is.read(buf)) != -1) {
-                if (cancelDownload) return "下载已取消";
-                fos.write(buf, 0, r);
-                downloaded += r;
-
-                if (totalLength > 0) {
-                    long now = System.currentTimeMillis();
-                    if (now - lastBroadcastTime > 400) {
-                        lastBroadcastTime = now;
-                        bufferPercent = (int) ((downloaded * 100) / totalLength);
-                        broadcastStatus();
-                    }
-                }
-            }
-            fos.flush();
-            return "OK";
+            // 获取本地代理串流地址 (127.0.0.1:port/stream)
+            String localStreamUrl = currentProxy.start();
+            mediaPlayer.setDataSource(localStreamUrl);
+            mediaPlayer.prepareAsync();
 
         } catch (Exception e) {
-            return "网络连接失败: " + e.getMessage();
-        } finally {
-            try { if (fos != null) fos.close(); } catch (Exception ignored) {}
-            try { if (is != null) is.close(); } catch (Exception ignored) {}
-            if (conn != null) conn.disconnect();
+            triggerRetry("启动本地串流代理失败: " + e.getMessage());
         }
-    }
-
-    private String findAudioUrlInJson(Object json) {
-        if (json instanceof JSONObject) {
-            JSONObject obj = (JSONObject) json;
-            String[] targetKeys = new String[]{"url", "streamUrl", "playUrl", "link", "src", "audioUrl", "musicUrl", "data"};
-            for (String k : targetKeys) {
-                Object val = obj.opt(k);
-                if (val instanceof String) {
-                    String strVal = (String) val;
-                    if (strVal.startsWith("http://") || strVal.startsWith("https://")) {
-                        return strVal;
-                    }
-                }
-            }
-            Iterator<?> it = obj.keys();
-            while (it.hasNext()) {
-                String k = (String) it.next();
-                String found = findAudioUrlInJson(obj.opt(k));
-                if (found != null) return found;
-            }
-        } else if (json instanceof JSONArray) {
-            JSONArray arr = (JSONArray) json;
-            for (int i = 0; i < arr.length(); i++) {
-                String found = findAudioUrlInJson(arr.opt(i));
-                if (found != null) return found;
-            }
-        }
-        return null;
     }
 
     private boolean startPlayFile(File file) {
         try {
             if (activeFis != null) {
                 try { activeFis.close(); } catch (Throwable ignored) {}
-                activeFis = null;
             }
             activeFis = new FileInputStream(file);
             mediaPlayer.reset();
-            // 传入精准 offset 和 length，Stagefright 底层最稳妥
             mediaPlayer.setDataSource(activeFis.getFD(), 0, file.length());
             mediaPlayer.prepareAsync();
-            // 绝不在此处调用 broadcastStatus()，等待异步 prepare 成功后触发 onPrepared
+            broadcastStatus();
             return true;
         } catch (Exception e) {
-            triggerRetry("本地音频装载失败");
             return false;
         }
     }
@@ -590,13 +445,7 @@ public class MusicService extends Service {
     private void updateNotification() {
         if (currentIndex < 0 || currentIndex >= playlist.size()) return;
         SongItem song = playlist.get(currentIndex);
-        
-        boolean isPlaying = false;
-        if (isPlaybackStarted && mediaPlayer != null) {
-            try {
-                isPlaying = mediaPlayer.isPlaying();
-            } catch (Throwable ignored) {}
-        }
+        boolean isPlaying = isPlaybackStarted && mediaPlayer != null && mediaPlayer.isPlaying();
 
         Intent openAppIntent = new Intent(this, MainActivity.class);
         PendingIntent piOpen = PendingIntent.getActivity(this, 0, openAppIntent, PendingIntent.FLAG_UPDATE_CURRENT);
@@ -628,7 +477,6 @@ public class MusicService extends Service {
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                // 只有处于就绪播放状态，才广播当前进度，绝对避免在 IDLE/PREPARING 状态触碰 MediaPlayer
                 if (isPlaybackStarted && mediaPlayer != null) {
                     broadcastStatus();
                 }
@@ -637,7 +485,6 @@ public class MusicService extends Service {
         }, 1000);
     }
 
-    // 核心安全广播方法：杜绝 -38 错误
     private void broadcastStatus() {
         Intent b = new Intent(BROADCAST_STATUS);
         b.putExtra("mode", currentMode);
@@ -650,7 +497,6 @@ public class MusicService extends Service {
         int position = 0;
         int duration = 0;
 
-        // 核心保护：只有在 onPrepared 之后（isPlaybackStarted == true），才能合法调用 MediaPlayer 的方法！
         if (isPlaybackStarted && mediaPlayer != null) {
             try {
                 isPlaying = mediaPlayer.isPlaying();
@@ -692,7 +538,7 @@ public class MusicService extends Service {
         super.onDestroy();
         mainHandler.removeCallbacks(timeoutRunnable);
         mainHandler.removeCallbacksAndMessages(null);
-        cancelDownload = true;
+        stopCurrentProxy();
         recreateMediaPlayer();
     }
 }
