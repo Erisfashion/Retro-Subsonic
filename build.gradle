@@ -14,3 +14,11 @@ allprojects {
         mavenCentral()
     }
 }
+
+defaultConfig {
+        applicationId "com.retro.subsonic"
+        minSdk 16
+        targetSdk 28
+        versionCode 3
+        versionName "1.0.2"
+    }
