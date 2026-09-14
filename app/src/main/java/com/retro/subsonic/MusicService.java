@@ -17,15 +17,8 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.Serializable;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Random;
-
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 
 public class MusicService extends Service {
 
@@ -76,7 +69,6 @@ public class MusicService extends Service {
     private Handler mainHandler = new Handler(Looper.getMainLooper());
     private Random random = new Random();
 
-    // 边下边播本地代理
     private LocalStreamProxy currentProxy;
 
     private boolean isBuffering = false;
@@ -85,7 +77,6 @@ public class MusicService extends Service {
     private int retryCount = 0;
     private boolean isRetrying = false;
 
-    // 20秒超时看门狗：仅在起播前计时！
     private Runnable timeoutRunnable = new Runnable() {
         @Override
         public void run() {
@@ -129,28 +120,10 @@ public class MusicService extends Service {
         }
     }
 
-    private static void enableTrustAllSSL() {
-        try {
-            TrustManager[] trustAllCerts = new TrustManager[]{
-                new X509TrustManager() {
-                    public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[]{}; }
-                    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
-                    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
-                }
-            };
-            SSLContext sc = SSLContext.getInstance("TLS");
-            sc.init(null, trustAllCerts, new SecureRandom());
-            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
-            HttpsURLConnection.setDefaultHostnameVerifier(new javax.net.ssl.HostnameVerifier() {
-                public boolean verify(String hostname, javax.net.ssl.SSLSession session) { return true; }
-            });
-        } catch (Throwable ignored) {}
-    }
-
     @Override
     public void onCreate() {
         super.onCreate();
-        enableTrustAllSSL();
+        TLSSocketFactory.install();
         recreateMediaPlayer();
         startProgressTimer();
     }
@@ -180,7 +153,6 @@ public class MusicService extends Service {
         mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
             @Override
             public void onPrepared(MediaPlayer mp) {
-                // 核心：一旦起播，立刻取消 20 秒超时计时！之后无损文件再大也不会触发超时！
                 mainHandler.removeCallbacks(timeoutRunnable);
                 isPlaybackStarted = true;
                 retryCount = 0;
@@ -204,7 +176,7 @@ public class MusicService extends Service {
         mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
             @Override
             public boolean onError(MediaPlayer mp, int what, int extra) {
-                if (what == -38 || extra == -38) return true; // 拦截无效状态调用
+                if (what == -38 || extra == -38) return true;
                 if (!isPlaybackStarted) {
                     triggerRetry("音频文件解码错误 (code:" + what + ")");
                 }
@@ -218,7 +190,6 @@ public class MusicService extends Service {
         if (intent != null && intent.getAction() != null) {
             String act = intent.getAction();
             if (ACTION_STOP.equals(act)) {
-                // 彻底退出软件
                 stopForeground(true);
                 stopSelf();
                 return START_NOT_STICKY;
@@ -338,7 +309,6 @@ public class MusicService extends Service {
 
         recreateMediaPlayer();
 
-        // 1. 如果已完整缓存，本地直接秒开
         if (CacheManager.isSongCached(this, song.id)) {
             File cached = CacheManager.getSongFile(this, song.id);
             if (startPlayFile(cached)) {
@@ -349,7 +319,6 @@ public class MusicService extends Service {
             }
         }
 
-        // 2. 未缓存：启动 LocalStreamProxy 边缓冲边播放！
         isBuffering = true;
         bufferPercent = 0;
         broadcastStatus();
@@ -392,7 +361,6 @@ public class MusicService extends Service {
                 }
             });
 
-            // 获取本地代理串流地址 (127.0.0.1:port/stream)
             String localStreamUrl = currentProxy.start();
             mediaPlayer.setDataSource(localStreamUrl);
             mediaPlayer.prepareAsync();
