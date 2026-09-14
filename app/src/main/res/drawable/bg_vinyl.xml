@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 外圈金属边框 -->
+    <!-- 外圈金属暗纹轮廓 -->
     <item>
         <shape android:shape="oval">
-            <solid android:color="#2c2e35" />
-            <size android:width="210dp" android:height="210dp" />
+            <solid android:color="#2d3038" />
+            <size android:width="240dp" android:height="240dp" />
         </shape>
     </item>
     <!-- 唱片炭黑本体 -->
@@ -13,32 +13,29 @@
             <solid android:color="#121316" />
         </shape>
     </item>
-    <!-- 细密同心音轨纹理 1 -->
-    <item android:top="10dp" android:bottom="10dp" android:left="10dp" android:right="10dp">
+    <!-- 同心圆细密音轨纹理 -->
+    <item android:top="12dp" android:bottom="12dp" android:left="12dp" android:right="12dp">
         <shape android:shape="oval">
-            <stroke android:width="1dp" android:color="#1e2026" />
+            <stroke android:width="1dp" android:color="#1f2128" />
         </shape>
     </item>
-    <!-- 细密同心音轨纹理 2 -->
-    <item android:top="20dp" android:bottom="20dp" android:left="20dp" android:right="20dp">
+    <item android:top="24dp" android:bottom="24dp" android:left="24dp" android:right="24dp">
         <shape android:shape="oval">
-            <stroke android:width="1dp" android:color="#262832" />
+            <stroke android:width="1dp" android:color="#282b35" />
         </shape>
     </item>
-    <!-- 细密同心音轨纹理 3 -->
-    <item android:top="30dp" android:bottom="30dp" android:left="30dp" android:right="30dp">
+    <item android:top="36dp" android:bottom="36dp" android:left="36dp" android:right="36dp">
         <shape android:shape="oval">
-            <stroke android:width="1dp" android:color="#181a20" />
+            <stroke android:width="1dp" android:color="#191a20" />
         </shape>
     </item>
-    <!-- 细密同心音轨纹理 4 -->
-    <item android:top="38dp" android:bottom="38dp" android:left="38dp" android:right="38dp">
+    <item android:top="46dp" android:bottom="46dp" android:left="46dp" android:right="46dp">
         <shape android:shape="oval">
-            <stroke android:width="1dp" android:color="#22242d" />
+            <stroke android:width="1dp" android:color="#242630" />
         </shape>
     </item>
     <!-- 中心贴纸外沿倒角 -->
-    <item android:top="44dp" android:bottom="44dp" android:left="44dp" android:right="44dp">
+    <item android:top="52dp" android:bottom="52dp" android:left="52dp" android:right="52dp">
         <shape android:shape="oval">
             <stroke android:width="2dp" android:color="#0b0c0e" />
         </shape>
