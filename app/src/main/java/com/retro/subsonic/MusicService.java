@@ -27,7 +27,10 @@ import java.net.URL;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.Random;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -60,11 +63,7 @@ public class MusicService extends Service {
         public String quality;
 
         public SongItem(String id, String title, String artist, String streamUrl) {
-            this(id, title, artist, streamUrl, null, "320K MP3");
-        }
-
-        public SongItem(String id, String title, String artist, String streamUrl, String coverArtId) {
-            this(id, title, artist, streamUrl, coverArtId, "320K MP3");
+            this(id, title, artist, streamUrl, null, "标准音质");
         }
 
         public SongItem(String id, String title, String artist, String streamUrl, String coverArtId, String quality) {
@@ -138,7 +137,6 @@ public class MusicService extends Service {
         }
     }
 
-    // 信任所有 SSL 证书，彻底解决 Android 4.2.2 访问 HTTPS CDN 证书过期崩溃问题
     private static void enableTrustAllSSL() {
         try {
             TrustManager[] trustAllCerts = new TrustManager[]{
@@ -215,7 +213,7 @@ public class MusicService extends Service {
             public boolean onError(MediaPlayer mp, int what, int extra) {
                 isBuffering = false;
                 if (!isPlaybackStarted) {
-                    triggerRetry("音频解析错误 (code:" + what + ")");
+                    triggerRetry("音频文件解码错误 (code:" + what + ")");
                 }
                 return true;
             }
@@ -277,7 +275,6 @@ public class MusicService extends Service {
         }
     }
 
-    // 核心重试：设置强制 2 秒冷却，彻底杜绝瞬间闪退循环
     private synchronized void triggerRetry(final String reason) {
         if (isRetrying) return;
         isRetrying = true;
@@ -300,7 +297,7 @@ public class MusicService extends Service {
                 }
             }, 2000);
         } else {
-            showToastOnMain("连续 " + maxRetries + " 次加载失败，自动跳至下一首");
+            showToastOnMain("歌曲连续 " + maxRetries + " 次加载失败，自动跳至下一首");
             retryCount = 0;
             isRetrying = false;
             broadcastStatus();
@@ -310,7 +307,7 @@ public class MusicService extends Service {
                 public void run() {
                     playNext();
                 }
-            }, 1000);
+            }, 1200);
         }
     }
 
@@ -332,19 +329,17 @@ public class MusicService extends Service {
 
         recreateMediaPlayer();
 
-        // 1. 如果已完整缓存，优先文件描述符秒开
+        // 1. 如果已缓存真实音频，直接从本地文件秒开
         if (CacheManager.isSongCached(this, song.id)) {
             File cached = CacheManager.getSongFile(this, song.id);
             if (startPlayFile(cached)) {
                 isBuffering = false;
                 broadcastStatus();
                 return;
-            } else {
-                cached.delete();
             }
         }
 
-        // 2. 未缓存：进入全自动嗅探与智能解析下载管道
+        // 2. 未缓存：进入智能嗅探、重定向追踪与下载引擎
         isBuffering = true;
         bufferPercent = 0;
         broadcastStatus();
@@ -357,9 +352,9 @@ public class MusicService extends Service {
                 final File targetFile = CacheManager.getSongFile(MusicService.this, song.id);
                 if (tmpFile.exists()) tmpFile.delete();
 
-                String resolvedAudioUrl = resolveAndFetchAudio(song.streamUrl, tmpFile, 0);
+                String finalReason = fetchAndResolveAudioStream(song.streamUrl, tmpFile, 0);
 
-                if (resolvedAudioUrl != null && !cancelDownload && tmpFile.exists() && tmpFile.length() > 32 * 1024) {
+                if ("OK".equals(finalReason) && !cancelDownload && CacheManager.isValidAudioFile(tmpFile)) {
                     if (tmpFile.renameTo(targetFile)) {
                         targetFile.setLastModified(System.currentTimeMillis());
 
@@ -383,11 +378,11 @@ public class MusicService extends Service {
                 }
 
                 if (!cancelDownload) {
-                    // 若未能成功获取有效音频文件，触发明确报错
+                    final String err = (finalReason != null && !"OK".equals(finalReason)) ? finalReason : "未能获取到有效音频数据";
                     mainHandler.post(new Runnable() {
                         @Override
                         public void run() {
-                            triggerRetry("未能获取到有效音频数据");
+                            triggerRetry(err);
                         }
                     });
                 }
@@ -396,117 +391,124 @@ public class MusicService extends Service {
         downloadThread.start();
     }
 
-    // 智能流嗅探与重定向递归提取器
-    private String resolveAndFetchAudio(String initialUrl, File destFile, int depth) {
-        if (depth > 6 || cancelDownload) return null; // 防止死循环重定向
+    // 核心：全自动穿透 JSON 直链、追逐 302 重定向并拦截 XML 报错
+    private String fetchAndResolveAudioStream(String targetUrl, File destFile, int depth) {
+        if (depth > 6 || cancelDownload) return "重定向过多或已取消";
 
         HttpURLConnection conn = null;
         InputStream is = null;
         FileOutputStream fos = null;
 
         try {
-            URL url = new URL(initialUrl);
+            URL url = new URL(targetUrl);
             conn = (HttpURLConnection) url.openConnection();
-            conn.setInstanceFollowRedirects(false); // 手动追踪，兼容跨协议重定向
+            conn.setInstanceFollowRedirects(false); // 手动跟踪，兼容跨协议 HTTP -> HTTPS 跳转
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-cn) AppleWebKit/534.30");
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(15000);
             conn.connect();
 
             int code = conn.getResponseCode();
 
-            // 1. 处理 301/302/307 重定向
+            // 1. 处理 301/302/307 重定向跳转到 CDN
             if (code == 301 || code == 302 || code == 303 || code == 307) {
                 String location = conn.getHeaderField("Location");
                 conn.disconnect();
                 if (location != null && location.length() > 0) {
-                    // 递归追踪重定向目标（如跳转到 CDN）
-                    return resolveAndFetchAudio(location, destFile, depth + 1);
+                    // 支持相对路径转绝对路径
+                    URL redirectUrl = new URL(url, location);
+                    return fetchAndResolveAudioStream(redirectUrl.toString(), destFile, depth + 1);
                 }
-                return null;
+                return "重定向地址为空 (HTTP " + code + ")";
             }
 
             if (code != 200 && code != 206) {
-                return null;
+                return "服务器响应异常 (HTTP " + code + ")";
             }
 
             int totalLength = conn.getContentLength();
             is = conn.getInputStream();
 
-            // 2. 嗅探前 2048 字节内容，研判是真实音频还是 JSON/HTML 链接
+            // 2. 嗅探前 2048 字节内容，研判是真实音频还是 JSON 链接、XML 报错
             byte[] previewBuf = new byte[2048];
             int previewRead = is.read(previewBuf);
-            if (previewRead <= 0) return null;
+            if (previewRead <= 0) return "接收到的数据为空";
 
-            String previewStr = new String(previewBuf, 0, Math.min(previewRead, 1024), "UTF-8").trim();
+            String previewStr = new String(previewBuf, 0, previewRead, "UTF-8").trim();
 
-            // 判断 A：如果服务器返回的是 JSON 响应！
+            // 情况 A：服务器返回了 JSON 数据！
             if (previewStr.startsWith("{") || previewStr.startsWith("[")) {
-                // 读取剩余 JSON 文本
-                StringBuilder jsonBuilder = new StringBuilder(previewStr);
+                StringBuilder sb = new StringBuilder(previewStr);
                 byte[] temp = new byte[4096];
-                int len;
-                while ((len = is.read(temp)) != -1) {
-                    jsonBuilder.append(new String(temp, 0, len, "UTF-8"));
+                int l;
+                while ((l = is.read(temp)) != -1) {
+                    sb.append(new String(temp, 0, l, "UTF-8"));
                 }
-                String jsonText = jsonBuilder.toString();
+                String jsonText = sb.toString();
 
-                // 检查是否为 Subsonic 明确错误
                 try {
-                    JSONObject rootObj = new JSONObject(jsonText);
-                    JSONObject sub = rootObj.optJSONObject("subsonic-response");
+                    JSONObject root = new JSONObject(jsonText);
+                    // 检查是否为 Subsonic 标准失败响应
+                    JSONObject sub = root.optJSONObject("subsonic-response");
                     if (sub != null && "failed".equals(sub.optString("status"))) {
                         JSONObject err = sub.optJSONObject("error");
-                        String errMsg = err != null ? err.optString("message") : "认证或服务端异常";
-                        showToastOnMain("服务端拒绝: " + errMsg);
-                        return null;
+                        return "服务端拒绝: " + (err != null ? err.optString("message") : "认证或参数错误");
                     }
 
-                    // 深度寻找 JSON 内部嵌套的真实音乐链接 (url, streamUrl, playUrl 等)
-                    String extractedUrl = findAudioUrlInJson(rootObj);
-                    if (extractedUrl != null) {
-                        showToastOnMain("检测到音频链接数据，正在解析直链播放...");
+                    // 检索 JSON 中嵌套的真实音频播放直链
+                    String directUrl = findAudioUrlInJson(root);
+                    if (directUrl != null) {
+                        showToastOnMain("成功解析出音频播放直链，正在缓冲...");
                         conn.disconnect();
-                        return resolveAndFetchAudio(extractedUrl, destFile, depth + 1);
+                        return fetchAndResolveAudioStream(directUrl, destFile, depth + 1);
                     }
+                    return "JSON 中未包含有效播放直链";
                 } catch (Exception e) {
-                    showToastOnMain("解析返回的 JSON 失败");
+                    return "服务端返回了未知 JSON 结构";
                 }
-                return null;
             }
 
-            // 判断 B：如果是网页 (HTML 错误页)
-            if (previewStr.startsWith("<!DOCTYPE") || previewStr.startsWith("<html") || previewStr.startsWith("<head")) {
-                showToastOnMain("服务端返回了网页而非音频文件，请检查地址");
-                return null;
+            // 情况 B：服务器返回了 XML 报错文本！
+            if (previewStr.startsWith("<?xml") || previewStr.contains("<subsonic-response")) {
+                Matcher m = Pattern.compile("message=\"([^\"]+)\"").matcher(previewStr);
+                if (m.find()) {
+                    return "服务端报错: " + m.group(1);
+                }
+                return "服务端返回了 XML 错误";
             }
 
-            // 判断 C：确认是真正的音频流！开始写入本地缓存
+            // 情况 C：服务端返回了 HTML 错误网页！
+            if (previewStr.startsWith("<!DOCTYPE") || previewStr.startsWith("<html")) {
+                return "服务端返回了网页(可能触发防盗链)";
+            }
+
+            // 情况 D：确认是真实的音频流！流式写入本地文件
             fos = new FileOutputStream(destFile);
             fos.write(previewBuf, 0, previewRead);
-            long downloadedBytes = previewRead;
+            long downloaded = previewRead;
             long lastBroadcastTime = 0;
 
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = is.read(buffer)) != -1) {
-                if (cancelDownload) return null;
-                fos.write(buffer, 0, read);
-                downloadedBytes += read;
+            byte[] buf = new byte[8192];
+            int r;
+            while ((r = is.read(buf)) != -1) {
+                if (cancelDownload) return "下载已取消";
+                fos.write(buf, 0, r);
+                downloaded += r;
 
                 if (totalLength > 0) {
                     long now = System.currentTimeMillis();
                     if (now - lastBroadcastTime > 400) {
                         lastBroadcastTime = now;
-                        bufferPercent = (int) ((downloadedBytes * 100) / totalLength);
+                        bufferPercent = (int) ((downloaded * 100) / totalLength);
                         broadcastStatus();
                     }
                 }
             }
             fos.flush();
-            return initialUrl;
+            return "OK";
 
         } catch (Exception e) {
-            return null;
+            return "网络连接失败: " + e.getMessage();
         } finally {
             try { if (fos != null) fos.close(); } catch (Exception ignored) {}
             try { if (is != null) is.close(); } catch (Exception ignored) {}
@@ -514,29 +516,29 @@ public class MusicService extends Service {
         }
     }
 
-    // 递归检索 JSON 中任意层级的音频播放直链
     private String findAudioUrlInJson(Object json) {
         if (json instanceof JSONObject) {
             JSONObject obj = (JSONObject) json;
-            String[] targetKeys = new String[]{"url", "streamUrl", "playUrl", "link", "src", "audioUrl", "mp3"};
+            String[] targetKeys = new String[]{"url", "streamUrl", "playUrl", "link", "src", "audioUrl", "musicUrl", "data"};
             for (String k : targetKeys) {
-                String val = obj.optString(k, null);
-                if (val != null && (val.startsWith("http://") || val.startsWith("https://"))) {
-                    return val;
+                Object val = obj.opt(k);
+                if (val instanceof String) {
+                    String strVal = (String) val;
+                    if (strVal.startsWith("http://") || strVal.startsWith("https://")) {
+                        return strVal;
+                    }
                 }
             }
-            java.util.Iterator<?> it = obj.keys();
+            Iterator<?> it = obj.keys();
             while (it.hasNext()) {
                 String k = (String) it.next();
-                Object child = obj.opt(k);
-                String found = findAudioUrlInJson(child);
+                String found = findAudioUrlInJson(obj.opt(k));
                 if (found != null) return found;
             }
         } else if (json instanceof JSONArray) {
             JSONArray arr = (JSONArray) json;
             for (int i = 0; i < arr.length(); i++) {
-                Object child = arr.opt(i);
-                String found = findAudioUrlInJson(child);
+                String found = findAudioUrlInJson(arr.opt(i));
                 if (found != null) return found;
             }
         }
@@ -555,7 +557,7 @@ public class MusicService extends Service {
             broadcastStatus();
             return true;
         } catch (Exception e) {
-            triggerRetry("本地音频载入失败");
+            triggerRetry("本地音频装载失败");
             return false;
         }
     }
