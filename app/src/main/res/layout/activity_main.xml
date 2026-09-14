@@ -35,7 +35,6 @@
                 android:layout_centerVertical="true"
                 android:orientation="horizontal">
 
-                <!-- 新增：关闭软件退出按钮 -->
                 <Button
                     android:id="@+id/btn_exit_app"
                     android:layout_width="wrap_content"
@@ -104,7 +103,6 @@
                     android:singleLine="true" />
             </LinearLayout>
 
-            <!-- 超时与重试配置行 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -154,7 +152,6 @@
                     android:layout_marginLeft="4dp" />
             </LinearLayout>
 
-            <!-- 缓存设置行与保存按钮 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -490,19 +487,35 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 顶栏 -->
+        <!-- 详情页顶栏：收起、退出软件、标题、音效、常亮、列表 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
 
-            <Button
-                android:id="@+id/btn_close_detail"
+            <LinearLayout
                 android:layout_width="wrap_content"
-                android:layout_height="34dp"
+                android:layout_height="wrap_content"
                 android:layout_alignParentLeft="true"
                 android:layout_centerVertical="true"
-                android:text="收起详情"
-                android:textSize="12sp" />
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btn_close_detail"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="收起详情"
+                    android:textSize="12sp" />
+
+                <!-- 详情页内的关闭软件按钮 -->
+                <Button
+                    android:id="@+id/btn_detail_exit_app"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="关闭软件"
+                    android:textColor="#ff6666"
+                    android:textSize="12sp"
+                    android:layout_marginLeft="6dp" />
+            </LinearLayout>
 
             <TextView
                 android:layout_width="wrap_content"
@@ -554,7 +567,9 @@
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
 
+            <!-- 左栏：大封面（支持点击封面切换列表） + 歌曲信息 + 控制排 -->
             <LinearLayout
+                android:id="@+id/layout_cover_container"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
@@ -565,13 +580,16 @@
                 android:clickable="true"
                 android:focusable="true">
 
+                <!-- 歌曲大封面 -->
                 <ImageView
                     android:id="@+id/iv_detail_cover"
                     android:layout_width="220dp"
                     android:layout_height="220dp"
                     android:scaleType="centerCrop"
                     android:src="@android:drawable/ic_menu_report_image"
-                    android:background="#111317" />
+                    android:background="#111317"
+                    android:clickable="true"
+                    android:focusable="true" />
 
                 <TextView
                     android:id="@+id/tv_detail_title"
@@ -598,7 +616,7 @@
                     android:id="@+id/tv_detail_quality"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="320K MP3"
+                    android:text="标准音质"
                     android:textColor="#00e5ff"
                     android:textSize="11sp"
                     android:textStyle="bold"
@@ -609,12 +627,15 @@
                     android:paddingBottom="2dp"
                     android:layout_marginTop="6dp" />
 
+                <!-- 进度条与时间 -->
                 <LinearLayout
+                    android:id="@+id/layout_detail_seek_box"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginTop="10dp">
+                    android:layout_marginTop="10dp"
+                    android:clickable="true">
 
                     <SeekBar
                         android:id="@+id/detail_seek_bar"
@@ -632,12 +653,15 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
+                <!-- 播放控制排 -->
                 <LinearLayout
+                    android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center"
-                    android:layout_marginTop="8dp">
+                    android:layout_marginTop="8dp"
+                    android:clickable="true">
 
                     <Button
                         android:id="@+id/btn_detail_mode"
@@ -675,6 +699,7 @@
                 </LinearLayout>
             </LinearLayout>
 
+            <!-- 右栏：歌词 / 播放队列切换区 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
