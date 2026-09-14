@@ -73,16 +73,21 @@ public class MainActivity extends Activity {
     private static final String[] BITRATE_LABELS = new String[]{"默认不变", "128K", "192K", "320K", "FLAC"};
     private static final String[] BITRATE_VALUES = new String[]{"auto", "128", "192", "320", "flac"};
 
+    private static final int TAB_PLAYLISTS = 0;
+    private static final int TAB_RANKING = 1;
+    private int currentSelectedTab = TAB_PLAYLISTS;
+
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
     private EditText etTimeoutSec, etRetryCount, etDownloadPath;
     private Spinner spinnerConfigBitrate, spinnerDetailBitrate;
     private boolean isSpinnersInitializing = true;
 
-    private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
+    private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabRanking, btnSearchSubmit, btnBack;
     private Button btnMode, btnOpenEq;
     private ImageView btnPrev, btnPlayPause, btnNext;
+    private ImageView btnExitApp, btnDetailExitApp, btnTopSearch; // 圆形图标
     private Button btnToggleQueue, btnCloseQueue, btnOpenDetail;
-    private Button btnExitApp, btnDetailExitApp, btnBottomFav, btnDetailFav, btnDetailDownload;
+    private Button btnBottomFav, btnDetailFav, btnDetailDownload;
     private Button btnLyricDec, btnLyricInc;
     private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime;
@@ -102,6 +107,10 @@ public class MainActivity extends Activity {
     private String currentActivePlaylistId = null;
     private String currentActivePlaylistName = null;
 
+    // 歌单分类缓存：常规歌单 vs 排行榜歌单
+    private ArrayList<DisplayEntry> rawServerUserPlaylists = new ArrayList<DisplayEntry>();
+    private ArrayList<DisplayEntry> rawServerRankingPlaylists = new ArrayList<DisplayEntry>();
+
     // 详情页组件
     private Button btnCloseDetail, btnDetailMode, btnDetailEq;
     private ImageView btnDetailPrev, btnDetailPlayPause, btnDetailNext;
@@ -115,7 +124,7 @@ public class MainActivity extends Activity {
     private LinearLayout layoutDetailLyricsView, layoutDetailQueueView;
     private ListView lvDetailQueue;
 
-    // 封面模式与位图缓存（增加内存防爆保护）
+    // 封面模式与位图缓存
     private boolean isVinylDisplayMode = true;
     private Bitmap currentRawCoverBitmap;
     private Bitmap currentCircularCoverBitmap;
@@ -468,7 +477,10 @@ public class MainActivity extends Activity {
     private void setupControlIcons() {
         int darkIconColor = 0xFF10141A;
         int lightIconColor = 0xFFE2E8F0;
+        int redIconColor = 0xFFFF6B6B;
+        int cyanIconColor = 0xFF00E5FF;
 
+        // 播放控制
         btnPrev.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 18, lightIconColor));
         btnNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 18, lightIconColor));
         btnPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 22, darkIconColor));
@@ -476,6 +488,13 @@ public class MainActivity extends Activity {
         btnDetailPrev.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 22, lightIconColor));
         btnDetailNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 22, lightIconColor));
         btnDetailPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 28, darkIconColor));
+
+        // 顶部居中放大镜搜索图标
+        btnTopSearch.setImageDrawable(MediaIconHelper.createSearchIcon(this, 20, cyanIconColor));
+
+        // 退出软件圆形图标
+        btnExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
+        btnDetailExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
     }
 
     private void updatePlayPauseIcons(boolean isPlaying) {
@@ -834,12 +853,13 @@ public class MainActivity extends Activity {
                 layoutQueuePanel.setVisibility(View.GONE);
                 return true;
             }
-            if (btnBack != null && btnBack.getVisibility() == View.VISIBLE) {
-                btnBack.performClick();
+            if (layoutSearchBar != null && layoutSearchBar.getVisibility() == View.VISIBLE) {
+                layoutSearchBar.setVisibility(View.GONE);
+                showCurrentTabContent();
                 return true;
             }
-            if (layoutSearchBar != null && layoutSearchBar.getVisibility() == View.VISIBLE) {
-                btnTabPlaylists.performClick();
+            if (btnBack != null && btnBack.getVisibility() == View.VISIBLE) {
+                btnBack.performClick();
                 return true;
             }
             return super.onKeyDown(keyCode, event);
@@ -864,11 +884,14 @@ public class MainActivity extends Activity {
         btnClearCache = (Button) findViewById(R.id.btn_clear_cache);
         btnToggleConfig = (Button) findViewById(R.id.btn_toggle_config);
         btnTabPlaylists = (Button) findViewById(R.id.btn_tab_playlists);
-        btnTabSearch = (Button) findViewById(R.id.btn_tab_search);
+        btnTabRanking = (Button) findViewById(R.id.btn_tab_ranking);
         btnSearchSubmit = (Button) findViewById(R.id.btn_search_submit);
         btnBack = (Button) findViewById(R.id.btn_back);
-        btnExitApp = (Button) findViewById(R.id.btn_exit_app);
         btnBottomFav = (Button) findViewById(R.id.btn_bottom_fav);
+
+        btnExitApp = (ImageView) findViewById(R.id.btn_exit_app);
+        btnDetailExitApp = (ImageView) findViewById(R.id.btn_detail_exit_app);
+        btnTopSearch = (ImageView) findViewById(R.id.btn_top_search);
 
         btnMode = (Button) findViewById(R.id.btn_mode);
         btnOpenEq = (Button) findViewById(R.id.btn_open_eq);
@@ -895,7 +918,6 @@ public class MainActivity extends Activity {
         lvQueue = (ListView) findViewById(R.id.lv_queue);
 
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
-        btnDetailExitApp = (Button) findViewById(R.id.btn_detail_exit_app);
         btnDetailFav = (Button) findViewById(R.id.btn_detail_fav);
         btnDetailDownload = (Button) findViewById(R.id.btn_detail_download);
         btnDetailMode = (Button) findViewById(R.id.btn_detail_mode);
@@ -1385,7 +1407,6 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "歌词字号: " + lyricBaseFontSize + "sp", Toast.LENGTH_SHORT).show();
     }
 
-    // 核心安全裁切与缩放：严格将圆形位图尺寸限制在 240×240，彻底避免 OOM
     private Bitmap getCircularBitmap(Bitmap bitmap, int targetSize) {
         if (bitmap == null || bitmap.isRecycled()) return null;
         if (targetSize <= 0) targetSize = 240;
@@ -1410,7 +1431,6 @@ public class MainActivity extends Activity {
         return output;
     }
 
-    // 核心防爆计算：按目标大小动态阶梯计算 inSampleSize
     private int calculateInSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
         final int height = options.outHeight;
         final int width = options.outWidth;
@@ -1427,14 +1447,66 @@ public class MainActivity extends Activity {
     }
 
     private void setupListeners() {
-        btnExitApp.setOnClickListener(new View.OnClickListener() {
+        View.OnClickListener exitListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) { performAppExit(); }
+        };
+        btnExitApp.setOnClickListener(exitListener);
+        btnDetailExitApp.setOnClickListener(exitListener);
+
+        // 首页顶部放大镜搜索图标点击：展开/收起搜索框
+        btnTopSearch.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (layoutSearchBar.getVisibility() == View.VISIBLE) {
+                    layoutSearchBar.setVisibility(View.GONE);
+                    showCurrentTabContent();
+                } else {
+                    layoutSearchBar.setVisibility(View.VISIBLE);
+                    btnBack.setVisibility(View.GONE);
+                    tvListTitle.setText("搜索音乐");
+                    etSearchKeyword.requestFocus();
+                }
+            }
         });
 
-        btnDetailExitApp.setOnClickListener(new View.OnClickListener() {
+        // 切换到【我的歌单】
+        btnTabPlaylists.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onClick(View v) { performAppExit(); }
+            public void onClick(View v) {
+                currentSelectedTab = TAB_PLAYLISTS;
+                btnTabPlaylists.setTextColor(0xFF00E5FF);
+                btnTabRanking.setTextColor(0xFFA0A5B5);
+                layoutSearchBar.setVisibility(View.GONE);
+                btnBack.setVisibility(View.GONE);
+                showUserPlaylists();
+            }
+        });
+
+        // 切换到【排行榜】
+        btnTabRanking.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                currentSelectedTab = TAB_RANKING;
+                btnTabRanking.setTextColor(0xFF00E5FF);
+                btnTabPlaylists.setTextColor(0xFFA0A5B5);
+                layoutSearchBar.setVisibility(View.GONE);
+                btnBack.setVisibility(View.GONE);
+                showRankingPlaylists();
+            }
+        });
+
+        btnSearchSubmit.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { searchSongs(etSearchKeyword.getText().toString().trim()); }
+        });
+
+        btnBack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                btnBack.setVisibility(View.GONE);
+                showCurrentTabContent();
+            }
         });
 
         btnLyricDec.setOnClickListener(new View.OnClickListener() {
@@ -1533,42 +1605,6 @@ public class MainActivity extends Activity {
         };
         btnOpenEq.setOnClickListener(eqListener);
         btnDetailEq.setOnClickListener(eqListener);
-
-        btnTabPlaylists.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                layoutSearchBar.setVisibility(View.GONE);
-                btnBack.setVisibility(View.GONE);
-                tvListTitle.setText("我的歌单");
-                fetchPlaylists();
-            }
-        });
-
-        btnTabSearch.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                layoutSearchBar.setVisibility(View.VISIBLE);
-                btnBack.setVisibility(View.GONE);
-                tvListTitle.setText("搜索音乐");
-                currentItems.clear();
-                listData.clear();
-                adapter.notifyDataSetChanged();
-            }
-        });
-
-        btnSearchSubmit.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { searchSongs(etSearchKeyword.getText().toString().trim()); }
-        });
-
-        btnBack.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                btnBack.setVisibility(View.GONE);
-                tvListTitle.setText("我的歌单");
-                fetchPlaylists();
-            }
-        });
 
         btnToggleQueue.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1704,6 +1740,9 @@ public class MainActivity extends Activity {
         btnDetailPrev.setOnTouchListener(touchFeedbackListener);
         btnDetailPlayPause.setOnTouchListener(touchFeedbackListener);
         btnDetailNext.setOnTouchListener(touchFeedbackListener);
+        btnExitApp.setOnTouchListener(touchFeedbackListener);
+        btnDetailExitApp.setOnTouchListener(touchFeedbackListener);
+        btnTopSearch.setOnTouchListener(touchFeedbackListener);
 
         View.OnClickListener toggleListener = new View.OnClickListener() {
             @Override
@@ -1786,7 +1825,6 @@ public class MainActivity extends Activity {
         detailQueueAdapter.notifyDataSetChanged();
     }
 
-    // 核心安全解码：支持双重降采样，将显存占用压至 ~200KB 并主动回收旧位图
     private void loadCoverArt(final String coverId) {
         if (coverId == null || coverId.length() == 0) {
             ivVinylCircularCover.setImageResource(android.R.drawable.ic_menu_report_image);
@@ -1822,25 +1860,21 @@ public class MainActivity extends Activity {
                     conn.disconnect();
 
                     if (imageBytes != null && imageBytes.length > 0) {
-                        // 1. 只读取原始边界尺寸
                         BitmapFactory.Options opts = new BitmapFactory.Options();
                         opts.inJustDecodeBounds = true;
                         BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, opts);
 
-                        // 2. 目标最大 300x300，阶梯计算采样率
                         opts.inSampleSize = calculateInSampleSize(opts, 300, 300);
                         opts.inJustDecodeBounds = false;
-                        opts.inPreferredConfig = Bitmap.Config.RGB_565; // 节省 50% 内存
+                        opts.inPreferredConfig = Bitmap.Config.RGB_565;
 
                         final Bitmap safeDecodedBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, opts);
                         if (safeDecodedBitmap != null) {
-                            // 3. 将黑胶圆形封面限制在 240×240 像素
                             final Bitmap safeCircularBitmap = getCircularBitmap(safeDecodedBitmap, 240);
 
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    // 4. 即时回收旧位图引用
                                     if (currentRawCoverBitmap != null && !currentRawCoverBitmap.isRecycled()) {
                                         currentRawCoverBitmap.recycle();
                                     }
@@ -2069,10 +2103,8 @@ public class MainActivity extends Activity {
         }
     }
 
+    // 从服务端抓取全部歌单并自动分离出排行榜
     private void fetchPlaylists() {
-        currentActivePlaylistId = null;
-        currentActivePlaylistName = null;
-        tvListTitle.setText("我的歌单");
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -2080,26 +2112,8 @@ public class MainActivity extends Activity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        currentItems.clear();
-                        listData.clear();
-
-                        currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步服务器标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
-                        Map<String, String> favRow = new HashMap<String, String>();
-                        favRow.put("title", "♥  我的收藏");
-                        favRow.put("subtitle", "已同步服务器标星 (" + favSongIds.size() + "首)");
-                        listData.add(favRow);
-
-                        currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "本地定制精选 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
-                        Map<String, String> featRow = new HashMap<String, String>();
-                        featRow.put("title", "⭐  精选歌单");
-                        featRow.put("subtitle", "本地定制精选 (" + featuredSongs.size() + "首)");
-                        listData.add(featRow);
-
-                        currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行必听车载曲库 (" + carSongs.size() + "首)", null, "本地歌单", false));
-                        Map<String, String> carRow = new HashMap<String, String>();
-                        carRow.put("title", "🚗  车载歌单");
-                        carRow.put("subtitle", "出行必听车载曲库 (" + carSongs.size() + "首)");
-                        listData.add(carRow);
+                        rawServerUserPlaylists.clear();
+                        rawServerRankingPlaylists.clear();
 
                         if (jsonStr != null) {
                             try {
@@ -2110,15 +2124,16 @@ public class MainActivity extends Activity {
                                     if (plObj instanceof JSONArray) {
                                         JSONArray arr = (JSONArray) plObj;
                                         for (int i = 0; i < arr.length(); i++) {
-                                            addPlaylistRow(arr.getJSONObject(i));
+                                            categorizePlaylistItem(arr.getJSONObject(i));
                                         }
                                     } else if (plObj instanceof JSONObject) {
-                                        addPlaylistRow((JSONObject) plObj);
+                                        categorizePlaylistItem((JSONObject) plObj);
                                     }
                                 }
                             } catch (Exception ignored) {}
                         }
-                        adapter.notifyDataSetChanged();
+
+                        showCurrentTabContent();
                         stopRefreshing();
                     }
                 });
@@ -2126,15 +2141,91 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    private void addPlaylistRow(JSONObject p) throws Exception {
+    // 将带“榜单”字样的歌单分流到排行榜列表中
+    private void categorizePlaylistItem(JSONObject p) throws Exception {
         String name = p.getString("name");
         int count = p.optInt("songCount", 0);
-        currentItems.add(new DisplayEntry(p.getString("id"), name, "", "歌单", null, "歌单: " + count, false));
+        String id = p.getString("id");
 
-        Map<String, String> row = new HashMap<String, String>();
-        row.put("title", "📁  " + name);
-        row.put("subtitle", count + " 首歌曲");
-        listData.add(row);
+        boolean isRanking = name.contains("榜单") || name.startsWith("榜") || name.endsWith("榜");
+        DisplayEntry entry = new DisplayEntry(id, name, "", isRanking ? "排行榜" : "歌单", null, isRanking ? "排行榜歌单" : "歌单: " + count, false);
+
+        if (isRanking) {
+            rawServerRankingPlaylists.add(entry);
+        } else {
+            rawServerUserPlaylists.add(entry);
+        }
+    }
+
+    private void showCurrentTabContent() {
+        if (currentSelectedTab == TAB_PLAYLISTS) {
+            showUserPlaylists();
+        } else {
+            showRankingPlaylists();
+        }
+    }
+
+    // 展示“我的歌单”（只展示收藏、精选、车载以及常规歌单）
+    private void showUserPlaylists() {
+        currentActivePlaylistId = null;
+        currentActivePlaylistName = null;
+        tvListTitle.setText("我的歌单");
+        currentItems.clear();
+        listData.clear();
+
+        currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步服务器标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
+        Map<String, String> favRow = new HashMap<String, String>();
+        favRow.put("title", "♥  我的收藏");
+        favRow.put("subtitle", "已同步服务器标星 (" + favSongIds.size() + "首)");
+        listData.add(favRow);
+
+        currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "本地定制精选 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
+        Map<String, String> featRow = new HashMap<String, String>();
+        featRow.put("title", "⭐  精选歌单");
+        featRow.put("subtitle", "本地定制精选 (" + featuredSongs.size() + "首)");
+        listData.add(featRow);
+
+        currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行必听车载曲库 (" + carSongs.size() + "首)", null, "本地歌单", false));
+        Map<String, String> carRow = new HashMap<String, String>();
+        carRow.put("title", "🚗  车载歌单");
+        carRow.put("subtitle", "出行必听车载曲库 (" + carSongs.size() + "首)");
+        listData.add(carRow);
+
+        for (DisplayEntry e : rawServerUserPlaylists) {
+            currentItems.add(e);
+            Map<String, String> row = new HashMap<String, String>();
+            row.put("title", "📁  " + e.title);
+            row.put("subtitle", e.quality);
+            listData.add(row);
+        }
+
+        adapter.notifyDataSetChanged();
+    }
+
+    // 展示“排行榜”页（集中展示所有榜单歌单）
+    private void showRankingPlaylists() {
+        currentActivePlaylistId = null;
+        currentActivePlaylistName = null;
+        tvListTitle.setText("排行榜");
+        currentItems.clear();
+        listData.clear();
+
+        for (DisplayEntry e : rawServerRankingPlaylists) {
+            currentItems.add(e);
+            Map<String, String> row = new HashMap<String, String>();
+            row.put("title", "🏆  " + e.title);
+            row.put("subtitle", "官方排行榜");
+            listData.add(row);
+        }
+
+        if (rawServerRankingPlaylists.isEmpty()) {
+            Map<String, String> emptyRow = new HashMap<String, String>();
+            emptyRow.put("title", "暂无排行榜歌单");
+            emptyRow.put("subtitle", "连接的服务器暂未同步榜单数据");
+            listData.add(emptyRow);
+        }
+
+        adapter.notifyDataSetChanged();
     }
 
     private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
@@ -2209,7 +2300,7 @@ public class MainActivity extends Activity {
                                 }
                             }
                             btnBack.setVisibility(View.VISIBLE);
-                            tvListTitle.setText("歌单: " + playlistName);
+                            tvListTitle.setText(playlistName);
                             adapter.notifyDataSetChanged();
                         } catch (Exception e) {
                             Toast.makeText(MainActivity.this, "加载歌单失败", Toast.LENGTH_SHORT).show();
@@ -2286,6 +2377,7 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    // 搜索音乐：加入 songCount=500 参数，列出全部匹配结果
     private void searchSongs(final String query) {
         if (query.length() == 0) {
             stopRefreshing();
@@ -2296,7 +2388,7 @@ public class MainActivity extends Activity {
             public void run() {
                 try {
                     String encoded = URLEncoder.encode(query, "UTF-8");
-                    final String jsonStr = requestApi("search3.view?query=" + encoded + "&" + getAuthParams());
+                    final String jsonStr = requestApi("search3.view?query=" + encoded + "&songCount=500&" + getAuthParams());
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
@@ -2316,6 +2408,8 @@ public class MainActivity extends Activity {
                                         addSongRow(songs.getJSONObject(i));
                                     }
                                 }
+                                btnBack.setVisibility(View.VISIBLE);
+                                tvListTitle.setText("搜索结果 (" + currentItems.size() + " 条)");
                                 adapter.notifyDataSetChanged();
                             } catch (Exception ignored) {
                             } finally {
@@ -2369,7 +2463,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // 界面退出时主动释放位图内存
         if (currentRawCoverBitmap != null && !currentRawCoverBitmap.isRecycled()) {
             currentRawCoverBitmap.recycle();
             currentRawCoverBitmap = null;
