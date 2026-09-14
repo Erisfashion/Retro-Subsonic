@@ -23,7 +23,7 @@
                 android:layout_height="wrap_content"
                 android:layout_alignParentLeft="true"
                 android:layout_centerVertical="true"
-                android:text="Subsonic Player"
+                android:text="Subsonic Player (v1.0.2)"
                 android:textColor="#ffffff"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -299,6 +299,7 @@
                         android:visibility="gone" />
                 </RelativeLayout>
 
+                <!-- 支持长按菜单的 ListView -->
                 <ListView
                     android:id="@+id/list_view"
                     android:layout_width="match_parent"
@@ -429,7 +430,7 @@
                         android:id="@+id/btn_prev"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:minWidth="60dp"
+                        android:minWidth="55dp"
                         android:text="上一首"
                         android:textSize="12sp"
                         android:layout_marginLeft="4dp" />
@@ -438,7 +439,7 @@
                         android:id="@+id/btn_play_pause"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:minWidth="68dp"
+                        android:minWidth="62dp"
                         android:text="播放"
                         android:textSize="12sp"
                         android:layout_marginLeft="4dp" />
@@ -447,7 +448,7 @@
                         android:id="@+id/btn_next"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:minWidth="60dp"
+                        android:minWidth="55dp"
                         android:text="下一首"
                         android:textSize="12sp"
                         android:layout_marginLeft="4dp" />
@@ -456,7 +457,7 @@
                         android:id="@+id/btn_open_eq"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:minWidth="55dp"
+                        android:minWidth="50dp"
                         android:text="音效"
                         android:textColor="#00e5ff"
                         android:textSize="12sp"
@@ -464,12 +465,28 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <Button
-                android:id="@+id/btn_toggle_queue"
+            <!-- 底部右侧：心形收藏按钮与播放列表按钮 -->
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="播放列表"
-                android:textSize="12sp" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <Button
+                    android:id="@+id/btn_bottom_fav"
+                    android:layout_width="44dp"
+                    android:layout_height="48dp"
+                    android:text="♡"
+                    android:textColor="#ff4081"
+                    android:textSize="20sp" />
+
+                <Button
+                    android:id="@+id/btn_toggle_queue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:text="播放列表"
+                    android:textSize="12sp" />
+            </LinearLayout>
 
         </LinearLayout>
 
@@ -487,7 +504,7 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 详情页顶栏：收起、退出软件、标题、音效、常亮、列表 -->
+        <!-- 顶栏 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
@@ -506,7 +523,6 @@
                     android:text="收起详情"
                     android:textSize="12sp" />
 
-                <!-- 详情页内的关闭软件按钮 -->
                 <Button
                     android:id="@+id/btn_detail_exit_app"
                     android:layout_width="wrap_content"
@@ -532,6 +548,16 @@
                 android:layout_alignParentRight="true"
                 android:layout_centerVertical="true"
                 android:orientation="horizontal">
+
+                <!-- 详情页：下载歌曲按钮 -->
+                <Button
+                    android:id="@+id/btn_detail_download"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="⬇ 下载"
+                    android:textColor="#00e5ff"
+                    android:textSize="12sp"
+                    android:layout_marginRight="6dp" />
 
                 <Button
                     android:id="@+id/btn_detail_eq"
@@ -567,7 +593,6 @@
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
 
-            <!-- 左栏：大封面（支持点击封面切换列表） + 歌曲信息 + 控制排 -->
             <LinearLayout
                 android:id="@+id/layout_cover_container"
                 android:layout_width="0dp"
@@ -580,7 +605,6 @@
                 android:clickable="true"
                 android:focusable="true">
 
-                <!-- 歌曲大封面 -->
                 <ImageView
                     android:id="@+id/iv_detail_cover"
                     android:layout_width="220dp"
@@ -591,16 +615,34 @@
                     android:clickable="true"
                     android:focusable="true" />
 
-                <TextView
-                    android:id="@+id/tv_detail_title"
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="歌曲名称"
-                    android:textColor="#ffffff"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:layout_marginTop="10dp"
-                    android:singleLine="true" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="10dp">
+
+                    <TextView
+                        android:id="@+id/tv_detail_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="歌曲名称"
+                        android:textColor="#ffffff"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:singleLine="true" />
+
+                    <!-- 详情页红心收藏按钮 -->
+                    <Button
+                        android:id="@+id/btn_detail_fav"
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:text="♡"
+                        android:textColor="#ff4081"
+                        android:textSize="18sp"
+                        android:background="@null"
+                        android:layout_marginLeft="6dp" />
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/tv_detail_artist"
@@ -627,7 +669,6 @@
                     android:paddingBottom="2dp"
                     android:layout_marginTop="6dp" />
 
-                <!-- 进度条与时间 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_seek_box"
                     android:layout_width="match_parent"
@@ -653,7 +694,6 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 播放控制排 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
@@ -674,28 +714,28 @@
                         android:id="@+id/btn_detail_prev"
                         android:layout_width="wrap_content"
                         android:layout_height="40dp"
-                        android:minWidth="65dp"
+                        android:minWidth="60dp"
                         android:text="上一首"
                         android:textSize="12sp"
-                        android:layout_marginLeft="6dp" />
+                        android:layout_marginLeft="4dp" />
 
                     <Button
                         android:id="@+id/btn_detail_play_pause"
                         android:layout_width="wrap_content"
                         android:layout_height="40dp"
-                        android:minWidth="75dp"
+                        android:minWidth="70dp"
                         android:text="播放"
                         android:textSize="12sp"
-                        android:layout_marginLeft="6dp" />
+                        android:layout_marginLeft="4dp" />
 
                     <Button
                         android:id="@+id/btn_detail_next"
                         android:layout_width="wrap_content"
                         android:layout_height="40dp"
-                        android:minWidth="65dp"
+                        minWidth="60dp"
                         android:text="下一首"
                         android:textSize="12sp"
-                        android:layout_marginLeft="6dp" />
+                        android:layout_marginLeft="4dp" />
                 </LinearLayout>
             </LinearLayout>
 
