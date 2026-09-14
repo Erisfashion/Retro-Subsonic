@@ -69,14 +69,14 @@ import javax.net.ssl.HttpsURLConnection;
 
 public class MainActivity extends Activity {
 
-    // 码率常量定义与映射
-    private static final String[] BITRATE_LABELS = new String[]{"128K", "192K", "320K", "FLAC"};
-    private static final String[] BITRATE_VALUES = new String[]{"128", "192", "320", "flac"};
+    // 码率常量定义与映射：增加“默认不变”选项
+    private static final String[] BITRATE_LABELS = new String[]{"默认不变", "128K", "192K", "320K", "FLAC"};
+    private static final String[] BITRATE_VALUES = new String[]{"auto", "128", "192", "320", "flac"};
 
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
     private EditText etTimeoutSec, etRetryCount, etDownloadPath;
     private Spinner spinnerConfigBitrate, spinnerDetailBitrate; // 码率下拉框组件
-    private boolean isSpinnersInitializing = true; // 防重复触发标志
+    private boolean isSpinnersInitializing = true;
 
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
     private Button btnMode, btnOpenEq;
@@ -228,9 +228,9 @@ public class MainActivity extends Activity {
                     }
                     tvDetailArtist.setText(artist);
 
-                    // 优先展示所选的自定义码率
+                    // 优先展示“默认不变”所对应的原曲音质标签或选定码率
                     String currentBitrate = getSavedBitrate();
-                    tvDetailQuality.setText(getBitrateDisplay(currentBitrate));
+                    tvDetailQuality.setText(getBitrateDisplay(currentBitrate, quality));
 
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
                         lastLoadedSongId = songId;
@@ -297,7 +297,7 @@ public class MainActivity extends Activity {
 
         initViews();
         setupControlIcons();
-        setupBitrateSpinners(); // 挂载码率选择器
+        setupBitrateSpinners();
         setupVinylAnimation();
         updateCoverDisplayMode();
         loadSavedConfig();
@@ -309,7 +309,7 @@ public class MainActivity extends Activity {
     }
 
     private String getSavedBitrate() {
-        return prefs.getString("default_bitrate", "320");
+        return prefs.getString("default_bitrate", "auto"); // 默认选择“默认不变 (auto)”
     }
 
     private int getBitrateIndex(String val) {
@@ -318,15 +318,21 @@ public class MainActivity extends Activity {
                 return i;
             }
         }
-        return 2; // 默认 320K
+        return 0; // 默认第一项“默认不变”
     }
 
-    private String getBitrateDisplay(String val) {
+    private String getBitrateDisplay(String val, String originalQuality) {
+        if ("auto".equalsIgnoreCase(val)) {
+            if (originalQuality != null && originalQuality.length() > 0) {
+                return originalQuality;
+            }
+            return "原曲音质";
+        }
         if ("128".equalsIgnoreCase(val)) return "128K MP3";
         if ("192".equalsIgnoreCase(val)) return "192K MP3";
         if ("320".equalsIgnoreCase(val)) return "320K MP3";
         if ("flac".equalsIgnoreCase(val)) return "FLAC 无损";
-        return "320K MP3";
+        return (originalQuality != null && originalQuality.length() > 0) ? originalQuality : "原曲音质";
     }
 
     // 针对 Android 4.2.2 深度优化的深色主题 Spinner 适配器
@@ -403,14 +409,20 @@ public class MainActivity extends Activity {
                 if (!newBitrate.equals(oldBitrate)) {
                     prefs.edit().putString("default_bitrate", newBitrate).commit();
 
-                    // 同步另一个下拉框
                     if (parent == spinnerConfigBitrate) {
                         spinnerDetailBitrate.setSelection(position);
                     } else {
                         spinnerConfigBitrate.setSelection(position);
                     }
 
-                    tvDetailQuality.setText(getBitrateDisplay(newBitrate));
+                    ArrayList<MusicService.SongItem> queue = MusicService.getPlaylist();
+                    int curIdx = MusicService.getCurrentIndex();
+                    String origQuality = "";
+                    if (queue != null && curIdx >= 0 && curIdx < queue.size()) {
+                        origQuality = queue.get(curIdx).quality;
+                    }
+
+                    tvDetailQuality.setText(getBitrateDisplay(newBitrate, origQuality));
                     onBitrateChanged(newBitrate, BITRATE_LABELS[position]);
                 }
             }
@@ -422,7 +434,6 @@ public class MainActivity extends Activity {
         spinnerConfigBitrate.setOnItemSelectedListener(listener);
         spinnerDetailBitrate.setOnItemSelectedListener(listener);
 
-        // 延迟重置初始化标志，避免组件启动误触发切码率
         new Handler().postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -431,9 +442,8 @@ public class MainActivity extends Activity {
         }, 500);
     }
 
-    // 用户在详情页切换码率时的联动更新
     private void onBitrateChanged(String newBitrate, String label) {
-        Toast.makeText(this, "播放码率已切换为: " + label, Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "播放码率已设为: " + label, Toast.LENGTH_SHORT).show();
 
         ArrayList<MusicService.SongItem> queue = MusicService.getPlaylist();
         int curIdx = MusicService.getCurrentIndex();
@@ -441,17 +451,17 @@ public class MainActivity extends Activity {
         if (queue != null && curIdx >= 0 && curIdx < queue.size()) {
             MusicService.SongItem currentSong = queue.get(curIdx);
 
-            // 1. 清除此歌曲已缓冲的旧文件
+            // 清除旧缓存
             File cachedFile = CacheManager.getSongFile(MainActivity.this, currentSong.id);
             if (cachedFile.exists()) {
                 cachedFile.delete();
             }
 
-            // 2. 更新此曲在队列中的流媒体地址（附加新码率）
+            // 更新流地址与音质显示
             currentSong.streamUrl = buildStreamUrl(currentSong.id, newBitrate);
-            currentSong.quality = getBitrateDisplay(newBitrate);
+            currentSong.quality = getBitrateDisplay(newBitrate, currentSong.quality);
 
-            // 3. 立即重载起播当前曲目
+            // 重新起播
             Intent intent = new Intent(MainActivity.this, MusicService.class);
             intent.setAction(MusicService.ACTION_PLAY_INDEX);
             intent.putExtra("target_index", curIdx);
@@ -1010,7 +1020,7 @@ public class MainActivity extends Activity {
         return buildStreamUrl(songId, getSavedBitrate());
     }
 
-    // 根据选择的码率自动配置 Subsonic maxBitRate 串流参数
+    // 默认不变模式下不附加任何 maxBitRate/format 参数，保留原汁原味源码输出
     private String buildStreamUrl(String songId, String bitrate) {
         String base = prefs.getString("server", "");
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
@@ -1024,8 +1034,10 @@ public class MainActivity extends Activity {
             bitrateParam = "&maxBitRate=192";
         } else if ("320".equalsIgnoreCase(bitrate)) {
             bitrateParam = "&maxBitRate=320";
+        } else if ("flac".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&format=flac";
         } else {
-            // FLAC / 无损：不设限制，服务端原样输出无损源码
+            // "auto": 默认不变，不改变原来的码率，完全不传额外转码限制参数
             bitrateParam = "";
         }
 
