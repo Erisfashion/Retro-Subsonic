@@ -10,10 +10,16 @@ public class CacheManager {
     private static final String FOLDER_NAME = "subsonic_music_cache";
 
     public static File getCacheFolder(Context context) {
-        File baseDir = context.getExternalCacheDir();
-        if (baseDir == null) {
+        File baseDir = null;
+        try {
+            baseDir = context.getExternalCacheDir();
+        } catch (Throwable ignored) {}
+
+        // 如果外部缓存不可写或为空，回退到内部私有存储（绝无权限拒绝问题）
+        if (baseDir == null || (!baseDir.exists() && !baseDir.mkdirs())) {
             baseDir = context.getCacheDir();
         }
+
         File folder = new File(baseDir, FOLDER_NAME);
         if (!folder.exists()) {
             folder.mkdirs();
@@ -31,7 +37,7 @@ public class CacheManager {
 
     public static boolean isSongCached(Context context, String songId) {
         File file = getSongFile(context, songId);
-        return file.exists() && file.length() > 1024; // 大于 1KB 视为有效缓存
+        return file.exists() && file.length() > 32 * 1024; // 至少大于 32KB 才视为有效缓存
     }
 
     public static long getUsedCacheBytes(Context context) {
@@ -56,7 +62,6 @@ public class CacheManager {
         }
     }
 
-    // LRU 淘汰机制：超出上限时删除最久未访问的歌曲
     public static void trimCache(Context context, long maxBytes, String currentPlayingSongId) {
         File folder = getCacheFolder(context);
         File[] files = folder.listFiles();
@@ -69,7 +74,6 @@ public class CacheManager {
 
         if (currentSize <= maxBytes) return;
 
-        // 按最后修改时间升序排列（最老的排前面）
         Arrays.sort(files, new Comparator<File>() {
             @Override
             public int compare(File f1, File f2) {
