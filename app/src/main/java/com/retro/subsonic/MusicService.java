@@ -14,11 +14,21 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.widget.Toast;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.Serializable;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.Random;
+
+import javax.net.ssl.HttpsURLConnection;
 
 public class MusicService extends Service {
 
@@ -69,7 +79,13 @@ public class MusicService extends Service {
     private Handler mainHandler = new Handler(Looper.getMainLooper());
     private Random random = new Random();
 
+    // 当前歌曲串流代理
     private LocalStreamProxy currentProxy;
+
+    // 下一首歌曲预缓冲后台任务控制
+    private Thread preCacheThread;
+    private volatile HttpURLConnection preCacheConn;
+    private volatile boolean cancelPreCache = false;
 
     private boolean isBuffering = false;
     private int bufferPercent = 0;
@@ -190,6 +206,7 @@ public class MusicService extends Service {
         if (intent != null && intent.getAction() != null) {
             String act = intent.getAction();
             if (ACTION_STOP.equals(act)) {
+                cancelPreCacheTask();
                 stopForeground(true);
                 stopSelf();
                 return START_NOT_STICKY;
@@ -254,6 +271,7 @@ public class MusicService extends Service {
 
         mainHandler.removeCallbacks(timeoutRunnable);
         stopCurrentProxy();
+        cancelPreCacheTask();
 
         final int maxRetries = getMaxRetryCount();
         retryCount++;
@@ -291,12 +309,194 @@ public class MusicService extends Service {
         }
     }
 
+    // 取消当前正在运行的预缓冲任务，彻底释放 Socket 资源
+    private synchronized void cancelPreCacheTask() {
+        cancelPreCache = true;
+        if (preCacheConn != null) {
+            try { preCacheConn.disconnect(); } catch (Exception ignored) {}
+            preCacheConn = null;
+        }
+        if (preCacheThread != null) {
+            preCacheThread.interrupt();
+            preCacheThread = null;
+        }
+    }
+
+    // 获取即将播放的下一首歌曲
+    private SongItem getNextSongToPreCache() {
+        if (playlist == null || playlist.isEmpty()) return null;
+        int nextIdx = (currentIndex + 1) % playlist.size();
+        if (nextIdx >= 0 && nextIdx < playlist.size()) {
+            return playlist.get(nextIdx);
+        }
+        return null;
+    }
+
+    // 触发下一首歌曲的静默后台预缓冲
+    private synchronized void triggerPreCacheNext() {
+        final SongItem nextSong = getNextSongToPreCache();
+        if (nextSong == null) return;
+
+        // 如果下一首本地已经有有效缓存，无需预下载
+        if (CacheManager.isSongCached(this, nextSong.id)) return;
+
+        cancelPreCacheTask();
+        cancelPreCache = false;
+
+        preCacheThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // 启动前让出 1 秒 CPU 和网络通道，确保当前播放完全稳定
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    return;
+                }
+                if (cancelPreCache) return;
+
+                File tmpFile = CacheManager.getTempFile(MusicService.this, nextSong.id);
+                File targetFile = CacheManager.getSongFile(MusicService.this, nextSong.id);
+                if (tmpFile.exists()) tmpFile.delete();
+
+                boolean ok = downloadPreCachePipeline(nextSong.streamUrl, tmpFile, 0);
+                if (ok && !cancelPreCache && CacheManager.isValidAudioFile(tmpFile)) {
+                    if (tmpFile.renameTo(targetFile)) {
+                        targetFile.setLastModified(System.currentTimeMillis());
+
+                        SharedPreferences sp = getSharedPreferences("subsonic_cfg", MODE_PRIVATE);
+                        int maxMb = 500;
+                        try {
+                            maxMb = Integer.parseInt(sp.getString("cache_size_mb", "500"));
+                        } catch (Exception ignored) {}
+                        CacheManager.trimCache(MusicService.this, maxMb * 1024L * 1024L, nextSong.id);
+                    }
+                } else {
+                    if (tmpFile.exists()) tmpFile.delete();
+                }
+            }
+        });
+        preCacheThread.setPriority(Thread.MIN_PRIORITY); // 最低优先级线程，保证前台绝对流畅
+        preCacheThread.start();
+    }
+
+    // 预缓冲下载流水线：具备 302 重定向跟随与 JSON 提取
+    private boolean downloadPreCachePipeline(String targetUrl, File destFile, int depth) {
+        if (depth > 6 || cancelPreCache) return false;
+
+        HttpURLConnection conn = null;
+        InputStream is = null;
+        FileOutputStream fos = null;
+
+        try {
+            URL url = new URL(targetUrl);
+            conn = (HttpURLConnection) url.openConnection();
+            preCacheConn = conn;
+            conn.setInstanceFollowRedirects(false);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-cn) AppleWebKit/534.30");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(20000);
+
+            if (conn instanceof HttpsURLConnection) {
+                ((HttpsURLConnection) conn).setSSLSocketFactory(new TLSSocketFactory());
+            }
+
+            conn.connect();
+            int code = conn.getResponseCode();
+
+            if (code == 301 || code == 302 || code == 303 || code == 307) {
+                String location = conn.getHeaderField("Location");
+                conn.disconnect();
+                if (location != null && location.length() > 0) {
+                    URL redirectUrl = new URL(url, location);
+                    return downloadPreCachePipeline(redirectUrl.toString(), destFile, depth + 1);
+                }
+                return false;
+            }
+
+            if (code != 200 && code != 206) return false;
+
+            is = conn.getInputStream();
+            byte[] previewBuf = new byte[2048];
+            int previewRead = is.read(previewBuf);
+            if (previewRead <= 0) return false;
+
+            String previewStr = new String(previewBuf, 0, previewRead, "UTF-8").trim();
+            if (previewStr.startsWith("{") || previewStr.startsWith("[")) {
+                StringBuilder sb = new StringBuilder(previewStr);
+                byte[] temp = new byte[4096];
+                int l;
+                while ((l = is.read(temp)) != -1) {
+                    sb.append(new String(temp, 0, l, "UTF-8"));
+                }
+                conn.disconnect();
+                JSONObject root = new JSONObject(sb.toString());
+                String directUrl = findAudioUrlInPreCacheJson(root);
+                if (directUrl != null) {
+                    return downloadPreCachePipeline(directUrl, destFile, depth + 1);
+                }
+                return false;
+            }
+
+            if (previewStr.startsWith("<?xml") || previewStr.startsWith("<!DOCTYPE") || previewStr.startsWith("<html")) {
+                return false;
+            }
+
+            fos = new FileOutputStream(destFile);
+            fos.write(previewBuf, 0, previewRead);
+            byte[] buf = new byte[8192];
+            int r;
+            while ((r = is.read(buf)) != -1) {
+                if (cancelPreCache) return false;
+                fos.write(buf, 0, r);
+            }
+            fos.flush();
+            return true;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            try { if (fos != null) fos.close(); } catch (Exception ignored) {}
+            try { if (is != null) is.close(); } catch (Exception ignored) {}
+            if (conn != null) conn.disconnect();
+            if (preCacheConn == conn) preCacheConn = null;
+        }
+    }
+
+    private String findAudioUrlInPreCacheJson(Object json) {
+        if (json instanceof JSONObject) {
+            JSONObject obj = (JSONObject) json;
+            String[] targetKeys = new String[]{"url", "streamUrl", "playUrl", "link", "src", "audioUrl", "musicUrl", "data"};
+            for (String k : targetKeys) {
+                Object val = obj.opt(k);
+                if (val instanceof String) {
+                    String strVal = (String) val;
+                    if (strVal.startsWith("http://") || strVal.startsWith("https://")) {
+                        return strVal;
+                    }
+                }
+            }
+            Iterator<?> it = obj.keys();
+            while (it.hasNext()) {
+                String k = (String) it.next();
+                String found = findAudioUrlInPreCacheJson(obj.opt(k));
+                if (found != null) return found;
+            }
+        } else if (json instanceof JSONArray) {
+            JSONArray arr = (JSONArray) json;
+            for (int i = 0; i < arr.length(); i++) {
+                String found = findAudioUrlInPreCacheJson(arr.opt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     private synchronized void playCurrent(boolean isRetry) {
         if (!isRetry) {
             retryCount = 0;
         }
         isPlaybackStarted = false;
         stopCurrentProxy();
+        cancelPreCacheTask(); // 立即掐断旧的预缓冲任务，带宽 100% 专供新曲
 
         mainHandler.removeCallbacks(timeoutRunnable);
         mainHandler.postDelayed(timeoutRunnable, getTimeoutSeconds() * 1000L);
@@ -309,16 +509,19 @@ public class MusicService extends Service {
 
         recreateMediaPlayer();
 
+        // 1. 如果当前歌曲已被预缓冲（或已缓存），直接本地秒开，并立即启动下一首的预缓冲！
         if (CacheManager.isSongCached(this, song.id)) {
             File cached = CacheManager.getSongFile(this, song.id);
             if (startPlayFile(cached)) {
                 isBuffering = false;
                 bufferPercent = 100;
                 broadcastStatus();
+                triggerPreCacheNext(); // 本地秒开出声后，立刻预缓冲下一首！
                 return;
             }
         }
 
+        // 2. 当前歌曲未缓存：启动实时流式代理边下边播
         isBuffering = true;
         bufferPercent = 0;
         broadcastStatus();
@@ -344,6 +547,8 @@ public class MusicService extends Service {
                             isBuffering = false;
                             bufferPercent = 100;
                             broadcastStatus();
+                            // 当前歌曲全部下载完毕，网络带宽空闲，立刻预缓冲下一首！
+                            triggerPreCacheNext();
                         }
                     });
                 }
@@ -506,6 +711,7 @@ public class MusicService extends Service {
         super.onDestroy();
         mainHandler.removeCallbacks(timeoutRunnable);
         mainHandler.removeCallbacksAndMessages(null);
+        cancelPreCacheTask();
         stopCurrentProxy();
         recreateMediaPlayer();
     }
