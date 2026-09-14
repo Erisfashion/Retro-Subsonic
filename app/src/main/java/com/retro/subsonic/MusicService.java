@@ -90,7 +90,7 @@ public class MusicService extends Service {
 
     private boolean isBuffering = false;
     private int bufferPercent = 0;
-    private boolean isPlaybackStarted = false;
+    private boolean isPlaybackStarted = false; // 严格记录播放就绪状态
     private int retryCount = 0;
     private boolean isRetrying = false;
 
@@ -164,6 +164,7 @@ public class MusicService extends Service {
     }
 
     private synchronized void recreateMediaPlayer() {
+        isPlaybackStarted = false;
         if (activeFis != null) {
             try { activeFis.close(); } catch (Throwable ignored) {}
             activeFis = null;
@@ -188,7 +189,7 @@ public class MusicService extends Service {
             @Override
             public void onPrepared(MediaPlayer mp) {
                 mainHandler.removeCallbacks(timeoutRunnable);
-                isPlaybackStarted = true;
+                isPlaybackStarted = true; // 只有执行到这里，播放器才真正进入 PREPARED/STARTED 状态
                 retryCount = 0;
                 isRetrying = false;
                 isBuffering = false;
@@ -211,9 +212,13 @@ public class MusicService extends Service {
         mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
             @Override
             public boolean onError(MediaPlayer mp, int what, int extra) {
+                // 核心拦截：-38 为 INVALID_OPERATION，直接忽略，绝不触发切歌死循环！
+                if (what == -38 || extra == -38) {
+                    return true;
+                }
                 isBuffering = false;
                 if (!isPlaybackStarted) {
-                    triggerRetry("音频文件解码错误 (code:" + what + ")");
+                    triggerRetry("播放器报错 (what:" + what + ", extra:" + extra + ")");
                 }
                 return true;
             }
@@ -231,12 +236,14 @@ public class MusicService extends Service {
                 }
                 playCurrent(false);
             } else if (ACTION_TOGGLE.equals(act)) {
-                if (mediaPlayer != null) {
-                    if (mediaPlayer.isPlaying()) {
-                        mediaPlayer.pause();
-                    } else {
-                        mediaPlayer.start();
-                    }
+                if (mediaPlayer != null && isPlaybackStarted) {
+                    try {
+                        if (mediaPlayer.isPlaying()) {
+                            mediaPlayer.pause();
+                        } else {
+                            mediaPlayer.start();
+                        }
+                    } catch (Throwable ignored) {}
                 }
                 updateNotification();
                 broadcastStatus();
@@ -246,8 +253,10 @@ public class MusicService extends Service {
                 playPrev();
             } else if (ACTION_SEEK.equals(act)) {
                 int pos = intent.getIntExtra("position", 0);
-                if (mediaPlayer != null) {
-                    mediaPlayer.seekTo(pos);
+                if (mediaPlayer != null && isPlaybackStarted) {
+                    try {
+                        mediaPlayer.seekTo(pos);
+                    } catch (Throwable ignored) {}
                 }
             } else if (ACTION_CYCLE_MODE.equals(act)) {
                 currentMode = (currentMode + 1) % 3;
@@ -329,7 +338,7 @@ public class MusicService extends Service {
 
         recreateMediaPlayer();
 
-        // 1. 如果已缓存真实音频，直接从本地文件秒开
+        // 1. 如果已有有效缓存，直接秒开
         if (CacheManager.isSongCached(this, song.id)) {
             File cached = CacheManager.getSongFile(this, song.id);
             if (startPlayFile(cached)) {
@@ -339,7 +348,7 @@ public class MusicService extends Service {
             }
         }
 
-        // 2. 未缓存：进入智能嗅探、重定向追踪与下载引擎
+        // 2. 未缓存：进入下载与智能穿透链路
         isBuffering = true;
         bufferPercent = 0;
         broadcastStatus();
@@ -391,7 +400,6 @@ public class MusicService extends Service {
         downloadThread.start();
     }
 
-    // 核心：全自动穿透 JSON 直链、追逐 302 重定向并拦截 XML 报错
     private String fetchAndResolveAudioStream(String targetUrl, File destFile, int depth) {
         if (depth > 6 || cancelDownload) return "重定向过多或已取消";
 
@@ -402,7 +410,7 @@ public class MusicService extends Service {
         try {
             URL url = new URL(targetUrl);
             conn = (HttpURLConnection) url.openConnection();
-            conn.setInstanceFollowRedirects(false); // 手动跟踪，兼容跨协议 HTTP -> HTTPS 跳转
+            conn.setInstanceFollowRedirects(false);
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-cn) AppleWebKit/534.30");
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(15000);
@@ -410,12 +418,10 @@ public class MusicService extends Service {
 
             int code = conn.getResponseCode();
 
-            // 1. 处理 301/302/307 重定向跳转到 CDN
             if (code == 301 || code == 302 || code == 303 || code == 307) {
                 String location = conn.getHeaderField("Location");
                 conn.disconnect();
                 if (location != null && location.length() > 0) {
-                    // 支持相对路径转绝对路径
                     URL redirectUrl = new URL(url, location);
                     return fetchAndResolveAudioStream(redirectUrl.toString(), destFile, depth + 1);
                 }
@@ -429,14 +435,12 @@ public class MusicService extends Service {
             int totalLength = conn.getContentLength();
             is = conn.getInputStream();
 
-            // 2. 嗅探前 2048 字节内容，研判是真实音频还是 JSON 链接、XML 报错
             byte[] previewBuf = new byte[2048];
             int previewRead = is.read(previewBuf);
             if (previewRead <= 0) return "接收到的数据为空";
 
             String previewStr = new String(previewBuf, 0, previewRead, "UTF-8").trim();
 
-            // 情况 A：服务器返回了 JSON 数据！
             if (previewStr.startsWith("{") || previewStr.startsWith("[")) {
                 StringBuilder sb = new StringBuilder(previewStr);
                 byte[] temp = new byte[4096];
@@ -448,17 +452,15 @@ public class MusicService extends Service {
 
                 try {
                     JSONObject root = new JSONObject(jsonText);
-                    // 检查是否为 Subsonic 标准失败响应
                     JSONObject sub = root.optJSONObject("subsonic-response");
                     if (sub != null && "failed".equals(sub.optString("status"))) {
                         JSONObject err = sub.optJSONObject("error");
                         return "服务端拒绝: " + (err != null ? err.optString("message") : "认证或参数错误");
                     }
 
-                    // 检索 JSON 中嵌套的真实音频播放直链
                     String directUrl = findAudioUrlInJson(root);
                     if (directUrl != null) {
-                        showToastOnMain("成功解析出音频播放直链，正在缓冲...");
+                        showToastOnMain("成功解析出音频直链，正在缓冲...");
                         conn.disconnect();
                         return fetchAndResolveAudioStream(directUrl, destFile, depth + 1);
                     }
@@ -468,7 +470,6 @@ public class MusicService extends Service {
                 }
             }
 
-            // 情况 B：服务器返回了 XML 报错文本！
             if (previewStr.startsWith("<?xml") || previewStr.contains("<subsonic-response")) {
                 Matcher m = Pattern.compile("message=\"([^\"]+)\"").matcher(previewStr);
                 if (m.find()) {
@@ -477,12 +478,10 @@ public class MusicService extends Service {
                 return "服务端返回了 XML 错误";
             }
 
-            // 情况 C：服务端返回了 HTML 错误网页！
             if (previewStr.startsWith("<!DOCTYPE") || previewStr.startsWith("<html")) {
                 return "服务端返回了网页(可能触发防盗链)";
             }
 
-            // 情况 D：确认是真实的音频流！流式写入本地文件
             fos = new FileOutputStream(destFile);
             fos.write(previewBuf, 0, previewRead);
             long downloaded = previewRead;
@@ -549,12 +548,14 @@ public class MusicService extends Service {
         try {
             if (activeFis != null) {
                 try { activeFis.close(); } catch (Throwable ignored) {}
+                activeFis = null;
             }
             activeFis = new FileInputStream(file);
             mediaPlayer.reset();
-            mediaPlayer.setDataSource(activeFis.getFD());
+            // 传入精准 offset 和 length，Stagefright 底层最稳妥
+            mediaPlayer.setDataSource(activeFis.getFD(), 0, file.length());
             mediaPlayer.prepareAsync();
-            broadcastStatus();
+            // 绝不在此处调用 broadcastStatus()，等待异步 prepare 成功后触发 onPrepared
             return true;
         } catch (Exception e) {
             triggerRetry("本地音频装载失败");
@@ -589,7 +590,13 @@ public class MusicService extends Service {
     private void updateNotification() {
         if (currentIndex < 0 || currentIndex >= playlist.size()) return;
         SongItem song = playlist.get(currentIndex);
-        boolean isPlaying = mediaPlayer != null && mediaPlayer.isPlaying();
+        
+        boolean isPlaying = false;
+        if (isPlaybackStarted && mediaPlayer != null) {
+            try {
+                isPlaying = mediaPlayer.isPlaying();
+            } catch (Throwable ignored) {}
+        }
 
         Intent openAppIntent = new Intent(this, MainActivity.class);
         PendingIntent piOpen = PendingIntent.getActivity(this, 0, openAppIntent, PendingIntent.FLAG_UPDATE_CURRENT);
@@ -621,7 +628,8 @@ public class MusicService extends Service {
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                if (mediaPlayer != null && mediaPlayer.isPlaying()) {
+                // 只有处于就绪播放状态，才广播当前进度，绝对避免在 IDLE/PREPARING 状态触碰 MediaPlayer
+                if (isPlaybackStarted && mediaPlayer != null) {
                     broadcastStatus();
                 }
                 mainHandler.postDelayed(this, 1000);
@@ -629,6 +637,7 @@ public class MusicService extends Service {
         }, 1000);
     }
 
+    // 核心安全广播方法：杜绝 -38 错误
     private void broadcastStatus() {
         Intent b = new Intent(BROADCAST_STATUS);
         b.putExtra("mode", currentMode);
@@ -637,19 +646,31 @@ public class MusicService extends Service {
         b.putExtra("retryCount", retryCount);
         b.putExtra("maxRetries", getMaxRetryCount());
 
-        if (mediaPlayer != null && currentIndex >= 0 && currentIndex < playlist.size()) {
+        boolean isPlaying = false;
+        int position = 0;
+        int duration = 0;
+
+        // 核心保护：只有在 onPrepared 之后（isPlaybackStarted == true），才能合法调用 MediaPlayer 的方法！
+        if (isPlaybackStarted && mediaPlayer != null) {
+            try {
+                isPlaying = mediaPlayer.isPlaying();
+                position = mediaPlayer.getCurrentPosition();
+                duration = mediaPlayer.getDuration();
+            } catch (Throwable ignored) {}
+        }
+
+        b.putExtra("isPlaying", isPlaying);
+        b.putExtra("position", position);
+        b.putExtra("duration", duration);
+
+        if (currentIndex >= 0 && currentIndex < playlist.size()) {
             SongItem song = playlist.get(currentIndex);
             b.putExtra("songId", song.id);
             b.putExtra("coverArtId", song.coverArtId);
             b.putExtra("title", song.title);
             b.putExtra("artist", song.artist);
             b.putExtra("quality", song.quality);
-            b.putExtra("isPlaying", mediaPlayer.isPlaying());
-            b.putExtra("position", mediaPlayer.getCurrentPosition());
-            b.putExtra("duration", mediaPlayer.getDuration());
             b.putExtra("currentIndex", currentIndex);
-        } else {
-            b.putExtra("isPlaying", false);
         }
         sendBroadcast(b);
     }
