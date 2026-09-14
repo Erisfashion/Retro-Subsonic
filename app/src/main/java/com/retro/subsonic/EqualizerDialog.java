@@ -103,8 +103,8 @@ public class EqualizerDialog {
     }
 
     private void setupVirtAndBass() {
-        cbVirt.setChecked(aem.isVirtualizerEnabled());
-        int virtStrength = aem.getVirtualizerStrength() / 10;
+        cbVirt.setChecked(aem.isVirtualizerEnabled(context));
+        int virtStrength = aem.getVirtualizerStrength(context) / 10;
         sbVirt.setProgress(virtStrength);
         tvVirtVal.setText(virtStrength + "%");
 
@@ -126,6 +126,31 @@ public class EqualizerDialog {
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
+
+        cbBass.setChecked(aem.isBassBoostEnabled(context));
+        int bassStrength = aem.getBassStrength(context) / 10;
+        sbBass.setProgress(bassStrength);
+        tvBassVal.setText(bassStrength + "%");
+
+        cbBass.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                aem.setBassBoost(isChecked, sbBass.getProgress() * 10, context);
+            }
+        });
+
+        sbBass.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                tvBassVal.setText(progress + "%");
+                if (fromUser) {
+                    aem.setBassBoost(cbBass.isChecked(), progress * 10, context);
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+    }
 
         cbBass.setChecked(aem.isBassBoostEnabled());
         int bassStrength = aem.getBassStrength() / 10;
