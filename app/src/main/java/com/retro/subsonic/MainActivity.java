@@ -12,6 +12,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -35,6 +36,7 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -46,13 +48,14 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
 public class MainActivity extends Activity {
 
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
-    private EditText etTimeoutSec, etRetryCount;
+    private EditText etTimeoutSec, etRetryCount, etDownloadPath;
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
     private Button btnPrev, btnPlayPause, btnNext, btnMode, btnToggleQueue, btnCloseQueue, btnOpenDetail, btnOpenEq;
     private Button btnExitApp, btnDetailExitApp, btnBottomFav, btnDetailFav, btnDetailDownload;
@@ -217,8 +220,9 @@ public class MainActivity extends Activity {
         setupListeners();
         setupClickInterceptors();
 
-        // 默认进入首页显示“我的歌单”
+        // 默认进入首页显示我的歌单，并自动静默同步云端收藏夹
         fetchPlaylists();
+        syncServerFavoritesQuietly();
     }
 
     private void loadFavSet() {
@@ -234,17 +238,29 @@ public class MainActivity extends Activity {
         return songId != null && favSongIds.contains(songId);
     }
 
-    private void toggleFav(String songId) {
+    // 与服务端全双工同步收藏状态 (star.view / unstar.view)
+    private void serverStarSong(final String songId, final boolean toStar) {
         if (songId == null || songId.length() == 0) return;
-        if (isFav(songId)) {
-            favSongIds.remove(songId);
-            Toast.makeText(this, "已从【我的收藏】移出", Toast.LENGTH_SHORT).show();
-        } else {
+
+        if (toStar) {
             favSongIds.add(songId);
-            Toast.makeText(this, "已添加至【我的收藏】", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "已添加至云端【我的收藏】♥", Toast.LENGTH_SHORT).show();
+        } else {
+            favSongIds.remove(songId);
+            Toast.makeText(this, "已从云端【我的收藏】取消♡", Toast.LENGTH_SHORT).show();
         }
         saveFavSet();
         updateFavButtonState(songId);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String endpoint = toStar ? "star.view" : "unstar.view";
+                    requestApi(endpoint + "?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
+                } catch (Exception ignored) {}
+            }
+        }).start();
     }
 
     private void updateFavButtonState(String currentPlayingSongId) {
@@ -262,6 +278,45 @@ public class MainActivity extends Activity {
         if (btnDetailFav != null) btnDetailFav.setText(symbol);
     }
 
+    // 后台静默抓取云端标星歌曲列表，保证红心标记与 Web 端无缝一致
+    private void syncServerFavoritesQuietly() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String jsonStr = requestApi("getStarred2.view?" + getAuthParams());
+                if (jsonStr == null || !jsonStr.contains("\"song\"")) {
+                    jsonStr = requestApi("getStarred.view?" + getAuthParams());
+                }
+                if (jsonStr == null) return;
+
+                try {
+                    JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                    JSONObject starred = root.optJSONObject("starred2");
+                    if (starred == null) starred = root.optJSONObject("starred");
+                    if (starred != null && starred.has("song")) {
+                        favSongIds.clear();
+                        Object songObj = starred.get("song");
+                        if (songObj instanceof JSONArray) {
+                            JSONArray arr = (JSONArray) songObj;
+                            for (int i = 0; i < arr.length(); i++) {
+                                favSongIds.add(arr.getJSONObject(i).getString("id"));
+                            }
+                        } else if (songObj instanceof JSONObject) {
+                            favSongIds.add(((JSONObject) songObj).getString("id"));
+                        }
+                        saveFavSet();
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                updateFavButtonState(null);
+                            }
+                        });
+                    }
+                } catch (Exception ignored) {}
+            }
+        }).start();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -277,7 +332,6 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
-    // 物理返回键拦截：若详情页展开则收起详情页返回首页；首页不再退出或给普通提示
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
@@ -301,6 +355,7 @@ public class MainActivity extends Activity {
         etCacheSize = (EditText) findViewById(R.id.et_cache_size);
         etTimeoutSec = (EditText) findViewById(R.id.et_timeout_sec);
         etRetryCount = (EditText) findViewById(R.id.et_retry_count);
+        etDownloadPath = (EditText) findViewById(R.id.et_download_path);
 
         btnConnect = (Button) findViewById(R.id.btn_connect);
         btnClearCache = (Button) findViewById(R.id.btn_clear_cache);
@@ -406,6 +461,14 @@ public class MainActivity extends Activity {
         if (layoutDetailControls != null) layoutDetailControls.setOnClickListener(consumeListener);
     }
 
+    private String getDefaultDownloadPath() {
+        try {
+            File musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC);
+            if (musicDir != null) return musicDir.getAbsolutePath();
+        } catch (Throwable ignored) {}
+        return "/sdcard/Music";
+    }
+
     private void loadSavedConfig() {
         etServer.setText(prefs.getString("server", "http://192.168.1.100:4533"));
         etUsername.setText(prefs.getString("user", "admin"));
@@ -413,6 +476,7 @@ public class MainActivity extends Activity {
         etCacheSize.setText(prefs.getString("cache_size_mb", "500"));
         etTimeoutSec.setText(prefs.getString("play_timeout_sec", "20"));
         etRetryCount.setText(prefs.getString("play_retry_count", "3"));
+        etDownloadPath.setText(prefs.getString("download_path", getDefaultDownloadPath()));
     }
 
     private void saveConfig() {
@@ -423,6 +487,7 @@ public class MainActivity extends Activity {
                 .putString("cache_size_mb", etCacheSize.getText().toString().trim())
                 .putString("play_timeout_sec", etTimeoutSec.getText().toString().trim())
                 .putString("play_retry_count", etRetryCount.getText().toString().trim())
+                .putString("download_path", etDownloadPath.getText().toString().trim())
                 .commit();
     }
 
@@ -478,71 +543,66 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 触发下载指定的歌曲（已修正 Java 7 内部类 final 变量限制）
+    private String sanitizeFileName(String name) {
+        return name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+    }
+
+    // 解决 302 错误的核心下载引擎：支持多级跨协议重定向跟随与已有缓存毫秒转存
     private void downloadSongItem(final DisplayEntry entry) {
-        Toast.makeText(this, "开始下载: " + entry.title, Toast.LENGTH_SHORT).show();
+        String customPath = prefs.getString("download_path", getDefaultDownloadPath());
+        final File saveDir = new File(customPath);
+        if (!saveDir.exists()) {
+            saveDir.mkdirs();
+        }
+
+        final String fileName = sanitizeFileName(entry.title + " - " + entry.artist) + ".mp3";
+        final File targetFile = new File(saveDir, fileName);
+
+        Toast.makeText(this, "正在准备下载: " + entry.title, Toast.LENGTH_SHORT).show();
+
         new Thread(new Runnable() {
             @Override
             public void run() {
-                try {
-                    String streamUrl = buildStreamUrl(entry.id);
-                    File tmp = CacheManager.getTempFile(MainActivity.this, entry.id);
-                    File target = CacheManager.getSongFile(MainActivity.this, entry.id);
-                    if (tmp.exists()) tmp.delete();
-
-                    URL url = new URL(streamUrl);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setInstanceFollowRedirects(true);
-                    conn.setConnectTimeout(8000);
-                    conn.setReadTimeout(15000);
-                    conn.connect();
-
-                    final int code = conn.getResponseCode(); // 添加 final
-                    if (code == 200 || code == 206) {
-                        InputStream is = conn.getInputStream();
-                        FileOutputStream fos = new FileOutputStream(tmp);
-                        byte[] buf = new byte[8192];
-                        int r;
-                        while ((r = is.read(buf)) != -1) {
-                            fos.write(buf, 0, r);
-                        }
-                        fos.flush();
-                        fos.close();
-                        is.close();
-
-                        if (CacheManager.isValidAudioFile(tmp)) {
-                            tmp.renameTo(target);
-                            target.setLastModified(System.currentTimeMillis());
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    Toast.makeText(MainActivity.this, "下载完成: " + entry.title, Toast.LENGTH_SHORT).show();
-                                }
-                            });
-                        } else {
-                            tmp.delete();
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    Toast.makeText(MainActivity.this, "下载失败(非有效音频)", Toast.LENGTH_SHORT).show();
-                                }
-                            });
-                        }
-                    } else {
+                // 1. 如果歌曲本地已经有缓冲好的缓存，直接毫秒级极速导出！
+                if (CacheManager.isSongCached(MainActivity.this, entry.id)) {
+                    File cachedFile = CacheManager.getSongFile(MainActivity.this, entry.id);
+                    if (copyFile(cachedFile, targetFile)) {
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
-                                Toast.makeText(MainActivity.this, "下载服务器响应错误: " + code, Toast.LENGTH_SHORT).show();
+                                Toast.makeText(MainActivity.this, "已保存至: " + targetFile.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                            }
+                        });
+                        return;
+                    }
+                }
+
+                // 2. 本地无完整缓存，启动多级 301/302 重定向跟随下载
+                try {
+                    String initialUrl = buildStreamUrl(entry.id);
+                    boolean ok = downloadWithRedirects(initialUrl, targetFile, 0);
+                    if (ok && CacheManager.isValidAudioFile(targetFile)) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "下载成功！已保存至:\n" + targetFile.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    } else {
+                        targetFile.delete();
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "下载失败: 校验非有效音频", Toast.LENGTH_SHORT).show();
                             }
                         });
                     }
-                    conn.disconnect();
-                } catch (Exception e) {
-                    final String errMsg = e.getMessage(); // 提取为 final 变量传递
+                } catch (final Exception e) {
+                    final String err = e.getMessage();
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            Toast.makeText(MainActivity.this, "下载异常: " + errMsg, Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "下载异常: " + err, Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
@@ -550,16 +610,135 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 弹出长按歌曲菜单（支持 收藏/已收藏、添加到歌单、移出歌单、下载）
+    private boolean copyFile(File src, File dest) {
+        FileInputStream fis = null;
+        FileOutputStream fos = null;
+        try {
+            fis = new FileInputStream(src);
+            fos = new FileOutputStream(dest);
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = fis.read(buf)) != -1) {
+                fos.write(buf, 0, len);
+            }
+            fos.flush();
+            return true;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            try { if (fis != null) fis.close(); } catch (Exception ignored) {}
+            try { if (fos != null) fos.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    private boolean downloadWithRedirects(String targetUrl, File destFile, int depth) throws Exception {
+        if (depth > 6) throw new Exception("重定向层级过多");
+
+        URL url = new URL(targetUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setInstanceFollowRedirects(false); // 手动跟随，彻底解决 HTTP -> HTTPS 跨协议不跳转的 Java 原生缺陷
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-cn) AppleWebKit/534.30");
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(20000);
+        conn.connect();
+
+        int code = conn.getResponseCode();
+
+        // 处理 301 / 302 / 303 / 307 重定向跳转至第三方 CDN
+        if (code == 301 || code == 302 || code == 303 || code == 307) {
+            String location = conn.getHeaderField("Location");
+            conn.disconnect();
+            if (location != null && location.length() > 0) {
+                URL redirectUrl = new URL(url, location);
+                return downloadWithRedirects(redirectUrl.toString(), destFile, depth + 1);
+            }
+            throw new Exception("重定向地址为空 (HTTP " + code + ")");
+        }
+
+        if (code == 200 || code == 206) {
+            InputStream is = conn.getInputStream();
+            byte[] preview = new byte[2048];
+            int r = is.read(preview);
+            if (r <= 0) {
+                conn.disconnect();
+                throw new Exception("服务器返回了空数据");
+            }
+
+            String previewStr = new String(preview, 0, r, "UTF-8").trim();
+            // 如果服务端返回了包含下载直链的 JSON 结构，提取出真实 URL 继续追踪
+            if (previewStr.startsWith("{") || previewStr.startsWith("[")) {
+                StringBuilder sb = new StringBuilder(previewStr);
+                byte[] temp = new byte[4096];
+                int l;
+                while ((l = is.read(temp)) != -1) {
+                    sb.append(new String(temp, 0, l, "UTF-8"));
+                }
+                conn.disconnect();
+                JSONObject root = new JSONObject(sb.toString());
+                String directUrl = findAudioUrlInJson(root);
+                if (directUrl != null) {
+                    return downloadWithRedirects(directUrl, destFile, depth + 1);
+                }
+                throw new Exception("返回的 JSON 中未找到下载链接");
+            }
+
+            FileOutputStream fos = new FileOutputStream(destFile);
+            fos.write(preview, 0, r);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = is.read(buf)) != -1) {
+                fos.write(buf, 0, n);
+            }
+            fos.flush();
+            fos.close();
+            is.close();
+            conn.disconnect();
+            return true;
+        } else {
+            conn.disconnect();
+            throw new Exception("服务器响应异常 (HTTP " + code + ")");
+        }
+    }
+
+    private String findAudioUrlInJson(Object json) {
+        if (json instanceof JSONObject) {
+            JSONObject obj = (JSONObject) json;
+            String[] targetKeys = new String[]{"url", "streamUrl", "playUrl", "link", "src", "audioUrl", "musicUrl", "data"};
+            for (String k : targetKeys) {
+                Object val = obj.opt(k);
+                if (val instanceof String) {
+                    String strVal = (String) val;
+                    if (strVal.startsWith("http://") || strVal.startsWith("https://")) {
+                        return strVal;
+                    }
+                }
+            }
+            Iterator<?> it = obj.keys();
+            while (it.hasNext()) {
+                String k = (String) it.next();
+                String found = findAudioUrlInJson(obj.opt(k));
+                if (found != null) return found;
+            }
+        } else if (json instanceof JSONArray) {
+            JSONArray arr = (JSONArray) json;
+            for (int i = 0; i < arr.length(); i++) {
+                String found = findAudioUrlInJson(arr.opt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    // 弹出歌曲长按菜单
     private void showSongLongClickMenu(final DisplayEntry entry, final int position) {
         if (!entry.isSong) return;
         final boolean fav = isFav(entry.id);
 
         String[] options = new String[]{
-                fav ? "★ 已收藏（点此取消收藏）" : "☆ 收藏歌曲",
+                fav ? "★ 已收藏（点此从云端取消）" : "☆ 收藏歌曲 (同步云端)",
                 "📁 添加到歌单",
                 "🗑 移出歌单/移除",
-                "⬇ 下载歌曲"
+                "⬇ 下载歌曲到本地"
         };
 
         new AlertDialog.Builder(this)
@@ -568,7 +747,7 @@ public class MainActivity extends Activity {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         if (which == 0) {
-                            toggleFav(entry.id);
+                            serverStarSong(entry.id, !fav);
                         } else if (which == 1) {
                             showAddToPlaylistDialog(entry);
                         } else if (which == 2) {
@@ -582,14 +761,14 @@ public class MainActivity extends Activity {
     }
 
     private void showAddToPlaylistDialog(final DisplayEntry entry) {
-        final String[] targets = new String[]{"我的收藏", "默认精选歌单", "夜间轻音乐", "车载必听"};
+        final String[] targets = new String[]{"我的收藏 (云端)", "精选歌单", "车载音乐"};
         new AlertDialog.Builder(this)
                 .setTitle("选择要加入的歌单")
                 .setItems(targets, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         if (which == 0) {
-                            if (!isFav(entry.id)) toggleFav(entry.id);
+                            if (!isFav(entry.id)) serverStarSong(entry.id, true);
                         }
                         Toast.makeText(MainActivity.this, "已加入【" + targets[which] + "】", Toast.LENGTH_SHORT).show();
                     }
@@ -623,9 +802,10 @@ public class MainActivity extends Activity {
                 ArrayList<MusicService.SongItem> q = MusicService.getPlaylist();
                 int idx = MusicService.getCurrentIndex();
                 if (q != null && idx >= 0 && idx < q.size()) {
-                    toggleFav(q.get(idx).id);
+                    String sid = q.get(idx).id;
+                    serverStarSong(sid, !isFav(sid));
                 } else {
-                    Toast.makeText(MainActivity.this, "当前无正在播放的歌曲可收藏", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "当前无播放中的歌曲可收藏", Toast.LENGTH_SHORT).show();
                 }
             }
         };
@@ -671,6 +851,7 @@ public class MainActivity extends Activity {
                 saveConfig();
                 layoutConfigPanel.setVisibility(View.GONE);
                 fetchPlaylists();
+                syncServerFavoritesQuietly();
             }
         });
 
@@ -791,7 +972,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 列表短按点击
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -817,7 +997,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 关键更新：长按所有歌单/列表/搜索结果列表的歌曲项弹出操作菜单
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1166,11 +1345,11 @@ public class MainActivity extends Activity {
                         currentItems.clear();
                         listData.clear();
 
-                        // 默认内置展示“我的收藏”虚拟歌单入口
-                        currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "本地收藏夹", "已收藏夹", null, "本地歌单", false));
+                        // 顶置“我的收藏”云端同步歌单入口
+                        currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "云端标星收藏夹", null, "云端歌单", false));
                         Map<String, String> favRow = new HashMap<String, String>();
                         favRow.put("title", "♥  我的收藏");
-                        favRow.put("subtitle", "已收藏的音乐合集 (" + favSongIds.size() + "首)");
+                        favRow.put("subtitle", "已同步服务器标星的歌曲 (" + favSongIds.size() + "首)");
                         listData.add(favRow);
 
                         if (jsonStr != null) {
@@ -1208,22 +1387,10 @@ public class MainActivity extends Activity {
         listData.add(row);
     }
 
+    // 打开歌单详情：如果是“我的收藏”，直接从服务器拉取已标星列表
     private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
         if ("fav_entry".equals(playlistId)) {
-            // 本地收藏夹加载
-            currentItems.clear();
-            listData.clear();
-            btnBack.setVisibility(View.VISIBLE);
-            tvListTitle.setText("歌单: 我的收藏");
-            for (String fid : favSongIds) {
-                DisplayEntry entry = new DisplayEntry(fid, "收藏歌曲 ID:" + fid, "本地收藏", "", null, "已收藏", true);
-                currentItems.add(entry);
-                Map<String, String> row = new HashMap<String, String>();
-                row.put("title", "♥  " + entry.title);
-                row.put("subtitle", "本地收藏");
-                listData.add(row);
-            }
-            adapter.notifyDataSetChanged();
+            fetchServerFavoriteSongs();
             return;
         }
 
@@ -1257,6 +1424,68 @@ public class MainActivity extends Activity {
                             adapter.notifyDataSetChanged();
                         } catch (Exception e) {
                             Toast.makeText(MainActivity.this, "加载歌单失败", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    // 从 Subsonic 云端直接拉取真实的“我的收藏”列表数据
+    private void fetchServerFavoriteSongs() {
+        btnBack.setVisibility(View.VISIBLE);
+        tvListTitle.setText("歌单: 我的收藏 (云端同步)");
+        currentItems.clear();
+        listData.clear();
+        adapter.notifyDataSetChanged();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String jsonStr = requestApi("getStarred2.view?" + getAuthParams());
+                if (jsonStr == null || !jsonStr.contains("\"song\"")) {
+                    jsonStr = requestApi("getStarred.view?" + getAuthParams());
+                }
+                final String finalJson = jsonStr;
+
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (finalJson == null) {
+                            Toast.makeText(MainActivity.this, "连接失败，无法获取云端收藏", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        try {
+                            JSONObject root = new JSONObject(finalJson).getJSONObject("subsonic-response");
+                            JSONObject starred = root.optJSONObject("starred2");
+                            if (starred == null) starred = root.optJSONObject("starred");
+                            currentItems.clear();
+                            listData.clear();
+                            favSongIds.clear();
+
+                            if (starred != null && starred.has("song")) {
+                                Object songObj = starred.get("song");
+                                if (songObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) songObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        JSONObject s = arr.getJSONObject(i);
+                                        addSongRow(s);
+                                        favSongIds.add(s.getString("id"));
+                                    }
+                                } else if (songObj instanceof JSONObject) {
+                                    JSONObject s = (JSONObject) songObj;
+                                    addSongRow(s);
+                                    favSongIds.add(s.getString("id"));
+                                }
+                            }
+                            saveFavSet();
+                            adapter.notifyDataSetChanged();
+                            updateFavButtonState(null);
+                            if (currentItems.isEmpty()) {
+                                Toast.makeText(MainActivity.this, "云端收藏夹为空", Toast.LENGTH_SHORT).show();
+                            }
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "解析云端收藏列表失败", Toast.LENGTH_SHORT).show();
                         }
                     }
                 });
