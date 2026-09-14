@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
     private EditText etTimeoutSec, etRetryCount;
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
     private Button btnPrev, btnPlayPause, btnNext, btnMode, btnToggleQueue, btnCloseQueue, btnOpenDetail, btnOpenEq;
-    private Button btnExitApp;
+    private Button btnExitApp, btnDetailExitApp;
     private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime;
     private ListView listView, lvQueue;
@@ -60,6 +60,7 @@ public class MainActivity extends Activity {
     private Button btnCloseDetail, btnDetailPrev, btnDetailPlayPause, btnDetailNext, btnDetailMode, btnDetailEq;
     private Button btnDetailKeepScreen, btnDetailQueue;
     private ImageView ivDetailCover;
+    private LinearLayout layoutCoverContainer, layoutDetailSeekBox, layoutDetailControls;
     private TextView tvDetailTitle, tvDetailArtist, tvDetailQuality, tvDetailTime;
     private SeekBar detailSeekBar;
     private LinearLayout layoutDetailLyricsView, layoutDetailQueueView;
@@ -263,6 +264,7 @@ public class MainActivity extends Activity {
         lvQueue = (ListView) findViewById(R.id.lv_queue);
 
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
+        btnDetailExitApp = (Button) findViewById(R.id.btn_detail_exit_app);
         btnDetailPrev = (Button) findViewById(R.id.btn_detail_prev);
         btnDetailPlayPause = (Button) findViewById(R.id.btn_detail_play_pause);
         btnDetailNext = (Button) findViewById(R.id.btn_detail_next);
@@ -272,6 +274,10 @@ public class MainActivity extends Activity {
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
 
         ivDetailCover = (ImageView) findViewById(R.id.iv_detail_cover);
+        layoutCoverContainer = (LinearLayout) findViewById(R.id.layout_cover_container);
+        layoutDetailSeekBox = (LinearLayout) findViewById(R.id.layout_detail_seek_box);
+        layoutDetailControls = (LinearLayout) findViewById(R.id.layout_detail_controls);
+
         tvDetailTitle = (TextView) findViewById(R.id.tv_detail_title);
         tvDetailArtist = (TextView) findViewById(R.id.tv_detail_artist);
         tvDetailQuality = (TextView) findViewById(R.id.tv_detail_quality);
@@ -322,6 +328,8 @@ public class MainActivity extends Activity {
         layoutQueuePanel.setOnClickListener(consumeListener);
         layoutConfigPanel.setOnClickListener(consumeListener);
         layoutBottomPlayer.setOnClickListener(consumeListener);
+        if (layoutDetailSeekBox != null) layoutDetailSeekBox.setOnClickListener(consumeListener);
+        if (layoutDetailControls != null) layoutDetailControls.setOnClickListener(consumeListener);
     }
 
     private void loadSavedConfig() {
@@ -363,30 +371,65 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void performAppExit() {
+        new AlertDialog.Builder(MainActivity.this)
+                .setTitle("关闭软件")
+                .setMessage("确定要退出并彻底关闭播放器吗？")
+                .setPositiveButton("退出", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        try {
+                            Intent stopIntent = new Intent(MainActivity.this, MusicService.class);
+                            stopIntent.setAction(MusicService.ACTION_STOP);
+                            startService(stopIntent);
+                        } catch (Exception ignored) {}
+                        finish();
+                        System.exit(0);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void toggleDetailQueueView() {
+        if (layoutDetailQueueView.getVisibility() == View.VISIBLE) {
+            layoutDetailQueueView.setVisibility(View.GONE);
+            layoutDetailLyricsView.setVisibility(View.VISIBLE);
+            btnDetailQueue.setText("播放列表");
+        } else {
+            refreshQueueList();
+            layoutDetailLyricsView.setVisibility(View.GONE);
+            layoutDetailQueueView.setVisibility(View.VISIBLE);
+            btnDetailQueue.setText("查看歌词");
+        }
+    }
+
     private void setupListeners() {
-        // 关闭软件按钮
+        // 主界面退出按钮
         btnExitApp.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("关闭软件")
-                        .setMessage("确定要退出并彻底关闭播放器吗？")
-                        .setPositiveButton("退出", new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                try {
-                                    Intent stopIntent = new Intent(MainActivity.this, MusicService.class);
-                                    stopIntent.setAction(MusicService.ACTION_STOP);
-                                    startService(stopIntent);
-                                } catch (Exception ignored) {}
-                                finish();
-                                System.exit(0);
-                            }
-                        })
-                        .setNegativeButton("取消", null)
-                        .show();
+                performAppExit();
             }
         });
+
+        // 详情页退出按钮
+        btnDetailExitApp.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                performAppExit();
+            }
+        });
+
+        // 核心更新：点击封面或左侧空白区域展开/收起播放列表
+        View.OnClickListener toggleQueueClickListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleDetailQueueView();
+            }
+        };
+        ivDetailCover.setOnClickListener(toggleQueueClickListener);
+        layoutCoverContainer.setOnClickListener(toggleQueueClickListener);
 
         btnToggleConfig.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -517,16 +560,7 @@ public class MainActivity extends Activity {
         btnDetailQueue.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (layoutDetailQueueView.getVisibility() == View.VISIBLE) {
-                    layoutDetailQueueView.setVisibility(View.GONE);
-                    layoutDetailLyricsView.setVisibility(View.VISIBLE);
-                    btnDetailQueue.setText("播放列表");
-                } else {
-                    refreshQueueList();
-                    layoutDetailLyricsView.setVisibility(View.GONE);
-                    layoutDetailQueueView.setVisibility(View.VISIBLE);
-                    btnDetailQueue.setText("查看歌词");
-                }
+                toggleDetailQueueView();
             }
         });
 
