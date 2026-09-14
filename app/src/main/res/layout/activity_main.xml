@@ -59,7 +59,7 @@
                     android:paddingRight="10dp"
                     android:layout_marginRight="8dp" />
 
-                <!-- 关闭软件：圆形图标按钮 -->
+                <!-- 首页关闭软件：圆形图标按钮 -->
                 <ImageView
                     android:id="@+id/btn_exit_app"
                     android:layout_width="34dp"
@@ -309,7 +309,7 @@
                 android:layout_marginLeft="6dp" />
         </LinearLayout>
 
-        <!-- 点击顶部搜索图标后展开的搜索栏 -->
+        <!-- 展开的搜索栏 -->
         <LinearLayout
             android:id="@+id/layout_search_bar"
             android:layout_width="match_parent"
@@ -617,7 +617,7 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 顶栏：下载、音效与圆形关闭图标 -->
+        <!-- 顶栏：关闭软件按钮移动到了音效调节右侧 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
@@ -640,17 +640,6 @@
                     android:textSize="12sp"
                     android:paddingLeft="8dp"
                     android:paddingRight="8dp" />
-
-                <!-- 详情页关闭软件：圆形图标按钮 -->
-                <ImageView
-                    android:id="@+id/btn_detail_exit_app"
-                    android:layout_width="34dp"
-                    android:layout_height="34dp"
-                    android:background="@drawable/bg_btn_danger_circle"
-                    android:scaleType="center"
-                    android:layout_marginLeft="6dp"
-                    android:clickable="true"
-                    android:focusable="true" />
 
                 <Button
                     android:id="@+id/btn_detail_download"
@@ -675,6 +664,17 @@
                     android:paddingLeft="8dp"
                     android:paddingRight="8dp"
                     android:layout_marginLeft="6dp" />
+
+                <!-- 详情页关闭软件：移至音效调节右侧 -->
+                <ImageView
+                    android:id="@+id/btn_detail_exit_app"
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:background="@drawable/bg_btn_danger_circle"
+                    android:scaleType="center"
+                    android:layout_marginLeft="6dp"
+                    android:clickable="true"
+                    android:focusable="true" />
             </LinearLayout>
 
             <TextView
@@ -788,7 +788,7 @@
                     android:focusable="true"
                     android:visibility="gone" />
 
-                <!-- 歌曲标题、红心收藏与码率选择 -->
+                <!-- 核心：红心收藏移到歌曲名称左侧 -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -796,6 +796,18 @@
                     android:gravity="center_vertical"
                     android:layout_marginTop="4dp">
 
+                    <!-- 红心收藏图标按钮（左侧） -->
+                    <Button
+                        android:id="@+id/btn_detail_fav"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/bg_btn_fav"
+                        android:text="♡"
+                        android:textColor="#ff4081"
+                        android:textSize="18sp"
+                        android:layout_marginRight="6dp" />
+
+                    <!-- 歌曲名称 -->
                     <TextView
                         android:id="@+id/tv_detail_title"
                         android:layout_width="wrap_content"
@@ -807,16 +819,7 @@
                         android:textStyle="bold"
                         android:singleLine="true" />
 
-                    <Button
-                        android:id="@+id/btn_detail_fav"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:background="@drawable/bg_btn_fav"
-                        android:text="♡"
-                        android:textColor="#ff4081"
-                        android:textSize="18sp"
-                        android:layout_marginLeft="6dp" />
-
+                    <!-- 码率选择下拉框 -->
                     <Spinner
                         android:id="@+id/spinner_detail_bitrate"
                         android:layout_width="wrap_content"
