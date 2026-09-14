@@ -69,7 +69,9 @@ public class MainActivity extends Activity {
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
     private EditText etTimeoutSec, etRetryCount, etDownloadPath;
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
-    private Button btnPrev, btnPlayPause, btnNext, btnMode, btnToggleQueue, btnCloseQueue, btnOpenDetail, btnOpenEq;
+    private Button btnMode, btnOpenEq;
+    private ImageView btnPrev, btnPlayPause, btnNext; // 升级为圆形图标组件
+    private Button btnToggleQueue, btnCloseQueue, btnOpenDetail;
     private Button btnExitApp, btnDetailExitApp, btnBottomFav, btnDetailFav, btnDetailDownload;
     private Button btnLyricDec, btnLyricInc;
     private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
@@ -91,7 +93,8 @@ public class MainActivity extends Activity {
     private String currentActivePlaylistName = null;
 
     // 详情页组件
-    private Button btnCloseDetail, btnDetailPrev, btnDetailPlayPause, btnDetailNext, btnDetailMode, btnDetailEq;
+    private Button btnCloseDetail, btnDetailMode, btnDetailEq;
+    private ImageView btnDetailPrev, btnDetailPlayPause, btnDetailNext; // 升级为圆形图标组件
     private Button btnDetailKeepScreen, btnDetailQueue;
     private FrameLayout layoutVinylContainer, flVinylDisc;
     private ImageView ivVinylCircularCover, ivSquareCover;
@@ -174,9 +177,9 @@ public class MainActivity extends Activity {
             if (MusicService.BROADCAST_STATUS.equals(intent.getAction())) {
                 boolean isPlaying = intent.getBooleanExtra("isPlaying", false);
                 isCurrentSongPlaying = isPlaying;
-                String playText = isPlaying ? "暂停" : "播放";
-                btnPlayPause.setText(playText);
-                btnDetailPlayPause.setText(playText);
+
+                // 动态更新现代矢量播放/暂停图标
+                updatePlayPauseIcons(isPlaying);
 
                 updateVinylAnimationState();
 
@@ -251,7 +254,6 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // 全局崩溃兜底，避免系统直接显示“已停止运行”对话框
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
             @Override
             public void uncaughtException(Thread thread, final Throwable ex) {
@@ -274,7 +276,6 @@ public class MainActivity extends Activity {
         });
 
         super.onCreate(savedInstanceState);
-        // 强制开启全局 TLS 1.2 握手，杜绝 CDN 握手失败
         TLSSocketFactory.install();
 
         setContentView(R.layout.activity_main);
@@ -286,17 +287,44 @@ public class MainActivity extends Activity {
         loadFavSet();
         loadLocalPlaylists();
 
-        // 核心时序修复：先初始化视图并完成 HeaderView 挂载，最后再执行 setAdapter
         initViews();
+        setupControlIcons();
         setupVinylAnimation();
         updateCoverDisplayMode();
         loadSavedConfig();
         setupListeners();
         setupClickInterceptors();
 
-        // 默认进入首页显示我的歌单
         fetchPlaylists();
         syncServerFavoritesQuietly();
+    }
+
+    // 初始化所有圆形控制按钮的矢量图景
+    private void setupControlIcons() {
+        int darkIconColor = 0xFF10141A;
+        int lightIconColor = 0xFFE2E8F0;
+
+        // 底栏图标
+        btnPrev.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 18, lightIconColor));
+        btnNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 18, lightIconColor));
+        btnPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 22, darkIconColor));
+
+        // 详情页大尺寸图标
+        btnDetailPrev.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 22, lightIconColor));
+        btnDetailNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 22, lightIconColor));
+        btnDetailPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 28, darkIconColor));
+    }
+
+    // 播放/暂停动态切换
+    private void updatePlayPauseIcons(boolean isPlaying) {
+        int darkIconColor = 0xFF10141A;
+        if (isPlaying) {
+            btnPlayPause.setImageDrawable(MediaIconHelper.createPauseIcon(this, 20, darkIconColor));
+            btnDetailPlayPause.setImageDrawable(MediaIconHelper.createPauseIcon(this, 26, darkIconColor));
+        } else {
+            btnPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 22, darkIconColor));
+            btnDetailPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 28, darkIconColor));
+        }
     }
 
     private void setupPullToRefresh() {
@@ -318,7 +346,6 @@ public class MainActivity extends Activity {
         refreshTextView.setPadding((int) (8 * density), 0, 0, 0);
         refreshHeaderView.addView(refreshTextView);
 
-        // 严格遵循 Android 4.2.2 规范：addHeaderView 必须在 setAdapter 之前执行
         listView.addHeaderView(refreshHeaderView, null, false);
         hideRefreshHeader();
 
@@ -523,7 +550,6 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
-    // 移出“我的收藏”时，双向剔除并在云端执行 unstar
     private void serverStarSong(final String songId, final boolean toStar) {
         if (songId == null || songId.length() == 0) return;
 
@@ -635,7 +661,6 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(statusReceiver); } catch (Exception ignored) {}
     }
 
-    // 全层级物理返回键导航
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
@@ -680,11 +705,12 @@ public class MainActivity extends Activity {
         btnExitApp = (Button) findViewById(R.id.btn_exit_app);
         btnBottomFav = (Button) findViewById(R.id.btn_bottom_fav);
 
-        btnPrev = (Button) findViewById(R.id.btn_prev);
-        btnPlayPause = (Button) findViewById(R.id.btn_play_pause);
-        btnNext = (Button) findViewById(R.id.btn_next);
         btnMode = (Button) findViewById(R.id.btn_mode);
         btnOpenEq = (Button) findViewById(R.id.btn_open_eq);
+        btnPrev = (ImageView) findViewById(R.id.btn_prev);
+        btnPlayPause = (ImageView) findViewById(R.id.btn_play_pause);
+        btnNext = (ImageView) findViewById(R.id.btn_next);
+
         btnToggleQueue = (Button) findViewById(R.id.btn_toggle_queue);
         btnCloseQueue = (Button) findViewById(R.id.btn_close_queue);
         btnOpenDetail = (Button) findViewById(R.id.btn_open_detail);
@@ -707,11 +733,11 @@ public class MainActivity extends Activity {
         btnDetailExitApp = (Button) findViewById(R.id.btn_detail_exit_app);
         btnDetailFav = (Button) findViewById(R.id.btn_detail_fav);
         btnDetailDownload = (Button) findViewById(R.id.btn_detail_download);
-        btnDetailPrev = (Button) findViewById(R.id.btn_detail_prev);
-        btnDetailPlayPause = (Button) findViewById(R.id.btn_detail_play_pause);
-        btnDetailNext = (Button) findViewById(R.id.btn_detail_next);
         btnDetailMode = (Button) findViewById(R.id.btn_detail_mode);
         btnDetailEq = (Button) findViewById(R.id.btn_detail_eq);
+        btnDetailPrev = (ImageView) findViewById(R.id.btn_detail_prev);
+        btnDetailPlayPause = (ImageView) findViewById(R.id.btn_detail_play_pause);
+        btnDetailNext = (ImageView) findViewById(R.id.btn_detail_next);
         btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
 
@@ -742,7 +768,6 @@ public class MainActivity extends Activity {
         scrollLyrics = (ScrollView) findViewById(R.id.scroll_lyrics);
         layoutLyricsContainer = (LinearLayout) findViewById(R.id.layout_lyrics_container);
 
-        // 严格保证时序：必须先 setupPullToRefresh 完成 addHeaderView，再调用 setAdapter
         setupPullToRefresh();
 
         adapter = new SimpleAdapter(
@@ -1409,6 +1434,7 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 包含下拉刷新 HeaderView 的准确索引点击
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1436,6 +1462,7 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 包含下拉刷新 HeaderView 的准确索引长按
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1459,6 +1486,26 @@ public class MainActivity extends Activity {
         };
         lvQueue.setOnItemClickListener(queueItemClickListener);
         lvDetailQueue.setOnItemClickListener(queueItemClickListener);
+
+        // 现代微动触感与点击事件绑定
+        View.OnTouchListener touchFeedbackListener = new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    v.setAlpha(0.68f);
+                } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                    v.setAlpha(1.0f);
+                }
+                return false;
+            }
+        };
+
+        btnPrev.setOnTouchListener(touchFeedbackListener);
+        btnPlayPause.setOnTouchListener(touchFeedbackListener);
+        btnNext.setOnTouchListener(touchFeedbackListener);
+        btnDetailPrev.setOnTouchListener(touchFeedbackListener);
+        btnDetailPlayPause.setOnTouchListener(touchFeedbackListener);
+        btnDetailNext.setOnTouchListener(touchFeedbackListener);
 
         View.OnClickListener toggleListener = new View.OnClickListener() {
             @Override
@@ -1558,6 +1605,11 @@ public class MainActivity extends Activity {
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setConnectTimeout(6000);
                     conn.setReadTimeout(6000);
+
+                    if (conn instanceof HttpsURLConnection) {
+                        ((HttpsURLConnection) conn).setSSLSocketFactory(new TLSSocketFactory());
+                    }
+
                     InputStream is = conn.getInputStream();
                     final Bitmap bitmap = BitmapFactory.decodeStream(is);
                     is.close();
