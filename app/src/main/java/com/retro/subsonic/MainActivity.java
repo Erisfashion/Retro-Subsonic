@@ -34,6 +34,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
@@ -73,6 +74,19 @@ public class MainActivity extends Activity {
     private TextView tvListTitle, tvCurrentSong, tvTime;
     private ListView listView, lvQueue;
     private SeekBar seekBar;
+
+    // 原生轻量级下拉刷新组件
+    private LinearLayout refreshHeaderView;
+    private ProgressBar refreshProgressBar;
+    private TextView refreshTextView;
+    private int refreshHeaderHeight = 0;
+    private boolean isRefreshing = false;
+    private boolean isPulling = false;
+    private float touchStartY = 0;
+
+    // 当前页面状态记录
+    private String currentActivePlaylistId = null;
+    private String currentActivePlaylistName = null;
 
     // 详情页组件
     private Button btnCloseDetail, btnDetailPrev, btnDetailPlayPause, btnDetailNext, btnDetailMode, btnDetailEq;
@@ -246,14 +260,142 @@ public class MainActivity extends Activity {
         loadLocalPlaylists();
 
         initViews();
+        setupPullToRefresh();
         setupVinylAnimation();
         updateCoverDisplayMode();
         loadSavedConfig();
         setupListeners();
         setupClickInterceptors();
 
+        // 默认进入首页显示我的歌单
         fetchPlaylists();
         syncServerFavoritesQuietly();
+    }
+
+    // 原生轻量级下拉刷新逻辑
+    private void setupPullToRefresh() {
+        refreshHeaderView = new LinearLayout(this);
+        refreshHeaderView.setOrientation(LinearLayout.HORIZONTAL);
+        refreshHeaderView.setGravity(Gravity.CENTER);
+
+        float density = getResources().getDisplayMetrics().density;
+        refreshHeaderHeight = (int) (48 * density);
+
+        refreshProgressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
+        refreshProgressBar.setVisibility(View.GONE);
+        refreshHeaderView.addView(refreshProgressBar);
+
+        refreshTextView = new TextView(this);
+        refreshTextView.setText("下拉刷新列表");
+        refreshTextView.setTextColor(0xFF888C99);
+        refreshTextView.setTextSize(12);
+        refreshTextView.setPadding((int) (8 * density), 0, 0, 0);
+        refreshHeaderView.addView(refreshTextView);
+
+        listView.addHeaderView(refreshHeaderView, null, false);
+        hideRefreshHeader();
+
+        listView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (isRefreshing) return false;
+
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        touchStartY = event.getY();
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (touchStartY == 0) {
+                            touchStartY = event.getY();
+                        }
+                        float deltaY = event.getY() - touchStartY;
+                        if (deltaY > 15 && isListViewAtTop()) {
+                            isPulling = true;
+                            int paddingTop = (int) (-refreshHeaderHeight + (deltaY * 0.45f));
+                            refreshHeaderView.setPadding(0, paddingTop, 0, 0);
+
+                            if (paddingTop >= 0) {
+                                refreshTextView.setText("释放立即刷新");
+                                refreshProgressBar.setVisibility(View.VISIBLE);
+                            } else {
+                                refreshTextView.setText("下拉刷新列表");
+                                refreshProgressBar.setVisibility(View.GONE);
+                            }
+                            return true;
+                        }
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (isPulling) {
+                            isPulling = false;
+                            touchStartY = 0;
+                            if (refreshHeaderView.getPaddingTop() >= 0) {
+                                startRefreshing();
+                            } else {
+                                hideRefreshHeader();
+                            }
+                        }
+                        break;
+                }
+                return false;
+            }
+        });
+    }
+
+    private boolean isListViewAtTop() {
+        if (listView.getChildCount() == 0) return true;
+        if (listView.getFirstVisiblePosition() == 0) {
+            View first = listView.getChildAt(0);
+            return first != null && first.getTop() >= 0;
+        }
+        return false;
+    }
+
+    private void startRefreshing() {
+        isRefreshing = true;
+        refreshHeaderView.setPadding(0, 16, 0, 16);
+        refreshProgressBar.setVisibility(View.VISIBLE);
+        refreshTextView.setText("正在刷新中...");
+
+        String title = tvListTitle.getText().toString();
+        if (title.contains("我的收藏")) {
+            fetchServerFavoriteSongs();
+        } else if (title.contains("精选歌单")) {
+            loadLocalPlaylists();
+            fetchPlaylistSongs("local_featured", "精选歌单");
+            stopRefreshing();
+        } else if (title.contains("车载歌单")) {
+            loadLocalPlaylists();
+            fetchPlaylistSongs("local_car", "车载歌单");
+            stopRefreshing();
+        } else if (layoutSearchBar.getVisibility() == View.VISIBLE) {
+            searchSongs(etSearchKeyword.getText().toString().trim());
+        } else if (btnBack.getVisibility() == View.VISIBLE && currentActivePlaylistId != null) {
+            fetchPlaylistSongs(currentActivePlaylistId, currentActivePlaylistName);
+        } else {
+            fetchPlaylists();
+            syncServerFavoritesQuietly();
+        }
+    }
+
+    private void stopRefreshing() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                isRefreshing = false;
+                isPulling = false;
+                touchStartY = 0;
+                hideRefreshHeader();
+            }
+        });
+    }
+
+    private void hideRefreshHeader() {
+        if (refreshHeaderView != null) {
+            refreshHeaderView.setPadding(0, -refreshHeaderHeight, 0, 0);
+            refreshProgressBar.setVisibility(View.GONE);
+            refreshTextView.setText("下拉刷新列表");
+        }
     }
 
     private void setupVinylAnimation() {
@@ -354,6 +496,7 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
+    // 核心修复：彻底解决“我的收藏”无法移出歌曲的问题（即刻更新视图 + 云端 unstar.view 同步）
     private void serverStarSong(final String songId, final boolean toStar) {
         if (songId == null || songId.length() == 0) return;
 
@@ -362,7 +505,19 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "已添加至云端【我的收藏】♥", Toast.LENGTH_SHORT).show();
         } else {
             favSongIds.remove(songId);
-            Toast.makeText(this, "已从云端【我的收藏】取消♡", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "已从【我的收藏】移出♡", Toast.LENGTH_SHORT).show();
+
+            // 若当前页面正处于“我的收藏”，立即从当前列表剔除该项！
+            if (tvListTitle.getText().toString().contains("我的收藏")) {
+                for (int i = 0; i < currentItems.size(); i++) {
+                    if (songId.equals(currentItems.get(i).id)) {
+                        currentItems.remove(i);
+                        listData.remove(i);
+                        adapter.notifyDataSetChanged();
+                        break;
+                    }
+                }
+            }
         }
         saveFavSet();
         updateFavButtonState(songId);
@@ -372,7 +527,19 @@ public class MainActivity extends Activity {
             public void run() {
                 try {
                     String endpoint = toStar ? "star.view" : "unstar.view";
-                    requestApi(endpoint + "?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
+                    String res = requestApi(endpoint + "?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
+                    if (res != null && res.contains("\"status\":\"failed\"")) {
+                        try {
+                            JSONObject r = new JSONObject(res).getJSONObject("subsonic-response");
+                            final String msg = r.getJSONObject("error").getString("message");
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    Toast.makeText(MainActivity.this, "云端收藏同步异常: " + msg, Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                        } catch (Exception ignored) {}
+                    }
                 } catch (Exception ignored) {}
             }
         }).start();
@@ -927,7 +1094,13 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "已加入【" + listName + "】", Toast.LENGTH_SHORT).show();
     }
 
+    // 核心修复：移出“我的收藏”时，双向剔除并在云端执行 unstar
     private void removeFromCurrentView(int position, DisplayEntry entry) {
+        if (tvListTitle.getText().toString().contains("我的收藏")) {
+            serverStarSong(entry.id, false);
+            return;
+        }
+
         if ("精选歌单".equals(tvListTitle.getText().toString())) {
             for (int i = 0; i < featuredSongs.size(); i++) {
                 if (featuredSongs.get(i).id.equals(entry.id)) {
@@ -1202,11 +1375,14 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 包含下拉刷新 HeaderView 的准确索引点击
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                if (position >= currentItems.size()) return;
-                DisplayEntry entry = currentItems.get(position);
+                int pos = position - listView.getHeaderViewsCount();
+                if (pos < 0 || pos >= currentItems.size()) return;
+
+                DisplayEntry entry = currentItems.get(pos);
                 if (!entry.isSong) {
                     fetchPlaylistSongs(entry.id, entry.title);
                 } else {
@@ -1227,11 +1403,13 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 包含下拉刷新 HeaderView 的准确索引长按
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
-                if (position >= 0 && position < currentItems.size()) {
-                    showSongLongClickMenu(currentItems.get(position), position);
+                int pos = position - listView.getHeaderViewsCount();
+                if (pos >= 0 && pos < currentItems.size()) {
+                    showSongLongClickMenu(currentItems.get(pos), pos);
                     return true;
                 }
                 return false;
@@ -1574,6 +1752,8 @@ public class MainActivity extends Activity {
     }
 
     private void fetchPlaylists() {
+        currentActivePlaylistId = null;
+        currentActivePlaylistName = null;
         tvListTitle.setText("我的歌单");
         new Thread(new Runnable() {
             @Override
@@ -1585,18 +1765,21 @@ public class MainActivity extends Activity {
                         currentItems.clear();
                         listData.clear();
 
+                        // 1. 顶置“我的收藏”
                         currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步服务器标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
                         Map<String, String> favRow = new HashMap<String, String>();
                         favRow.put("title", "♥  我的收藏");
                         favRow.put("subtitle", "已同步服务器标星 (" + favSongIds.size() + "首)");
                         listData.add(favRow);
 
+                        // 2. 顶置“精选歌单”
                         currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "本地定制精选 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
                         Map<String, String> featRow = new HashMap<String, String>();
                         featRow.put("title", "⭐  精选歌单");
                         featRow.put("subtitle", "本地定制精选 (" + featuredSongs.size() + "首)");
                         listData.add(featRow);
 
+                        // 3. 顶置“车载歌单”
                         currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行必听车载曲库 (" + carSongs.size() + "首)", null, "本地歌单", false));
                         Map<String, String> carRow = new HashMap<String, String>();
                         carRow.put("title", "🚗  车载歌单");
@@ -1621,6 +1804,7 @@ public class MainActivity extends Activity {
                             } catch (Exception ignored) {}
                         }
                         adapter.notifyDataSetChanged();
+                        stopRefreshing();
                     }
                 });
             }
@@ -1639,6 +1823,9 @@ public class MainActivity extends Activity {
     }
 
     private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
+        currentActivePlaylistId = playlistId;
+        currentActivePlaylistName = playlistName;
+
         if ("fav_entry".equals(playlistId)) {
             fetchServerFavoriteSongs();
             return;
@@ -1657,6 +1844,7 @@ public class MainActivity extends Activity {
                 listData.add(row);
             }
             adapter.notifyDataSetChanged();
+            stopRefreshing();
             return;
         }
 
@@ -1673,6 +1861,7 @@ public class MainActivity extends Activity {
                 listData.add(row);
             }
             adapter.notifyDataSetChanged();
+            stopRefreshing();
             return;
         }
 
@@ -1683,7 +1872,10 @@ public class MainActivity extends Activity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        if (jsonStr == null) return;
+                        if (jsonStr == null) {
+                            stopRefreshing();
+                            return;
+                        }
                         try {
                             JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
                             JSONObject playlist = root.getJSONObject("playlist");
@@ -1706,6 +1898,8 @@ public class MainActivity extends Activity {
                             adapter.notifyDataSetChanged();
                         } catch (Exception e) {
                             Toast.makeText(MainActivity.this, "加载歌单失败", Toast.LENGTH_SHORT).show();
+                        } finally {
+                            stopRefreshing();
                         }
                     }
                 });
@@ -1734,6 +1928,7 @@ public class MainActivity extends Activity {
                     public void run() {
                         if (finalJson == null) {
                             Toast.makeText(MainActivity.this, "连接失败，无法获取云端收藏", Toast.LENGTH_SHORT).show();
+                            stopRefreshing();
                             return;
                         }
                         try {
@@ -1767,6 +1962,8 @@ public class MainActivity extends Activity {
                             }
                         } catch (Exception e) {
                             Toast.makeText(MainActivity.this, "解析云端收藏列表失败", Toast.LENGTH_SHORT).show();
+                        } finally {
+                            stopRefreshing();
                         }
                     }
                 });
@@ -1775,7 +1972,10 @@ public class MainActivity extends Activity {
     }
 
     private void searchSongs(final String query) {
-        if (query.length() == 0) return;
+        if (query.length() == 0) {
+            stopRefreshing();
+            return;
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -1785,7 +1985,10 @@ public class MainActivity extends Activity {
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            if (jsonStr == null) return;
+                            if (jsonStr == null) {
+                                stopRefreshing();
+                                return;
+                            }
                             try {
                                 JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
                                 JSONObject result = root.optJSONObject("searchResult3");
@@ -1799,10 +2002,15 @@ public class MainActivity extends Activity {
                                     }
                                 }
                                 adapter.notifyDataSetChanged();
-                            } catch (Exception ignored) {}
+                            } catch (Exception ignored) {
+                            } finally {
+                                stopRefreshing();
+                            }
                         }
                     });
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                    stopRefreshing();
+                }
             }
         }).start();
     }
