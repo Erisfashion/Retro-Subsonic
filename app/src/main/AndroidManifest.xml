@@ -11,6 +11,7 @@
         android:allowBackup="true"
         android:label="Subsonic 音乐"
         android:supportsRtl="true"
+        android:largeHeap="true"
         android:theme="@android:style/Theme.Holo.NoActionBar">
         
         <activity
