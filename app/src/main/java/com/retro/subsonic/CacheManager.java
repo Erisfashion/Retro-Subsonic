@@ -2,6 +2,7 @@ package com.retro.subsonic;
 
 import android.content.Context;
 import java.io.File;
+import java.io.FileInputStream;
 import java.util.Arrays;
 import java.util.Comparator;
 
@@ -15,7 +16,6 @@ public class CacheManager {
             baseDir = context.getExternalCacheDir();
         } catch (Throwable ignored) {}
 
-        // 如果外部缓存不可写或为空，回退到内部私有存储（绝无权限拒绝问题）
         if (baseDir == null || (!baseDir.exists() && !baseDir.mkdirs())) {
             baseDir = context.getCacheDir();
         }
@@ -28,16 +28,65 @@ public class CacheManager {
     }
 
     public static File getSongFile(Context context, String songId) {
-        return new File(getCacheFolder(context), songId + ".mp3");
+        return new File(getCacheFolder(context), sanitizeFileName(songId) + ".mp3");
     }
 
     public static File getTempFile(Context context, String songId) {
-        return new File(getCacheFolder(context), songId + ".tmp");
+        return new File(getCacheFolder(context), sanitizeFileName(songId) + ".tmp");
+    }
+
+    private static String sanitizeFileName(String id) {
+        return id.replaceAll("[^a-zA-Z0-9_-]", "_");
+    }
+
+    // 核心：严格校验音频文件魔数，拒绝把 JSON、XML 报错文本误认作音乐缓存
+    public static boolean isValidAudioFile(File file) {
+        if (file == null || !file.exists() || file.length() < 32 * 1024) {
+            return false;
+        }
+        FileInputStream fis = null;
+        try {
+            fis = new FileInputStream(file);
+            byte[] header = new byte[12];
+            int read = fis.read(header);
+            if (read < 4) return false;
+
+            // 1. MP3 (包含 ID3v2 标签或 MP3 帧同步字 0xFFEx / 0xFFFx)
+            if (header[0] == 'I' && header[1] == 'D' && header[2] == '3') return true;
+            if ((header[0] & 0xFF) == 0xFF && (header[1] & 0xE0) == 0xE0) return true;
+
+            // 2. FLAC
+            if (header[0] == 'f' && header[1] == 'L' && header[2] == 'a' && header[3] == 'C') return true;
+
+            // 3. OGG Vorbis
+            if (header[0] == 'O' && header[1] == 'g' && header[2] == 'g' && header[3] == 'S') return true;
+
+            // 4. WAV (RIFF)
+            if (header[0] == 'R' && header[1] == 'I' && header[2] == 'F' && header[3] == 'F') return true;
+
+            // 5. M4A / AAC (ftyp)
+            if (read >= 8 && header[4] == 'f' && header[5] == 't' && header[6] == 'y' && header[7] == 'p') return true;
+            if ((header[0] & 0xFF) == 0xFF && (header[1] & 0xF6) == 0xF0) return true;
+
+            return false;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (fis != null) try { fis.close(); } catch (Exception ignored) {}
+        }
     }
 
     public static boolean isSongCached(Context context, String songId) {
         File file = getSongFile(context, songId);
-        return file.exists() && file.length() > 32 * 1024; // 至少大于 32KB 才视为有效缓存
+        if (file.exists()) {
+            if (isValidAudioFile(file)) {
+                return true;
+            } else {
+                // 若被污染为非音频文件，立即自动物理粉碎，防止卡死
+                file.delete();
+            }
+        }
+        return false;
     }
 
     public static long getUsedCacheBytes(Context context) {
@@ -46,9 +95,7 @@ public class CacheManager {
         if (files == null) return 0;
         long total = 0;
         for (File f : files) {
-            if (f.isFile()) {
-                total += f.length();
-            }
+            if (f.isFile()) total += f.length();
         }
         return total;
     }
@@ -81,7 +128,7 @@ public class CacheManager {
             }
         });
 
-        String safeFileName = currentPlayingSongId + ".mp3";
+        String safeFileName = sanitizeFileName(currentPlayingSongId) + ".mp3";
         for (File f : files) {
             if (currentSize <= maxBytes) break;
             if (f.isFile() && !f.getName().equals(safeFileName)) {
