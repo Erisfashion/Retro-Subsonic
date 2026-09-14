@@ -53,7 +53,7 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- 可折叠服务器配置面板（已加入下载路径与超时/缓存设置） -->
+        <!-- 可折叠服务器配置面板 -->
         <LinearLayout
             android:id="@+id/layout_config_panel"
             android:layout_width="match_parent"
@@ -288,7 +288,7 @@
                 android:text="搜索" />
         </LinearLayout>
 
-        <!-- 主体列表 -->
+        <!-- 主体列表与侧边队列 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -337,9 +337,10 @@
                     android:dividerHeight="1dp" />
             </LinearLayout>
 
+            <!-- 修复了关闭按钮文字显示截断的侧边播放列表面板 -->
             <LinearLayout
                 android:id="@+id/layout_queue_panel"
-                android:layout_width="280dp"
+                android:layout_width="290dp"
                 android:layout_height="match_parent"
                 android:orientation="vertical"
                 android:background="@drawable/bg_card"
@@ -351,24 +352,33 @@
 
                 <RelativeLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="40dp"
+                    android:gravity="center_vertical"
                     android:layout_marginBottom="4dp">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_alignParentLeft="true"
+                        android:layout_centerVertical="true"
                         android:text="当前播放列表"
                         android:textColor="#ffffff"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
+                    <!-- 修复显示 Bug 后的关闭按钮 -->
                     <Button
                         android:id="@+id/btn_close_queue"
                         android:layout_width="wrap_content"
-                        android:layout_height="28dp"
+                        android:layout_height="wrap_content"
+                        android:minHeight="36dp"
                         android:layout_alignParentRight="true"
+                        android:layout_centerVertical="true"
                         android:text="关闭"
-                        android:textSize="11sp" />
+                        android:textColor="#ffffff"
+                        android:textSize="12sp"
+                        android:paddingLeft="12dp"
+                        android:paddingRight="12dp" />
                 </RelativeLayout>
 
                 <ListView
@@ -533,11 +543,12 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 顶栏 -->
+        <!-- 重新排布后的详情页顶栏：下载、音效左置 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
 
+            <!-- 左侧排布：收起、关闭软件、下载、音效调节 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -559,7 +570,25 @@
                     android:text="关闭软件"
                     android:textColor="#ff6666"
                     android:textSize="12sp"
-                    android:layout_marginLeft="6dp" />
+                    android:layout_marginLeft="5dp" />
+
+                <Button
+                    android:id="@+id/btn_detail_download"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="⬇ 下载"
+                    android:textColor="#00e5ff"
+                    android:textSize="12sp"
+                    android:layout_marginLeft="5dp" />
+
+                <Button
+                    android:id="@+id/btn_detail_eq"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="音效调节"
+                    android:textColor="#00e5ff"
+                    android:textSize="12sp"
+                    android:layout_marginLeft="5dp" />
             </LinearLayout>
 
             <TextView
@@ -571,6 +600,7 @@
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
+            <!-- 右侧排布：常亮开关与播放列表切换 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -578,31 +608,12 @@
                 android:layout_centerVertical="true"
                 android:orientation="horizontal">
 
-                <!-- 详情页：下载歌曲按钮 -->
-                <Button
-                    android:id="@+id/btn_detail_download"
-                    android:layout_width="wrap_content"
-                    android:layout_height="34dp"
-                    android:text="⬇ 下载"
-                    android:textColor="#00e5ff"
-                    android:textSize="12sp"
-                    android:layout_marginRight="6dp" />
-
-                <Button
-                    android:id="@+id/btn_detail_eq"
-                    android:layout_width="wrap_content"
-                    android:layout_height="34dp"
-                    android:text="音效调节"
-                    android:textColor="#00e5ff"
-                    android:textSize="12sp" />
-
                 <Button
                     android:id="@+id/btn_detail_keep_screen"
                     android:layout_width="wrap_content"
                     android:layout_height="34dp"
                     android:text="常亮: 关"
-                    android:textSize="12sp"
-                    android:layout_marginLeft="6dp" />
+                    android:textSize="12sp" />
 
                 <Button
                     android:id="@+id/btn_detail_queue"
@@ -622,6 +633,7 @@
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
 
+            <!-- 左栏：黑胶唱片转动特效 + 歌曲信息 + 控制排 -->
             <LinearLayout
                 android:id="@+id/layout_cover_container"
                 android:layout_width="0dp"
@@ -634,22 +646,43 @@
                 android:clickable="true"
                 android:focusable="true">
 
-                <ImageView
-                    android:id="@+id/iv_detail_cover"
+                <!-- 黑胶唱片转动容器（点击此区域或中间封面可切换旋转/静态） -->
+                <FrameLayout
+                    android:id="@+id/fl_vinyl_wrapper"
                     android:layout_width="220dp"
                     android:layout_height="220dp"
-                    android:scaleType="centerCrop"
-                    android:src="@android:drawable/ic_menu_report_image"
-                    android:background="#111317"
+                    android:background="@drawable/bg_vinyl"
                     android:clickable="true"
-                    android:focusable="true" />
+                    android:focusable="true">
+
+                    <!-- 唱片中心的专辑封面图 -->
+                    <ImageView
+                        android:id="@+id/iv_detail_cover"
+                        android:layout_width="128dp"
+                        android:layout_height="128dp"
+                        android:layout_gravity="center"
+                        android:scaleType="centerCrop"
+                        android:src="@android:drawable/ic_menu_report_image"
+                        android:background="#16181d"
+                        android:clickable="true"
+                        android:focusable="true" />
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/tv_vinyl_tip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="(点击唱片暂停/恢复转动)"
+                    android:textColor="#555866"
+                    android:textSize="10sp"
+                    android:layout_marginTop="4dp" />
 
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginTop="10dp">
+                    android:layout_marginTop="6dp">
 
                     <TextView
                         android:id="@+id/tv_detail_title"
@@ -696,15 +729,16 @@
                     android:paddingRight="8dp"
                     android:paddingTop="2dp"
                     android:paddingBottom="2dp"
-                    android:layout_marginTop="6dp" />
+                    android:layout_marginTop="4dp" />
 
+                <!-- 进度条与时间 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_seek_box"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:clickable="true">
 
                     <SeekBar
@@ -723,13 +757,14 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
+                <!-- 播放控制排 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="6dp"
                     android:clickable="true">
 
                     <Button
@@ -768,7 +803,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 右栏：歌词 / 播放队列切换区 -->
+            <!-- 右栏：歌词（带字号放大缩小控制） / 播放队列切换区 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
@@ -780,6 +815,7 @@
                 android:clickable="true"
                 android:focusable="true">
 
+                <!-- 视图 A：滚动歌词 + 字号控制 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_lyrics_view"
                     android:layout_width="match_parent"
@@ -787,13 +823,44 @@
                     android:orientation="vertical"
                     android:visibility="visible">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <RelativeLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="歌词"
-                        android:textColor="#a0a5b5"
-                        android:textSize="13sp"
-                        android:layout_marginBottom="6dp" />
+                        android:layout_marginBottom="6dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentLeft="true"
+                            android:layout_centerVertical="true"
+                            android:text="歌词"
+                            android:textColor="#a0a5b5"
+                            android:textSize="13sp" />
+
+                        <!-- 歌词字号实时控制按钮排 -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentRight="true"
+                            android:layout_centerVertical="true"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/btn_lyric_dec"
+                                android:layout_width="wrap_content"
+                                android:layout_height="30dp"
+                                android:text="缩小 -"
+                                android:textSize="11sp" />
+
+                            <Button
+                                android:id="@+id/btn_lyric_inc"
+                                android:layout_width="wrap_content"
+                                android:layout_height="30dp"
+                                android:text="增大 +"
+                                android:textSize="11sp"
+                                android:layout_marginLeft="4dp" />
+                        </LinearLayout>
+                    </RelativeLayout>
 
                     <ScrollView
                         android:id="@+id/scroll_lyrics"
@@ -813,6 +880,7 @@
                     </ScrollView>
                 </LinearLayout>
 
+                <!-- 视图 B：播放队列展示区 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_queue_view"
                     android:layout_width="match_parent"
