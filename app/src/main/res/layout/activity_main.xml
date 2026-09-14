@@ -185,6 +185,32 @@
                     android:layout_marginLeft="4dp" />
             </LinearLayout>
 
+            <!-- 默认码率设置排 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="默认播放码率:"
+                    android:textColor="#cccccc"
+                    android:textSize="13sp" />
+
+                <Spinner
+                    android:id="@+id/spinner_config_bitrate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:background="@drawable/bg_btn_pill"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:layout_marginLeft="8dp"
+                    android:spinnerMode="dropdown" />
+            </LinearLayout>
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -763,7 +789,7 @@
                     android:focusable="true"
                     android:visibility="gone" />
 
-                <!-- 歌曲标题与红心收藏 -->
+                <!-- 歌曲标题、红心收藏与码率选择下拉框 -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -775,12 +801,14 @@
                         android:id="@+id/tv_detail_title"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:maxWidth="130dp"
                         android:text="歌曲名称"
                         android:textColor="#ffffff"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:singleLine="true" />
 
+                    <!-- 收藏按钮 -->
                     <Button
                         android:id="@+id/btn_detail_fav"
                         android:layout_width="36dp"
@@ -790,6 +818,17 @@
                         android:textColor="#ff4081"
                         android:textSize="18sp"
                         android:layout_marginLeft="6dp" />
+
+                    <!-- 详情页收藏按钮右侧：下拉选择码率 Spinner -->
+                    <Spinner
+                        android:id="@+id/spinner_detail_bitrate"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_btn_pill"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                        android:layout_marginLeft="6dp"
+                        android:spinnerMode="dropdown" />
                 </LinearLayout>
 
                 <TextView
