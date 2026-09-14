@@ -45,6 +45,7 @@ import java.util.Map;
 public class MainActivity extends Activity {
 
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
+    private EditText etTimeoutSec, etRetryCount;
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
     private Button btnPrev, btnPlayPause, btnNext, btnMode, btnToggleQueue, btnCloseQueue, btnOpenDetail, btnOpenEq;
     private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
@@ -130,6 +131,7 @@ public class MainActivity extends Activity {
                 boolean isBuffering = intent.getBooleanExtra("isBuffering", false);
                 int bufferPercent = intent.getIntExtra("bufferPercent", 0);
                 int retryCount = intent.getIntExtra("retryCount", 0);
+                int maxRetries = intent.getIntExtra("maxRetries", 3);
 
                 String songId = intent.getStringExtra("songId");
                 String title = intent.getStringExtra("title");
@@ -139,8 +141,8 @@ public class MainActivity extends Activity {
 
                 if (title != null) {
                     if (retryCount > 0) {
-                        tvCurrentSong.setText("加载超时，重试中 (" + retryCount + "/3): " + title);
-                        tvDetailTitle.setText("重试中 (" + retryCount + "/3)...");
+                        tvCurrentSong.setText("重试加载中 (" + retryCount + "/" + maxRetries + "): " + title);
+                        tvDetailTitle.setText("重试中 (" + retryCount + "/" + maxRetries + ")...");
                     } else if (isBuffering) {
                         tvCurrentSong.setText("缓存缓冲中 (" + bufferPercent + "%): " + title);
                         tvDetailTitle.setText("缓存中 (" + bufferPercent + "%)...");
@@ -214,6 +216,8 @@ public class MainActivity extends Activity {
         etPassword = (EditText) findViewById(R.id.et_password);
         etSearchKeyword = (EditText) findViewById(R.id.et_search_keyword);
         etCacheSize = (EditText) findViewById(R.id.et_cache_size);
+        etTimeoutSec = (EditText) findViewById(R.id.et_timeout_sec);
+        etRetryCount = (EditText) findViewById(R.id.et_retry_count);
 
         btnConnect = (Button) findViewById(R.id.btn_connect);
         btnClearCache = (Button) findViewById(R.id.btn_clear_cache);
@@ -313,6 +317,8 @@ public class MainActivity extends Activity {
         etUsername.setText(prefs.getString("user", "admin"));
         etPassword.setText(prefs.getString("pass", "admin"));
         etCacheSize.setText(prefs.getString("cache_size_mb", "500"));
+        etTimeoutSec.setText(prefs.getString("play_timeout_sec", "20"));
+        etRetryCount.setText(prefs.getString("play_retry_count", "3"));
     }
 
     private void saveConfig() {
@@ -321,6 +327,8 @@ public class MainActivity extends Activity {
                 .putString("user", etUsername.getText().toString().trim())
                 .putString("pass", etPassword.getText().toString().trim())
                 .putString("cache_size_mb", etCacheSize.getText().toString().trim())
+                .putString("play_timeout_sec", etTimeoutSec.getText().toString().trim())
+                .putString("play_retry_count", etRetryCount.getText().toString().trim())
                 .commit();
     }
 
