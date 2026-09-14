@@ -129,7 +129,6 @@ public class MainActivity extends Activity {
                 btnDetailMode.setText(modeText);
 
                 boolean isBuffering = intent.getBooleanExtra("isBuffering", false);
-                int bufferPercent = intent.getIntExtra("bufferPercent", 0);
                 int retryCount = intent.getIntExtra("retryCount", 0);
                 int maxRetries = intent.getIntExtra("maxRetries", 3);
 
@@ -144,8 +143,8 @@ public class MainActivity extends Activity {
                         tvCurrentSong.setText("重试加载中 (" + retryCount + "/" + maxRetries + "): " + title);
                         tvDetailTitle.setText("重试中 (" + retryCount + "/" + maxRetries + ")...");
                     } else if (isBuffering) {
-                        tvCurrentSong.setText("缓存缓冲中 (" + bufferPercent + "%): " + title);
-                        tvDetailTitle.setText("缓存中 (" + bufferPercent + "%)...");
+                        tvCurrentSong.setText("正在加载: " + title);
+                        tvDetailTitle.setText("正在加载...");
                     } else {
                         tvCurrentSong.setText(title + " - " + artist);
                         tvDetailTitle.setText(title);
