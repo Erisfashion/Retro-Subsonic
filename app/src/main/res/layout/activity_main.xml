@@ -38,7 +38,7 @@
                 android:textSize="12sp" />
         </RelativeLayout>
 
-        <!-- 可折叠服务器配置面板（包含缓存、超时与重试配置） -->
+        <!-- 可折叠服务器配置面板 -->
         <LinearLayout
             android:id="@+id/layout_config_panel"
             android:layout_width="match_parent"
@@ -88,7 +88,7 @@
                     android:singleLine="true" />
             </LinearLayout>
 
-            <!-- 超时时长与重试次数设置排 -->
+            <!-- 超时与重试配置行 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -122,7 +122,7 @@
                     android:text="重试次数:"
                     android:textColor="#cccccc"
                     android:textSize="13sp"
-                    android:layout_marginLeft="12dp" />
+                    android:layout_marginLeft="14dp" />
 
                 <EditText
                     android:id="@+id/et_retry_count"
@@ -138,7 +138,7 @@
                     android:layout_marginLeft="4dp" />
             </LinearLayout>
 
-            <!-- 缓存设置排与保存按钮 -->
+            <!-- 缓存设置行与保存按钮 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
