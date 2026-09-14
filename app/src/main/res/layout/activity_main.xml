@@ -692,7 +692,7 @@
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
 
-            <!-- 左栏：大黑胶唱片 + 均衡垂直重心布局 -->
+            <!-- 左栏：黑胶下移 + 居中偏上平衡布局 -->
             <LinearLayout
                 android:id="@+id/layout_cover_container"
                 android:layout_width="0dp"
@@ -705,7 +705,13 @@
                 android:clickable="true"
                 android:focusable="true">
 
-                <!-- 模式 A：放大后的黑胶唱片盒 (260dp x 280dp) -->
+                <!-- 核心：顶部弹性缓冲占位，在竖屏和大屏上把黑胶平缓下推到中线偏上 -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="0.6" />
+
+                <!-- 模式 A：黑胶唱片盒 (260dp x 280dp) -->
                 <FrameLayout
                     android:id="@+id/layout_vinyl_container"
                     android:layout_width="260dp"
@@ -745,8 +751,8 @@
                     android:id="@+id/iv_square_cover"
                     android:layout_width="240dp"
                     android:layout_height="240dp"
-                    android:layout_marginTop="20dp"
-                    android:layout_marginBottom="20dp"
+                    android:layout_marginTop="15dp"
+                    android:layout_marginBottom="15dp"
                     android:scaleType="centerCrop"
                     android:background="@drawable/bg_card"
                     android:src="@android:drawable/ic_menu_report_image"
@@ -808,11 +814,11 @@
                     android:paddingBottom="2dp"
                     android:layout_marginTop="4dp" />
 
-                <!-- 弹性自适应填充：平缓将进度条和按键排推向视觉黄金下段 -->
+                <!-- 中段弹性自适应占位：使控制排平稳位于下段视觉中枢 -->
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
-                    android:layout_weight="1" />
+                    android:layout_weight="0.8" />
 
                 <!-- 进度条与时间 -->
                 <LinearLayout
@@ -895,14 +901,19 @@
                         android:layout_marginLeft="6dp" />
                 </LinearLayout>
 
-                <!-- 播放控制下方的空白轻触区域，高度适中 -->
+                <!-- 底部适度留白占位 -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="0.3" />
+
+                <!-- 播放控制下方的空白轻触区域 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_bottom_blank"
                     android:layout_width="match_parent"
-                    android:layout_height="38dp"
+                    android:layout_height="36dp"
                     android:orientation="vertical"
                     android:gravity="center"
-                    android:layout_marginTop="4dp"
                     android:clickable="true"
                     android:focusable="true">
 
