@@ -46,17 +46,17 @@ public class MainActivity extends Activity {
 
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabSearch, btnSearchSubmit, btnBack;
-    private Button btnPrev, btnPlayPause, btnNext, btnMode, btnToggleQueue, btnCloseQueue, btnOpenDetail;
+    private Button btnPrev, btnPlayPause, btnNext, btnMode, btnToggleQueue, btnCloseQueue, btnOpenDetail, btnOpenEq;
     private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime;
     private ListView listView, lvQueue;
     private SeekBar seekBar;
 
     // 详情页组件
-    private Button btnCloseDetail, btnDetailPrev, btnDetailPlayPause, btnDetailNext, btnDetailMode;
+    private Button btnCloseDetail, btnDetailPrev, btnDetailPlayPause, btnDetailNext, btnDetailMode, btnDetailEq;
     private Button btnDetailKeepScreen, btnDetailQueue;
     private ImageView ivDetailCover;
-    private TextView tvDetailTitle, tvDetailArtist, tvDetailTime;
+    private TextView tvDetailTitle, tvDetailArtist, tvDetailQuality, tvDetailTime;
     private SeekBar detailSeekBar;
     private LinearLayout layoutDetailLyricsView, layoutDetailQueueView;
     private ListView lvDetailQueue;
@@ -89,13 +89,15 @@ public class MainActivity extends Activity {
         String title;
         String subtitle;
         String coverArt;
+        String quality;
         boolean isSong;
 
-        DisplayEntry(String id, String title, String subtitle, String coverArt, boolean isSong) {
+        DisplayEntry(String id, String title, String subtitle, String coverArt, String quality, boolean isSong) {
             this.id = id;
             this.title = title;
             this.subtitle = subtitle;
             this.coverArt = coverArt;
+            this.quality = quality;
             this.isSong = isSong;
         }
     }
@@ -132,6 +134,7 @@ public class MainActivity extends Activity {
                 String title = intent.getStringExtra("title");
                 String artist = intent.getStringExtra("artist");
                 String coverArtId = intent.getStringExtra("coverArtId");
+                String quality = intent.getStringExtra("quality");
 
                 if (title != null) {
                     if (isBuffering) {
@@ -142,6 +145,10 @@ public class MainActivity extends Activity {
                         tvDetailTitle.setText(title);
                     }
                     tvDetailArtist.setText(artist);
+
+                    if (quality != null && quality.length() > 0) {
+                        tvDetailQuality.setText(quality);
+                    }
 
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
                         lastLoadedSongId = songId;
@@ -216,6 +223,7 @@ public class MainActivity extends Activity {
         btnPlayPause = (Button) findViewById(R.id.btn_play_pause);
         btnNext = (Button) findViewById(R.id.btn_next);
         btnMode = (Button) findViewById(R.id.btn_mode);
+        btnOpenEq = (Button) findViewById(R.id.btn_open_eq);
         btnToggleQueue = (Button) findViewById(R.id.btn_toggle_queue);
         btnCloseQueue = (Button) findViewById(R.id.btn_close_queue);
         btnOpenDetail = (Button) findViewById(R.id.btn_open_detail);
@@ -240,12 +248,14 @@ public class MainActivity extends Activity {
         btnDetailPlayPause = (Button) findViewById(R.id.btn_detail_play_pause);
         btnDetailNext = (Button) findViewById(R.id.btn_detail_next);
         btnDetailMode = (Button) findViewById(R.id.btn_detail_mode);
+        btnDetailEq = (Button) findViewById(R.id.btn_detail_eq);
         btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
 
         ivDetailCover = (ImageView) findViewById(R.id.iv_detail_cover);
         tvDetailTitle = (TextView) findViewById(R.id.tv_detail_title);
         tvDetailArtist = (TextView) findViewById(R.id.tv_detail_artist);
+        tvDetailQuality = (TextView) findViewById(R.id.tv_detail_quality);
         tvDetailTime = (TextView) findViewById(R.id.tv_detail_time);
         detailSeekBar = (SeekBar) findViewById(R.id.detail_seek_bar);
 
@@ -347,6 +357,16 @@ public class MainActivity extends Activity {
                 Toast.makeText(MainActivity.this, String.format("已清理缓存，释放 %.1f MB 空间", mb), Toast.LENGTH_SHORT).show();
             }
         });
+
+        // 打开音效调节弹窗
+        View.OnClickListener eqListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                new EqualizerDialog(MainActivity.this).show();
+            }
+        };
+        btnOpenEq.setOnClickListener(eqListener);
+        btnDetailEq.setOnClickListener(eqListener);
 
         btnTabPlaylists.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -485,7 +505,7 @@ public class MainActivity extends Activity {
                             if (item.id.equals(entry.id)) {
                                 clickedSongIndex = queue.size();
                             }
-                            queue.add(new MusicService.SongItem(item.id, item.title, item.subtitle, buildStreamUrl(item.id), item.coverArt));
+                            queue.add(new MusicService.SongItem(item.id, item.title, item.subtitle, buildStreamUrl(item.id), item.coverArt, item.quality));
                         }
                     }
                     MusicService.setQueue(queue, clickedSongIndex, MainActivity.this);
@@ -872,7 +892,7 @@ public class MainActivity extends Activity {
     private void addPlaylistRow(JSONObject p) throws Exception {
         String name = p.getString("name");
         int count = p.optInt("songCount", 0);
-        currentItems.add(new DisplayEntry(p.getString("id"), name, "歌曲: " + count, null, false));
+        currentItems.add(new DisplayEntry(p.getString("id"), name, "歌曲: " + count, null, "", false));
 
         Map<String, String> row = new HashMap<String, String>();
         row.put("title", "[歌单] " + name);
@@ -955,11 +975,26 @@ public class MainActivity extends Activity {
         String title = s.getString("title");
         String artist = s.optString("artist", "未知艺术家");
         String coverArt = s.optString("coverArt", null);
-        currentItems.add(new DisplayEntry(s.getString("id"), title, artist, coverArt, true));
+
+        // 提取格式与码率信息
+        int bitRate = s.optInt("bitRate", 0);
+        String suffix = s.optString("suffix", "").toUpperCase();
+        String quality;
+        if (suffix.contains("FLAC") || suffix.contains("WAV") || suffix.contains("APE")) {
+            quality = "FLAC 无损";
+        } else if (bitRate > 0) {
+            quality = bitRate + "K " + (suffix.length() > 0 ? suffix : "MP3");
+        } else if (suffix.length() > 0) {
+            quality = suffix;
+        } else {
+            quality = "320K MP3";
+        }
+
+        currentItems.add(new DisplayEntry(s.getString("id"), title, artist, coverArt, quality, true));
 
         Map<String, String> row = new HashMap<String, String>();
         row.put("title", title);
-        row.put("subtitle", artist);
+        row.put("subtitle", artist + "  [" + quality + "]");
         listData.add(row);
     }
 
