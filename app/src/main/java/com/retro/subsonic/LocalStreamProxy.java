@@ -16,16 +16,11 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
 import java.util.Iterator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 
 public class LocalStreamProxy {
 
@@ -75,10 +70,7 @@ public class LocalStreamProxy {
         serverSocket = new ServerSocket(0, 10, InetAddress.getByName("127.0.0.1"));
         proxyPort = serverSocket.getLocalPort();
 
-        // 1. 启动全速后台下载流线程
         startDownloader();
-
-        // 2. 启动本地代理 HTTP 服务端线程
         startServer();
 
         return "http://127.0.0.1:" + proxyPort + "/stream";
@@ -88,6 +80,9 @@ public class LocalStreamProxy {
         downloadThread = new Thread(new Runnable() {
             @Override
             public void run() {
+                // 确保底层 TLS 1.2 握手处于就绪状态
+                TLSSocketFactory.install();
+
                 String reason = runDownloadPipeline(originalStreamUrl, 0);
                 if (isStopped) return;
 
@@ -134,11 +129,17 @@ public class LocalStreamProxy {
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-cn) AppleWebKit/534.30");
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(15000);
+
+            // 强制适配 HTTPS 现代 CDN
+            if (conn instanceof HttpsURLConnection) {
+                HttpsURLConnection httpsConn = (HttpsURLConnection) conn;
+                httpsConn.setSSLSocketFactory(new TLSSocketFactory());
+            }
+
             conn.connect();
 
             int code = conn.getResponseCode();
 
-            // 拦截 301/302 重定向
             if (code == 301 || code == 302 || code == 303 || code == 307) {
                 String location = conn.getHeaderField("Location");
                 conn.disconnect();
@@ -161,14 +162,12 @@ public class LocalStreamProxy {
 
             is = conn.getInputStream();
 
-            // 嗅探前 2KB 数据
             byte[] previewBuf = new byte[2048];
             int previewRead = is.read(previewBuf);
             if (previewRead <= 0) return "返回数据为空";
 
             String previewStr = new String(previewBuf, 0, previewRead, "UTF-8").trim();
 
-            // 如果服务端返回了 JSON，递归解析真实音频直链
             if (previewStr.startsWith("{") || previewStr.startsWith("[")) {
                 StringBuilder sb = new StringBuilder(previewStr);
                 byte[] temp = new byte[4096];
@@ -196,14 +195,12 @@ public class LocalStreamProxy {
                 }
             }
 
-            // 如果服务端返回了 XML 报错
             if (previewStr.startsWith("<?xml") || previewStr.contains("<subsonic-response")) {
                 Matcher m = Pattern.compile("message=\"([^\"]+)\"").matcher(previewStr);
                 if (m.find()) return "服务端报错: " + m.group(1);
                 return "服务端返回了 XML 错误";
             }
 
-            // 写入本地临时文件
             fos = new FileOutputStream(tmpFile);
             fos.write(previewBuf, 0, previewRead);
             fos.flush();
@@ -216,7 +213,7 @@ public class LocalStreamProxy {
             while ((r = is.read(buf)) != -1) {
                 if (isStopped) return "已取消";
                 fos.write(buf, 0, r);
-                fos.flush(); // 立即刷入磁盘缓存，供本地代理线程同步读取！
+                fos.flush();
                 downloadedBytes += r;
 
                 if (totalBytes > 0) {
@@ -257,7 +254,6 @@ public class LocalStreamProxy {
         serverThread.start();
     }
 
-    // 处理 MediaPlayer 的边下边播请求
     private void handleClient(final Socket client) {
         new Thread(new Runnable() {
             @Override
@@ -269,7 +265,6 @@ public class LocalStreamProxy {
                     InputStream cis = client.getInputStream();
                     os = client.getOutputStream();
 
-                    // 读取 MediaPlayer 的 HTTP 请求头
                     byte[] reqBuf = new byte[2048];
                     int reqLen = cis.read(reqBuf);
                     if (reqLen <= 0) return;
@@ -281,7 +276,6 @@ public class LocalStreamProxy {
                         rangeStart = Long.parseLong(m.group(1));
                     }
 
-                    // 核心优化：只要下载了前 48KB 数据，立刻给 MediaPlayer 返回 HTTP 头并吐出流！
                     long waitStart = System.currentTimeMillis();
                     while (downloadedBytes < 48 * 1024 && !downloadFinished && !downloadFailed && !isStopped) {
                         if (System.currentTimeMillis() - waitStart > 12000) break;
@@ -294,7 +288,6 @@ public class LocalStreamProxy {
                         return;
                     }
 
-                    // 响应 200 或 206
                     StringBuilder resp = new StringBuilder();
                     if (rangeStart > 0 && totalBytes > 0) {
                         resp.append("HTTP/1.1 206 Partial Content\r\n");
@@ -313,7 +306,6 @@ public class LocalStreamProxy {
                     os.write(resp.toString().getBytes());
                     os.flush();
 
-                    // 打开本地已下载部分的文件，向 MediaPlayer 实时推送
                     File readTarget = targetFile.exists() ? targetFile : tmpFile;
                     raf = new RandomAccessFile(readTarget, "r");
                     raf.seek(rangeStart);
@@ -338,7 +330,7 @@ public class LocalStreamProxy {
                             if (downloadFinished || downloadFailed) {
                                 break;
                             }
-                            Thread.sleep(20); // 追平下载进度时，等待下游写入
+                            Thread.sleep(20);
                         }
                     }
 
@@ -387,7 +379,6 @@ public class LocalStreamProxy {
         if (downloadThread != null) downloadThread.interrupt();
         if (serverThread != null) serverThread.interrupt();
 
-        // 若中断时未下载完，删除损坏的临时文件
         if (!downloadFinished && tmpFile.exists()) {
             tmpFile.delete();
         }
