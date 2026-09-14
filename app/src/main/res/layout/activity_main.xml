@@ -38,7 +38,7 @@
                 android:textSize="12sp" />
         </RelativeLayout>
 
-        <!-- 可折叠服务器配置面板（已修复按钮文字裁剪 bug） -->
+        <!-- 可折叠服务器配置面板（包含缓存、超时与重试配置） -->
         <LinearLayout
             android:id="@+id/layout_config_panel"
             android:layout_width="match_parent"
@@ -88,7 +88,57 @@
                     android:singleLine="true" />
             </LinearLayout>
 
-            <!-- 缓存设置与保存操作排（采用舒适布局与 padding，告别字体裁剪） -->
+            <!-- 超时时长与重试次数设置排 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="超时时长(秒):"
+                    android:textColor="#cccccc"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/et_timeout_sec"
+                    android:layout_width="55dp"
+                    android:layout_height="wrap_content"
+                    android:text="20"
+                    android:hint="20"
+                    android:textColor="#ffffff"
+                    android:textColorHint="#777777"
+                    android:inputType="number"
+                    android:gravity="center"
+                    android:singleLine="true"
+                    android:layout_marginLeft="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="重试次数:"
+                    android:textColor="#cccccc"
+                    android:textSize="13sp"
+                    android:layout_marginLeft="12dp" />
+
+                <EditText
+                    android:id="@+id/et_retry_count"
+                    android:layout_width="50dp"
+                    android:layout_height="wrap_content"
+                    android:text="3"
+                    android:hint="3"
+                    android:textColor="#ffffff"
+                    android:textColorHint="#777777"
+                    android:inputType="number"
+                    android:gravity="center"
+                    android:singleLine="true"
+                    android:layout_marginLeft="4dp" />
+            </LinearLayout>
+
+            <!-- 缓存设置排与保存按钮 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -105,7 +155,7 @@
 
                 <EditText
                     android:id="@+id/et_cache_size"
-                    android:layout_width="70dp"
+                    android:layout_width="65dp"
                     android:layout_height="wrap_content"
                     android:text="500"
                     android:hint="500"
@@ -133,7 +183,6 @@
                     android:layout_height="1dp"
                     android:layout_weight="1" />
 
-                <!-- 修复后的保存并连接按钮 -->
                 <Button
                     android:id="@+id/btn_connect"
                     android:layout_width="wrap_content"
@@ -390,7 +439,6 @@
                         android:textSize="12sp"
                         android:layout_marginLeft="4dp" />
 
-                    <!-- 底部音效按钮 -->
                     <Button
                         android:id="@+id/btn_open_eq"
                         android:layout_width="wrap_content"
@@ -426,7 +474,7 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 顶栏：收起、标题、音效按钮、常亮开关、播放列表 -->
+        <!-- 顶栏 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
@@ -490,7 +538,6 @@
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
 
-            <!-- 左栏：大封面 + 歌曲信息与音质徽章 + 控制 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
@@ -531,7 +578,6 @@
                     android:layout_marginTop="2dp"
                     android:singleLine="true" />
 
-                <!-- 歌曲音质/码率显示徽章 -->
                 <TextView
                     android:id="@+id/tv_detail_quality"
                     android:layout_width="wrap_content"
@@ -613,7 +659,6 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 右栏：歌词 / 播放队列切换区 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
