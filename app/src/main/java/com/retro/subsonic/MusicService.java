@@ -32,9 +32,9 @@ public class MusicService extends Service {
 
     public static final String BROADCAST_STATUS = "com.retro.subsonic.STATUS_CHANGE";
 
-    public static final int MODE_LOOP_ALL = 0; // 列表循环
-    public static final int MODE_SHUFFLE = 1;  // 随机播放
-    public static final int MODE_SINGLE = 2;   // 单曲循环
+    public static final int MODE_LOOP_ALL = 0;
+    public static final int MODE_SHUFFLE = 1;
+    public static final int MODE_SINGLE = 2;
 
     private static final int NOTIFICATION_ID = 1001;
 
@@ -44,17 +44,23 @@ public class MusicService extends Service {
         public String artist;
         public String streamUrl;
         public String coverArtId;
+        public String quality;
 
         public SongItem(String id, String title, String artist, String streamUrl) {
-            this(id, title, artist, streamUrl, null);
+            this(id, title, artist, streamUrl, null, "320K MP3");
         }
 
         public SongItem(String id, String title, String artist, String streamUrl, String coverArtId) {
+            this(id, title, artist, streamUrl, coverArtId, "320K MP3");
+        }
+
+        public SongItem(String id, String title, String artist, String streamUrl, String coverArtId, String quality) {
             this.id = id;
             this.title = title;
             this.artist = artist;
             this.streamUrl = streamUrl;
             this.coverArtId = coverArtId;
+            this.quality = quality;
         }
     }
 
@@ -66,7 +72,6 @@ public class MusicService extends Service {
     private Handler progressHandler = new Handler();
     private Random random = new Random();
 
-    // 缓存下载控制
     private Thread currentDownloadThread;
     private Thread preCacheThread;
     private volatile boolean cancelCurrentDownload = false;
@@ -74,17 +79,9 @@ public class MusicService extends Service {
     private boolean isBuffering = false;
     private int bufferPercent = 0;
 
-    public static ArrayList<SongItem> getPlaylist() {
-        return playlist;
-    }
-
-    public static int getCurrentIndex() {
-        return currentIndex;
-    }
-
-    public static int getCurrentMode() {
-        return currentMode;
-    }
+    public static ArrayList<SongItem> getPlaylist() { return playlist; }
+    public static int getCurrentIndex() { return currentIndex; }
+    public static int getCurrentMode() { return currentMode; }
 
     public static void setQueue(ArrayList<SongItem> list, int index, Context context) {
         playlist.clear();
@@ -103,13 +100,16 @@ public class MusicService extends Service {
         mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
         mediaPlayer.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
 
+        // 绑定音频硬件音效 Session
+        AudioEffectsManager.getInstance().attachSession(mediaPlayer.getAudioSessionId(), getApplicationContext());
+
         mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
             @Override
             public void onPrepared(MediaPlayer mp) {
                 mp.start();
+                AudioEffectsManager.getInstance().attachSession(mp.getAudioSessionId(), getApplicationContext());
                 updateNotification();
                 broadcastStatus();
-                // 当前歌曲开始播放后，低优先级后台线程预加载下一首歌曲
                 triggerPreCacheNext();
             }
         });
@@ -170,7 +170,6 @@ public class MusicService extends Service {
 
     private void handleCompletion() {
         if (playlist.isEmpty()) return;
-
         if (currentMode == MODE_SINGLE) {
             playCurrent();
         } else if (currentMode == MODE_SHUFFLE) {
@@ -191,18 +190,14 @@ public class MusicService extends Service {
         if (currentIndex < 0 || currentIndex >= playlist.size()) return;
         final SongItem song = playlist.get(currentIndex);
 
-        // 取消正在进行的下载与预加载任务
         cancelCurrentDownload = true;
         cancelPreCache = true;
 
-        try {
-            mediaPlayer.reset();
-        } catch (Exception ignored) {}
+        try { mediaPlayer.reset(); } catch (Exception ignored) {}
 
-        // 1. 如果本地已经完整缓存，直接从本地文件播放
         if (CacheManager.isSongCached(this, song.id)) {
             File cachedFile = CacheManager.getSongFile(this, song.id);
-            cachedFile.setLastModified(System.currentTimeMillis()); // 刷新访问时间
+            cachedFile.setLastModified(System.currentTimeMillis());
             isBuffering = false;
             bufferPercent = 100;
             broadcastStatus();
@@ -210,7 +205,6 @@ public class MusicService extends Service {
             return;
         }
 
-        // 2. 如果未缓存，在后台下载至本地缓存并实时通知进度
         isBuffering = true;
         bufferPercent = 0;
         broadcastStatus();
@@ -227,7 +221,6 @@ public class MusicService extends Service {
                     if (tmpFile.renameTo(targetFile)) {
                         targetFile.setLastModified(System.currentTimeMillis());
 
-                        // 检查并淘汰超出上限的旧缓存
                         SharedPreferences sp = getSharedPreferences("subsonic_cfg", MODE_PRIVATE);
                         int maxMb = 500;
                         try {
@@ -241,7 +234,6 @@ public class MusicService extends Service {
                     }
                 }
 
-                // 如果下载或保存失败且未被主动取消，回退为在线直连播放
                 if (!cancelCurrentDownload) {
                     isBuffering = false;
                     playOnlineDirect(song.streamUrl);
@@ -324,13 +316,11 @@ public class MusicService extends Service {
         }
     }
 
-    // 后台静默预加载下一首歌曲
     private void triggerPreCacheNext() {
         if (playlist.isEmpty()) return;
         int nextIndex = (currentIndex + 1) % playlist.size();
         final SongItem nextSong = playlist.get(nextIndex);
 
-        // 若下一首已经缓存，无需重复处理
         if (CacheManager.isSongCached(this, nextSong.id)) return;
 
         preCacheThread = new Thread(new Runnable() {
@@ -432,6 +422,7 @@ public class MusicService extends Service {
             b.putExtra("coverArtId", song.coverArtId);
             b.putExtra("title", song.title);
             b.putExtra("artist", song.artist);
+            b.putExtra("quality", song.quality);
             b.putExtra("isPlaying", mediaPlayer.isPlaying());
             b.putExtra("position", mediaPlayer.getCurrentPosition());
             b.putExtra("duration", mediaPlayer.getDuration());
@@ -443,9 +434,7 @@ public class MusicService extends Service {
     }
 
     @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+    public IBinder onBind(Intent intent) { return null; }
 
     @Override
     public void onDestroy() {
@@ -453,6 +442,7 @@ public class MusicService extends Service {
         cancelCurrentDownload = true;
         cancelPreCache = true;
         progressHandler.removeCallbacksAndMessages(null);
+        AudioEffectsManager.getInstance().release();
         if (mediaPlayer != null) {
             mediaPlayer.release();
             mediaPlayer = null;
