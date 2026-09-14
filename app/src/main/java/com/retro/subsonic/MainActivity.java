@@ -338,13 +338,18 @@ public class MainActivity extends Activity {
         return "列表循环";
     }
 
-    // 关键修正：stream.view 严禁传入 f=json，并且强制追加 format=mp3 进行转码保证兼容
+    // 构建纯净标准的 Subsonic 原生流地址，确保兼容所有自建源、反向代理与各种音乐代理源
     private String buildStreamUrl(String songId) {
         String base = prefs.getString("server", "");
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         String u = prefs.getString("user", "");
         String p = prefs.getString("pass", "");
-        return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic&format=mp3&estimateContentLength=true";
+        try {
+            String encodedId = URLEncoder.encode(songId, "UTF-8");
+            return base + "/rest/stream.view?id=" + encodedId + "&u=" + URLEncoder.encode(u, "UTF-8") + "&p=" + URLEncoder.encode(p, "UTF-8") + "&v=1.12.0&c=RetroSubsonic";
+        } catch (Exception e) {
+            return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic";
+        }
     }
 
     private void setupListeners() {
