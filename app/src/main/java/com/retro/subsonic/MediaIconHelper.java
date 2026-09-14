@@ -11,7 +11,7 @@ import android.graphics.drawable.Drawable;
 
 public class MediaIconHelper {
 
-    // 播放三角图标 (带视错觉微距校正)
+    // 播放三角图标
     public static Drawable createPlayIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -42,7 +42,7 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 暂停双柱图标 (圆角光条)
+    // 暂停双柱图标
     public static Drawable createPauseIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -62,18 +62,16 @@ public class MediaIconHelper {
         float bottom = half + barH / 2f;
         float r = 1.5f * density;
 
-        // 左柱
         RectF leftBar = new RectF(half - gap / 2f - barW, top, half - gap / 2f, bottom);
         canvas.drawRoundRect(leftBar, r, r, paint);
 
-        // 右柱
         RectF rightBar = new RectF(half + gap / 2f, top, half + gap / 2f + barW, bottom);
         canvas.drawRoundRect(rightBar, r, r, paint);
 
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 上一首图标 (竖线 + 向左三角)
+    // 上一首图标
     public static Drawable createPreviousIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -96,11 +94,9 @@ public class MediaIconHelper {
         float barW = 2.5f * density;
         float r = 1.0f * density;
 
-        // 左端竖线
         RectF bar = new RectF(left, top, left + barW, bottom);
         canvas.drawRoundRect(bar, r, r, paint);
 
-        // 向左三角
         Path path = new Path();
         float triLeft = left + barW + 1.5f * density;
         path.moveTo(right, top);
@@ -112,7 +108,7 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 下一首图标 (向右三角 + 竖线)
+    // 下一首图标
     public static Drawable createNextIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -135,11 +131,9 @@ public class MediaIconHelper {
         float barW = 2.5f * density;
         float r = 1.0f * density;
 
-        // 右端竖线
         RectF bar = new RectF(right - barW, top, right, bottom);
         canvas.drawRoundRect(bar, r, r, paint);
 
-        // 向右三角
         Path path = new Path();
         float triRight = right - barW - 1.5f * density;
         path.moveTo(left, top);
@@ -148,6 +142,61 @@ public class MediaIconHelper {
         path.close();
 
         canvas.drawPath(path, paint);
+        return new BitmapDrawable(context.getResources(), bitmap);
+    }
+
+    // 搜索放大镜图标 (居中现代几何)
+    public static Drawable createSearchIcon(Context context, int sizeDp, int color) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int sizePx = (int) (sizeDp * density);
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setColor(color);
+        paint.setStrokeWidth(2.2f * density);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+
+        float half = sizePx / 2f;
+        float offset = 1.6f * density;
+        float radius = sizePx * 0.22f;
+
+        float cx = half - offset;
+        float cy = half - offset;
+        canvas.drawCircle(cx, cy, radius, paint);
+
+        float angle = (float) Math.toRadians(45);
+        float startX = cx + (float) (radius * Math.cos(angle));
+        float startY = cy + (float) (radius * Math.sin(angle));
+        float handleLen = sizePx * 0.22f;
+        float endX = startX + (float) (handleLen * Math.cos(angle));
+        float endY = startY + (float) (handleLen * Math.sin(angle));
+
+        canvas.drawLine(startX, startY, endX, endY, paint);
+        return new BitmapDrawable(context.getResources(), bitmap);
+    }
+
+    // 电源退出图标 (顶部开口圆环 + 垂直电源竖线)
+    public static Drawable createPowerIcon(Context context, int sizeDp, int color) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int sizePx = (int) (sizeDp * density);
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setColor(color);
+        paint.setStrokeWidth(2.2f * density);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+
+        float half = sizePx / 2f;
+        float r = sizePx * 0.28f;
+
+        RectF oval = new RectF(half - r, half - r, half + r, half + r);
+        canvas.drawArc(oval, -60, 300, false, paint);
+        canvas.drawLine(half, half - r * 1.15f, half, half - 1.5f * density, paint);
+
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 }
