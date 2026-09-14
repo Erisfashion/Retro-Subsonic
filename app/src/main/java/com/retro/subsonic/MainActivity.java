@@ -10,6 +10,11 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Environment;
@@ -72,17 +77,21 @@ public class MainActivity extends Activity {
     // 详情页组件
     private Button btnCloseDetail, btnDetailPrev, btnDetailPlayPause, btnDetailNext, btnDetailMode, btnDetailEq;
     private Button btnDetailKeepScreen, btnDetailQueue;
-    private ImageView ivDetailCover;
-    private FrameLayout flVinylWrapper;
-    private LinearLayout layoutCoverContainer, layoutDetailSeekBox, layoutDetailControls;
+    private FrameLayout layoutVinylContainer, flVinylDisc;
+    private ImageView ivVinylCircularCover, ivSquareCover;
+    private TonearmView viewTonearm;
+    private LinearLayout layoutCoverContainer, layoutDetailSeekBox, layoutDetailControls, layoutDetailBottomBlank;
     private TextView tvDetailTitle, tvDetailArtist, tvDetailQuality, tvDetailTime;
     private SeekBar detailSeekBar;
     private LinearLayout layoutDetailLyricsView, layoutDetailQueueView;
     private ListView lvDetailQueue;
 
+    // 封面模式：黑胶唱机模式 vs 静态方形模式
+    private boolean isVinylDisplayMode = true;
+    private Bitmap currentRawCoverBitmap;
+
     // 黑胶旋转动画控制
     private RotateAnimation vinylRotateAnim;
-    private boolean isVinylSpinning = true;
     private boolean isCurrentSongPlaying = false;
 
     private boolean isKeepScreenOn = false;
@@ -93,7 +102,7 @@ public class MainActivity extends Activity {
     private Handler lyricHandler = new Handler();
     private boolean isUserTouchingLyrics = false;
     private int currentLyricIndex = -1;
-    private int lyricBaseFontSize = 15; // 默认 15sp
+    private int lyricBaseFontSize = 15;
 
     private static class LyricRow {
         long timeMs;
@@ -153,7 +162,7 @@ public class MainActivity extends Activity {
                 btnPlayPause.setText(playText);
                 btnDetailPlayPause.setText(playText);
 
-                // 根据播放状态平滑启停黑胶动画
+                // 更新黑胶唱片转动状态
                 updateVinylAnimationState();
 
                 int mode = intent.getIntExtra("mode", MusicService.MODE_LOOP_ALL);
@@ -232,42 +241,59 @@ public class MainActivity extends Activity {
 
         prefs = getSharedPreferences("subsonic_cfg", MODE_PRIVATE);
         lyricBaseFontSize = prefs.getInt("lyric_font_size", 15);
+        isVinylDisplayMode = prefs.getBoolean("is_vinyl_display_mode", true);
+
         loadFavSet();
         loadLocalPlaylists();
 
         initViews();
         setupVinylAnimation();
+        updateCoverDisplayMode();
         loadSavedConfig();
         setupListeners();
         setupClickInterceptors();
 
-        // 首页默认加载“我的歌单”列表
+        // 默认进入首页显示我的歌单
         fetchPlaylists();
         syncServerFavoritesQuietly();
     }
 
     private void setupVinylAnimation() {
         vinylRotateAnim = new RotateAnimation(0f, 360f, Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
-        vinylRotateAnim.setDuration(12000); // 匀速转动一圈12秒
+        vinylRotateAnim.setDuration(12000); // 12秒一圈匀速转动
         vinylRotateAnim.setRepeatCount(Animation.INFINITE);
         vinylRotateAnim.setInterpolator(new LinearInterpolator());
     }
 
     private void updateVinylAnimationState() {
-        if (flVinylWrapper == null) return;
-        if (isVinylSpinning && isCurrentSongPlaying) {
-            if (flVinylWrapper.getAnimation() == null) {
-                flVinylWrapper.startAnimation(vinylRotateAnim);
+        if (flVinylDisc == null) return;
+        if (isVinylDisplayMode && isCurrentSongPlaying) {
+            if (flVinylDisc.getAnimation() == null) {
+                flVinylDisc.startAnimation(vinylRotateAnim);
             }
         } else {
-            flVinylWrapper.clearAnimation();
+            flVinylDisc.clearAnimation();
         }
     }
 
-    private void toggleVinylSpin() {
-        isVinylSpinning = !isVinylSpinning;
-        updateVinylAnimationState();
-        Toast.makeText(this, isVinylSpinning ? "黑胶唱片转动: 已开启" : "黑胶唱片转动: 已保持静态", Toast.LENGTH_SHORT).show();
+    // 核心：在黑胶唱机模式与方形大封面模式间切换
+    private void updateCoverDisplayMode() {
+        if (isVinylDisplayMode) {
+            layoutVinylContainer.setVisibility(View.VISIBLE);
+            ivSquareCover.setVisibility(View.GONE);
+            updateVinylAnimationState();
+        } else {
+            layoutVinylContainer.setVisibility(View.GONE);
+            if (flVinylDisc != null) flVinylDisc.clearAnimation();
+            ivSquareCover.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void toggleCoverDisplayMode() {
+        isVinylDisplayMode = !isVinylDisplayMode;
+        prefs.edit().putBoolean("is_vinyl_display_mode", isVinylDisplayMode).commit();
+        updateCoverDisplayMode();
+        Toast.makeText(this, isVinylDisplayMode ? "已切换为黑胶唱机模式" : "已切换为方形封面模式", Toast.LENGTH_SHORT).show();
     }
 
     private void loadFavSet() {
@@ -283,7 +309,6 @@ public class MainActivity extends Activity {
         return songId != null && favSongIds.contains(songId);
     }
 
-    // 本地歌单加载（精选歌单与车载歌单）
     private void loadLocalPlaylists() {
         featuredSongs.clear();
         carSongs.clear();
@@ -420,31 +445,26 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(statusReceiver); } catch (Exception ignored) {}
     }
 
-    // 全局物理/虚拟返回键层级导航控制：层层返回直到回到首页我的歌单，最后按才返回桌面
+    // 全层级物理返回键导航
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            // 1. 若当前在播放详情页，按返回键退回到下方的浏览主页
             if (layoutDetailOverlay != null && layoutDetailOverlay.getVisibility() == View.VISIBLE) {
                 layoutDetailOverlay.setVisibility(View.GONE);
                 return true;
             }
-            // 2. 若侧边播放列表展开，按返回键收起它
             if (layoutQueuePanel != null && layoutQueuePanel.getVisibility() == View.VISIBLE) {
                 layoutQueuePanel.setVisibility(View.GONE);
                 return true;
             }
-            // 3. 若当前正在歌单详情内容中，按返回键返回上层歌单目录
             if (btnBack != null && btnBack.getVisibility() == View.VISIBLE) {
                 btnBack.performClick();
                 return true;
             }
-            // 4. 若当前停留在搜索结果页面，按返回键回到首页我的歌单
             if (layoutSearchBar != null && layoutSearchBar.getVisibility() == View.VISIBLE) {
                 btnTabPlaylists.performClick();
                 return true;
             }
-            // 5. 已经在首页我的歌单列表，此时按返回键正常退到系统桌面
             return super.onKeyDown(keyCode, event);
         }
         return super.onKeyDown(keyCode, event);
@@ -508,11 +528,16 @@ public class MainActivity extends Activity {
         btnLyricDec = (Button) findViewById(R.id.btn_lyric_dec);
         btnLyricInc = (Button) findViewById(R.id.btn_lyric_inc);
 
-        flVinylWrapper = (FrameLayout) findViewById(R.id.fl_vinyl_wrapper);
-        ivDetailCover = (ImageView) findViewById(R.id.iv_detail_cover);
+        layoutVinylContainer = (FrameLayout) findViewById(R.id.layout_vinyl_container);
+        flVinylDisc = (FrameLayout) findViewById(R.id.fl_vinyl_disc);
+        ivVinylCircularCover = (ImageView) findViewById(R.id.iv_vinyl_circular_cover);
+        viewTonearm = (TonearmView) findViewById(R.id.view_tonearm);
+        ivSquareCover = (ImageView) findViewById(R.id.iv_square_cover);
+
         layoutCoverContainer = (LinearLayout) findViewById(R.id.layout_cover_container);
         layoutDetailSeekBox = (LinearLayout) findViewById(R.id.layout_detail_seek_box);
         layoutDetailControls = (LinearLayout) findViewById(R.id.layout_detail_controls);
+        layoutDetailBottomBlank = (LinearLayout) findViewById(R.id.layout_detail_bottom_blank);
 
         tvDetailTitle = (TextView) findViewById(R.id.tv_detail_title);
         tvDetailArtist = (TextView) findViewById(R.id.tv_detail_artist);
@@ -637,7 +662,7 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    // 核心居中定位方法：无论从哪里打开播放列表都平滑居中到当前歌曲
+    // 无论从哪里打开播放列表，均精准自动居中滚动到当前歌曲
     private void scrollQueueToCenter(final ListView lv) {
         final int idx = MusicService.getCurrentIndex();
         if (idx >= 0 && lv != null) {
@@ -846,7 +871,6 @@ public class MainActivity extends Activity {
         return null;
     }
 
-    // 弹出歌曲长按菜单
     private void showSongLongClickMenu(final DisplayEntry entry, final int position) {
         if (!entry.isSong) return;
         final boolean fav = isFav(entry.id);
@@ -909,7 +933,6 @@ public class MainActivity extends Activity {
     }
 
     private void removeFromCurrentView(int position, DisplayEntry entry) {
-        // 如果当前正好在本地歌单视图，同步删除存储
         if ("精选歌单".equals(tvListTitle.getText().toString())) {
             for (int i = 0; i < featuredSongs.size(); i++) {
                 if (featuredSongs.get(i).id.equals(entry.id)) {
@@ -936,7 +959,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 动态调整歌词字号大小
     private void applyLyricFontSize(int delta) {
         lyricBaseFontSize += delta;
         if (lyricBaseFontSize < 11) lyricBaseFontSize = 11;
@@ -953,6 +975,30 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "歌词字号: " + lyricBaseFontSize + "sp", Toast.LENGTH_SHORT).show();
     }
 
+    // 核心安全裁切：生成完全圆形的专辑封面位图
+    private Bitmap getCircularBitmap(Bitmap bitmap) {
+        if (bitmap == null) return null;
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int size = Math.min(width, height);
+
+        Bitmap output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(output);
+
+        Paint paint = new Paint();
+        paint.setAntiAlias(true);
+
+        float r = size / 2f;
+        canvas.drawCircle(r, r, r, paint);
+
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        Rect srcRect = new Rect((width - size) / 2, (height - size) / 2, (width + size) / 2, (height + size) / 2);
+        Rect dstRect = new Rect(0, 0, size, size);
+        canvas.drawBitmap(bitmap, srcRect, dstRect, paint);
+
+        return output;
+    }
+
     private void setupListeners() {
         btnExitApp.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -964,7 +1010,6 @@ public class MainActivity extends Activity {
             public void onClick(View v) { performAppExit(); }
         });
 
-        // 歌词字号调节
         btnLyricDec.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) { applyLyricFontSize(-2); }
@@ -1006,15 +1051,25 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 点击黑胶封面区域切换旋转动画状态
-        View.OnClickListener vinylClickListener = new View.OnClickListener() {
+        // 点击黑胶唱机任意区域或方形大封面，互相切换显示模式
+        View.OnClickListener coverToggleListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                toggleVinylSpin();
+                toggleCoverDisplayMode();
             }
         };
-        flVinylWrapper.setOnClickListener(vinylClickListener);
-        ivDetailCover.setOnClickListener(vinylClickListener);
+        layoutVinylContainer.setOnClickListener(coverToggleListener);
+        ivVinylCircularCover.setOnClickListener(coverToggleListener);
+        viewTonearm.setOnClickListener(coverToggleListener);
+        ivSquareCover.setOnClickListener(coverToggleListener);
+
+        // 核心新增：点击播放按钮下方的空白区域切换 歌词 / 播放列表
+        layoutDetailBottomBlank.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleDetailQueueView();
+            }
+        });
 
         btnToggleConfig.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1090,7 +1145,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 点击打开侧边播放列表并居中当前歌曲
         btnToggleQueue.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1104,7 +1158,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 修复关闭按钮响应
         btnCloseQueue.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) { layoutQueuePanel.setVisibility(View.GONE); }
@@ -1287,7 +1340,11 @@ public class MainActivity extends Activity {
     }
 
     private void loadCoverArt(final String coverId) {
-        if (coverId == null || coverId.length() == 0) return;
+        if (coverId == null || coverId.length() == 0) {
+            ivVinylCircularCover.setImageResource(android.R.drawable.ic_menu_report_image);
+            ivSquareCover.setImageResource(android.R.drawable.ic_menu_report_image);
+            return;
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -1305,9 +1362,15 @@ public class MainActivity extends Activity {
                     conn.disconnect();
 
                     if (bitmap != null) {
+                        currentRawCoverBitmap = bitmap;
+                        final Bitmap circularBitmap = getCircularBitmap(bitmap);
+
                         runOnUiThread(new Runnable() {
                             @Override
-                            public void run() { ivDetailCover.setImageBitmap(bitmap); }
+                            public void run() {
+                                ivVinylCircularCover.setImageBitmap(circularBitmap);
+                                ivSquareCover.setImageBitmap(currentRawCoverBitmap);
+                            }
                         });
                     }
                 } catch (Exception ignored) {}
@@ -1531,27 +1594,27 @@ public class MainActivity extends Activity {
                         listData.clear();
 
                         // 1. 顶置“我的收藏”
-                        currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "云端标星收藏夹", null, "云端歌单", false));
+                        currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步服务器标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
                         Map<String, String> favRow = new HashMap<String, String>();
                         favRow.put("title", "♥  我的收藏");
                         favRow.put("subtitle", "已同步服务器标星 (" + favSongIds.size() + "首)");
                         listData.add(favRow);
 
                         // 2. 顶置“精选歌单”
-                        currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "本地精选合集", null, "本地歌单", false));
+                        currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "本地定制精选 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
                         Map<String, String> featRow = new HashMap<String, String>();
                         featRow.put("title", "⭐  精选歌单");
                         featRow.put("subtitle", "本地定制精选 (" + featuredSongs.size() + "首)");
                         listData.add(featRow);
 
                         // 3. 顶置“车载歌单”
-                        currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行必听车载曲库", null, "本地歌单", false));
+                        currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行必听车载曲库 (" + carSongs.size() + "首)", null, "本地歌单", false));
                         Map<String, String> carRow = new HashMap<String, String>();
                         carRow.put("title", "🚗  车载歌单");
                         carRow.put("subtitle", "出行必听车载曲库 (" + carSongs.size() + "首)");
                         listData.add(carRow);
 
-                        // 4. 加载 Subsonic 服务器上的歌单
+                        // 4. 加载服务器歌单
                         if (jsonStr != null) {
                             try {
                                 JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
