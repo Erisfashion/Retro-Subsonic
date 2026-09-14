@@ -475,66 +475,69 @@
                         android:paddingLeft="4dp" />
                 </LinearLayout>
 
+                <!-- 底栏现代居中控制 Dock -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:gravity="center">
+                    android:gravity="center_vertical|center_horizontal"
+                    android:layout_marginTop="2dp">
 
                     <Button
                         android:id="@+id/btn_mode"
                         android:layout_width="wrap_content"
-                        android:layout_height="34dp"
-                        android:background="@drawable/bg_btn_default"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_btn_pill"
                         android:text="列表循环"
-                        android:textColor="#e0e0e0"
+                        android:textColor="#cbd5e1"
                         android:textSize="11sp"
-                        android:paddingLeft="8dp"
-                        android:paddingRight="8dp" />
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp" />
 
-                    <Button
+                    <!-- 底部：上一首 (38dp 圆形图标) -->
+                    <ImageView
                         android:id="@+id/btn_prev"
-                        android:layout_width="wrap_content"
-                        android:layout_height="34dp"
-                        android:minWidth="55dp"
-                        android:background="@drawable/bg_btn_default"
-                        android:text="上一首"
-                        android:textColor="#e0e0e0"
-                        android:textSize="12sp"
-                        android:layout_marginLeft="4dp" />
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:background="@drawable/bg_btn_circle_nav"
+                        android:scaleType="center"
+                        android:layout_marginLeft="8dp"
+                        android:clickable="true"
+                        android:focusable="true" />
 
-                    <Button
+                    <!-- 底部：播放/暂停主按键 (46dp 突出圆形青蓝图标) -->
+                    <ImageView
                         android:id="@+id/btn_play_pause"
-                        android:layout_width="wrap_content"
-                        android:layout_height="34dp"
-                        android:minWidth="62dp"
-                        android:background="@drawable/bg_btn_play"
-                        android:text="播放"
-                        android:textColor="#ffffff"
-                        android:textSize="12sp"
-                        android:layout_marginLeft="4dp" />
+                        android:layout_width="46dp"
+                        android:layout_height="46dp"
+                        android:background="@drawable/bg_btn_circle_play"
+                        android:scaleType="center"
+                        android:layout_marginLeft="8dp"
+                        android:clickable="true"
+                        android:focusable="true" />
 
-                    <Button
+                    <!-- 底部：下一首 (38dp 圆形图标) -->
+                    <ImageView
                         android:id="@+id/btn_next"
-                        android:layout_width="wrap_content"
-                        android:layout_height="34dp"
-                        android:minWidth="55dp"
-                        android:background="@drawable/bg_btn_default"
-                        android:text="下一首"
-                        android:textColor="#e0e0e0"
-                        android:textSize="12sp"
-                        android:layout_marginLeft="4dp" />
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:background="@drawable/bg_btn_circle_nav"
+                        android:scaleType="center"
+                        android:layout_marginLeft="8dp"
+                        android:clickable="true"
+                        android:focusable="true" />
 
                     <Button
                         android:id="@+id/btn_open_eq"
                         android:layout_width="wrap_content"
-                        android:layout_height="34dp"
-                        android:minWidth="50dp"
-                        android:background="@drawable/bg_btn_accent"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_btn_pill_accent"
                         android:text="音效"
                         android:textColor="#00e5ff"
-                        android:textSize="12sp"
-                        android:layout_marginLeft="4dp" />
+                        android:textSize="11sp"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp"
+                        android:layout_marginLeft="8dp" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -692,7 +695,7 @@
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
 
-            <!-- 左栏：黑胶下移 + 居中偏上平衡布局 -->
+            <!-- 左栏：黑胶居中平衡 + 现代大尺寸圆形控制排 -->
             <LinearLayout
                 android:id="@+id/layout_cover_container"
                 android:layout_width="0dp"
@@ -705,7 +708,7 @@
                 android:clickable="true"
                 android:focusable="true">
 
-                <!-- 核心：顶部弹性缓冲占位，在竖屏和大屏上把黑胶平缓下推到中线偏上 -->
+                <!-- 顶部弹性缓冲：竖屏/大屏下将黑胶平滑下推到中线偏上 -->
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
@@ -814,7 +817,7 @@
                     android:paddingBottom="2dp"
                     android:layout_marginTop="4dp" />
 
-                <!-- 中段弹性自适应占位：使控制排平稳位于下段视觉中枢 -->
+                <!-- 中段弹性自适应占位 -->
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
@@ -846,62 +849,62 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 播放控制排 -->
+                <!-- 详情页：现代大尺寸圆形控制排布 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:gravity="center"
+                    android:gravity="center_vertical|center_horizontal"
                     android:layout_marginTop="6dp"
                     android:clickable="true">
 
                     <Button
                         android:id="@+id/btn_detail_mode"
                         android:layout_width="wrap_content"
-                        android:layout_height="38dp"
-                        android:background="@drawable/bg_btn_default"
+                        android:layout_height="36dp"
+                        android:background="@drawable/bg_btn_pill"
                         android:text="列表循环"
-                        android:textColor="#e0e0e0"
+                        android:textColor="#cbd5e1"
                         android:textSize="11sp"
-                        android:paddingLeft="8dp"
-                        android:paddingRight="8dp" />
+                        android:paddingLeft="12dp"
+                        android:paddingRight="12dp" />
 
-                    <Button
+                    <!-- 详情页：上一首 (50dp 正圆形图标) -->
+                    <ImageView
                         android:id="@+id/btn_detail_prev"
-                        android:layout_width="wrap_content"
-                        android:layout_height="38dp"
-                        android:minWidth="60dp"
-                        android:background="@drawable/bg_btn_default"
-                        android:text="上一首"
-                        android:textColor="#e0e0e0"
-                        android:textSize="12sp"
-                        android:layout_marginLeft="6dp" />
+                        android:layout_width="50dp"
+                        android:layout_height="50dp"
+                        android:background="@drawable/bg_btn_circle_nav"
+                        android:scaleType="center"
+                        android:layout_marginLeft="14dp"
+                        android:clickable="true"
+                        android:focusable="true" />
 
-                    <Button
+                    <!-- 详情页：播放/暂停 (64dp 大尺寸高亮正圆形图标) -->
+                    <ImageView
                         android:id="@+id/btn_detail_play_pause"
-                        android:layout_width="wrap_content"
-                        android:layout_height="38dp"
-                        android:minWidth="70dp"
-                        android:background="@drawable/bg_btn_play"
-                        android:text="播放"
-                        android:textColor="#ffffff"
-                        android:textSize="12sp"
-                        android:layout_marginLeft="6dp" />
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:background="@drawable/bg_btn_circle_play"
+                        android:scaleType="center"
+                        android:layout_marginLeft="14dp"
+                        android:clickable="true"
+                        android:focusable="true" />
 
-                    <Button
+                    <!-- 详情页：下一首 (50dp 正圆形图标) -->
+                    <ImageView
                         android:id="@+id/btn_detail_next"
-                        android:layout_width="wrap_content"
-                        android:layout_height="38dp"
-                        android:minWidth="60dp"
-                        android:background="@drawable/bg_btn_default"
-                        android:text="下一首"
-                        android:textColor="#e0e0e0"
-                        android:textSize="12sp"
-                        android:layout_marginLeft="6dp" />
+                        android:layout_width="50dp"
+                        android:layout_height="50dp"
+                        android:background="@drawable/bg_btn_circle_nav"
+                        android:scaleType="center"
+                        android:layout_marginLeft="14dp"
+                        android:clickable="true"
+                        android:focusable="true" />
                 </LinearLayout>
 
-                <!-- 底部适度留白占位 -->
+                <!-- 底部留白 -->
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
