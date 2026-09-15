@@ -175,7 +175,8 @@ public class MusicService extends Service {
                 isRetrying = false;
 
                 mp.start();
-                AudioEffectsManager.getInstance().attachSession(mp.getAudioSessionId(), getApplicationContext());
+                // 核心修复：直接传入 MediaPlayer 实例以挂载辅助混响总线
+                AudioEffectsManager.getInstance().attachMediaPlayer(mp, getApplicationContext());
 
                 updateNotification();
                 broadcastStatus();
