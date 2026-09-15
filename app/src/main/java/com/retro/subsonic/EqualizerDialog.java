@@ -2,273 +2,269 @@ package com.retro.subsonic;
 
 import android.app.Dialog;
 import android.content.Context;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.PresetReverb;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.widget.AdapterView;
+import android.widget.BaseAdapter;
 import android.widget.Button;
-import android.widget.CheckBox;
-import android.widget.CompoundButton;
 import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
+import android.widget.Spinner;
 import android.widget.TextView;
-
-import java.util.ArrayList;
+import android.widget.Toast;
 
 public class EqualizerDialog {
 
     private Context context;
     private Dialog dialog;
-    private AudioEffectsManager aem;
 
-    private CheckBox cbVirt, cbBass;
-    private SeekBar sbVirt, sbBass;
-    private TextView tvVirtVal, tvBassVal;
-    private RadioGroup rgReverb;
-
-    private LinearLayout layoutEqBands;
-    private ArrayList<SeekBar> bandSeekBars = new ArrayList<SeekBar>();
-    private ArrayList<TextView> bandValTexts = new ArrayList<TextView>();
+    private static final String[] REVERB_NAMES = new String[]{
+            "关闭", "小型房间", "中型房间", "大型房间", "中型礼堂", "音乐大厅", "录音棚"
+    };
+    private static final short[] REVERB_VALUES = new short[]{
+            PresetReverb.PRESET_NONE,
+            PresetReverb.PRESET_SMALLROOM,
+            PresetReverb.PRESET_MEDIUMROOM,
+            PresetReverb.PRESET_LARGEROOM,
+            PresetReverb.PRESET_MEDIUMHALL,
+            PresetReverb.PRESET_LARGEHALL,
+            PresetReverb.PRESET_PLATE
+    };
 
     public EqualizerDialog(Context context) {
         this.context = context;
-        this.aem = AudioEffectsManager.getInstance();
+        initDialog();
     }
 
-    public void show() {
-        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .edit().putBoolean("user_eq_active", true).commit();
+    private void initDialog() {
+        dialog = new Dialog(context);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
-        dialog = new Dialog(context, android.R.style.Theme_Holo_Dialog_NoActionBar);
-        dialog.setContentView(R.layout.dialog_equalizer);
-        dialog.setCanceledOnTouchOutside(true);
+        float density = context.getResources().getDisplayMetrics().density;
 
-        initViews();
-        setupReverb();
-        setupVirtAndBass();
-        setupEqualizer();
+        ScrollView scrollView = new ScrollView(context);
+        scrollView.setFillViewport(true);
 
-        dialog.show();
-    }
+        LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundResource(R.drawable.bg_card);
+        root.setPadding((int) (18 * density), (int) (16 * density), (int) (18 * density), (int) (16 * density));
 
-    private void initViews() {
-        Button btnClose = (Button) dialog.findViewById(R.id.btn_eq_close);
-        btnClose.setOnClickListener(new View.OnClickListener() {
+        // 顶栏：标题与总开关
+        LinearLayout header = new LinearLayout(context);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView tvTitle = new TextView(context);
+        tvTitle.setText("专业音效调节");
+        tvTitle.setTextColor(0xFFFFFFFF);
+        tvTitle.setTextSize(17);
+        tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        header.addView(tvTitle, titleLp);
+
+        final Button btnMasterToggle = new Button(context);
+        final AudioEffectsManager aem = AudioEffectsManager.getInstance();
+        btnMasterToggle.setBackgroundResource(R.drawable.bg_btn_pill_accent);
+        btnMasterToggle.setText(aem.isEnabled() ? "音效: 开启" : "音效: 关闭");
+        btnMasterToggle.setTextColor(0xFF00E5FF);
+        btnMasterToggle.setTextSize(11);
+        btnMasterToggle.setPadding((int) (12 * density), (int) (4 * density), (int) (12 * density), (int) (4 * density));
+        btnMasterToggle.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                dialog.dismiss();
+                boolean target = !aem.isEnabled();
+                aem.setEnabled(target);
+                btnMasterToggle.setText(target ? "音效: 开启" : "音效: 关闭");
+                btnMasterToggle.setTextColor(target ? 0xFF00E5FF : 0xFF888888);
+                Toast.makeText(context, target ? "音效已开启" : "音效已关闭", Toast.LENGTH_SHORT).show();
             }
         });
+        header.addView(btnMasterToggle);
+        root.addView(header);
 
-        cbVirt = (CheckBox) dialog.findViewById(R.id.cb_virt);
-        sbVirt = (SeekBar) dialog.findViewById(R.id.sb_virt);
-        tvVirtVal = (TextView) dialog.findViewById(R.id.tv_virt_val);
+        // 环境音效 (混响) 设置行
+        TextView tvReverbLabel = new TextView(context);
+        tvReverbLabel.setText("环境空间音效 (混响):");
+        tvReverbLabel.setTextColor(0xFF00E5FF);
+        tvReverbLabel.setTextSize(13);
+        tvReverbLabel.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
+        root.addView(tvReverbLabel);
 
-        cbBass = (CheckBox) dialog.findViewById(R.id.cb_bass);
-        sbBass = (SeekBar) dialog.findViewById(R.id.sb_bass);
-        tvBassVal = (TextView) dialog.findViewById(R.id.tv_bass_val);
+        Spinner spinnerReverb = new Spinner(context);
+        spinnerReverb.setBackgroundResource(R.drawable.bg_btn_pill);
+        spinnerReverb.setPadding((int) (10 * density), 0, (int) (10 * density), 0);
+        spinnerReverb.setAdapter(new SimpleDarkAdapter(REVERB_NAMES));
 
-        rgReverb = (RadioGroup) dialog.findViewById(R.id.rg_reverb);
-        layoutEqBands = (LinearLayout) dialog.findViewById(R.id.layout_eq_bands);
-    }
-
-    private void setupReverb() {
-        short curRev = aem.getReverbPreset(context);
-        if (curRev == PresetReverb.PRESET_SMALLROOM) {
-            ((RadioButton) dialog.findViewById(R.id.rb_rev_room)).setChecked(true);
-        } else if (curRev == PresetReverb.PRESET_MEDIUMHALL) {
-            ((RadioButton) dialog.findViewById(R.id.rb_rev_hall)).setChecked(true);
-        } else if (curRev == PresetReverb.PRESET_LARGEHALL) {
-            ((RadioButton) dialog.findViewById(R.id.rb_rev_large)).setChecked(true);
-        } else if (curRev == PresetReverb.PRESET_PLATE) {
-            ((RadioButton) dialog.findViewById(R.id.rb_rev_plate)).setChecked(true);
-        } else {
-            ((RadioButton) dialog.findViewById(R.id.rb_rev_none)).setChecked(true);
+        short currentPreset = aem.getPresetReverb();
+        int selectedIndex = 0;
+        for (int i = 0; i < REVERB_VALUES.length; i++) {
+            if (REVERB_VALUES[i] == currentPreset) {
+                selectedIndex = i;
+                break;
+            }
         }
-
-        rgReverb.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+        spinnerReverb.setSelection(selectedIndex);
+        spinnerReverb.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
-            public void onCheckedChanged(RadioGroup group, int checkedId) {
-                short p = PresetReverb.PRESET_NONE;
-                if (checkedId == R.id.rb_rev_room) p = PresetReverb.PRESET_SMALLROOM;
-                else if (checkedId == R.id.rb_rev_hall) p = PresetReverb.PRESET_MEDIUMHALL;
-                else if (checkedId == R.id.rb_rev_large) p = PresetReverb.PRESET_LARGEHALL;
-                else if (checkedId == R.id.rb_rev_plate) p = PresetReverb.PRESET_PLATE;
-                aem.setReverbPreset(p, context);
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                short preset = REVERB_VALUES[position];
+                aem.setPresetReverb(preset);
             }
-        });
-    }
 
-    private void setupVirtAndBass() {
-        cbVirt.setChecked(aem.isVirtualizerEnabled(context));
-        int virtStrength = aem.getVirtualizerStrength(context) / 10;
-        sbVirt.setProgress(virtStrength);
-        tvVirtVal.setText(virtStrength + "%");
-
-        cbVirt.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                aem.setVirtualizer(isChecked, sbVirt.getProgress() * 10, context);
-            }
+            public void onNothingSelected(AdapterView<?> parent) {}
         });
+        root.addView(spinnerReverb);
 
-        sbVirt.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                tvVirtVal.setText(progress + "%");
-                if (fromUser) {
-                    aem.setVirtualizer(cbVirt.isChecked(), progress * 10, context);
-                }
-            }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
-        });
+        // 低音增强调节 (BassBoost)
+        TextView tvBass = new TextView(context);
+        tvBass.setText("低音增强 (Bass Boost):");
+        tvBass.setTextColor(0xFFCCCCCC);
+        tvBass.setTextSize(13);
+        tvBass.setPadding(0, (int) (14 * density), 0, (int) (4 * density));
+        root.addView(tvBass);
 
-        cbBass.setChecked(aem.isBassBoostEnabled(context));
-        int bassStrength = aem.getBassStrength(context) / 10;
-        sbBass.setProgress(bassStrength);
-        tvBassVal.setText(bassStrength + "%");
-
-        cbBass.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                aem.setBassBoost(isChecked, sbBass.getProgress() * 10, context);
-            }
-        });
-
+        SeekBar sbBass = new SeekBar(context);
+        sbBass.setMax(1000);
+        sbBass.setProgress(aem.getBassBoostStrength());
         sbBass.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                tvBassVal.setText(progress + "%");
-                if (fromUser) {
-                    aem.setBassBoost(cbBass.isChecked(), progress * 10, context);
-                }
+                if (fromUser) aem.setBassBoostStrength((short) progress);
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
-    }
+        root.addView(sbBass);
 
-    private void setupEqualizer() {
-        Equalizer eq = aem.getEqualizer();
-        layoutEqBands.removeAllViews();
-        bandSeekBars.clear();
-        bandValTexts.clear();
+        // 3D 虚拟环绕 (Virtualizer)
+        TextView tvVirt = new TextView(context);
+        tvVirt.setText("3D 虚拟现场环绕:");
+        tvVirt.setTextColor(0xFFCCCCCC);
+        tvVirt.setTextSize(13);
+        tvVirt.setPadding(0, (int) (10 * density), 0, (int) (4 * density));
+        root.addView(tvVirt);
 
-        if (eq == null) {
-            TextView tv = new TextView(context);
-            tv.setText("请在歌曲播放中调节音效 (原声直通)");
-            tv.setTextColor(0xFF888888);
-            layoutEqBands.addView(tv);
-            return;
-        }
-
-        short numBands = eq.getNumberOfBands();
-        final short minLevel = eq.getBandLevelRange()[0];
-        final short maxLevel = eq.getBandLevelRange()[1];
-        final int range = maxLevel - minLevel;
-
-        for (short i = 0; i < numBands; i++) {
-            final short bandIndex = i;
-            int freq = eq.getCenterFreq(bandIndex) / 1000;
-            String freqStr = freq < 1000 ? freq + "Hz" : (freq / 1000) + "kHz";
-
-            LinearLayout row = new LinearLayout(context);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(0, 4, 0, 4);
-
-            TextView tvFreq = new TextView(context);
-            tvFreq.setText(freqStr);
-            tvFreq.setTextColor(0xFFCCCCCC);
-            tvFreq.setTextSize(12);
-            tvFreq.setWidth(110);
-
-            SeekBar sb = new SeekBar(context);
-            sb.setMax(range);
-            short curLevel = eq.getBandLevel(bandIndex);
-            sb.setProgress(curLevel - minLevel);
-
-            final TextView tvVal = new TextView(context);
-            int db = curLevel / 100;
-            tvVal.setText((db > 0 ? "+" + db : "" + db) + "dB");
-            tvVal.setTextColor(0xFF00E5FF);
-            tvVal.setTextSize(12);
-            tvVal.setWidth(90);
-            tvVal.setGravity(Gravity.RIGHT);
-
-            sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override
-                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                    short level = (short) (minLevel + progress);
-                    int dbVal = level / 100;
-                    tvVal.setText((dbVal > 0 ? "+" + dbVal : "" + dbVal) + "dB");
-                    if (fromUser) {
-                        aem.setBandLevel(bandIndex, level, context);
-                    }
-                }
-                @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-                @Override public void onStopTrackingTouch(SeekBar seekBar) {}
-            });
-
-            LinearLayout.LayoutParams lpSb = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
-            row.addView(tvFreq);
-            row.addView(sb, lpSb);
-            row.addView(tvVal);
-
-            layoutEqBands.addView(row);
-            bandSeekBars.add(sb);
-            bandValTexts.add(tvVal);
-        }
-
-        Button btnReset = (Button) dialog.findViewById(R.id.btn_eq_reset);
-        btnReset.setOnClickListener(new View.OnClickListener() {
+        SeekBar sbVirt = new SeekBar(context);
+        sbVirt.setMax(1000);
+        sbVirt.setProgress(aem.getVirtualizerStrength());
+        sbVirt.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
-            public void onClick(View v) {
-                applyPresetCurve(new int[]{0, 0, 0, 0, 0});
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) aem.setVirtualizerStrength((short) progress);
             }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
+        root.addView(sbVirt);
 
-        dialog.findViewById(R.id.btn_preset_pop).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { applyPresetCurve(new int[]{2, 1, -1, 2, 3}); }
+        // 均衡器各频段 (Equalizer Bands)
+        final Equalizer eq = aem.getEqualizer();
+        if (eq != null) {
+            TextView tvEq = new TextView(context);
+            tvEq.setText("频段均衡调节 (10-Band EQ):");
+            tvEq.setTextColor(0xFFCCCCCC);
+            tvEq.setTextSize(13);
+            tvEq.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
+            root.addView(tvEq);
+
+            final short minEQ = eq.getBandLevelRange()[0];
+            final short maxEQ = eq.getBandLevelRange()[1];
+            final int bands = eq.getNumberOfBands();
+
+            for (short i = 0; i < bands; i++) {
+                final short band = i;
+                int centerFreq = eq.getCenterFreq(band) / 1000;
+                String freqStr = centerFreq >= 1000 ? ((centerFreq / 1000) + "kHz") : (centerFreq + "Hz");
+
+                TextView tvBand = new TextView(context);
+                tvBand.setText(freqStr);
+                tvBand.setTextColor(0xFF888C99);
+                tvBand.setTextSize(11);
+                tvBand.setPadding(0, (int) (2 * density), 0, 0);
+                root.addView(tvBand);
+
+                SeekBar sbBand = new SeekBar(context);
+                sbBand.setMax(maxEQ - minEQ);
+                sbBand.setProgress(eq.getBandLevel(band) - minEQ);
+                sbBand.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                    @Override
+                    public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                        if (fromUser) aem.setBandLevel(band, (short) (progress + minEQ));
+                    }
+                    @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+                    @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+                });
+                root.addView(sbBand);
+            }
+        }
+
+        // 关闭按钮
+        Button btnClose = new Button(context);
+        btnClose.setText("完成");
+        btnClose.setTextColor(0xFFFFFFFF);
+        btnClose.setTextSize(13);
+        btnClose.setBackgroundResource(R.drawable.bg_btn_default);
+        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (38 * density));
+        closeLp.topMargin = (int) (16 * density);
+        btnClose.setLayoutParams(closeLp);
+        btnClose.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { dialog.dismiss(); }
         });
-        dialog.findViewById(R.id.btn_preset_rock).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { applyPresetCurve(new int[]{4, 2, -1, 2, 4}); }
-        });
-        dialog.findViewById(R.id.btn_preset_dance).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { applyPresetCurve(new int[]{5, 3, 0, 2, 1}); }
-        });
-        dialog.findViewById(R.id.btn_preset_classic).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { applyPresetCurve(new int[]{3, 2, -1, 2, 3}); }
-        });
-        dialog.findViewById(R.id.btn_preset_vocal).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { applyPresetCurve(new int[]{-2, 1, 4, 2, -1}); }
-        });
-        dialog.findViewById(R.id.btn_preset_bass).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { applyPresetCurve(new int[]{6, 4, 1, -1, -2}); }
-        });
-        dialog.findViewById(R.id.btn_preset_flat).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { applyPresetCurve(new int[]{0, 0, 0, 0, 0}); }
-        });
+        root.addView(btnClose);
+
+        scrollView.addView(root);
+        dialog.setContentView(scrollView);
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            dialog.getWindow().setLayout((int) (360 * density), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
     }
 
-    private void applyPresetCurve(int[] dbs) {
-        Equalizer eq = aem.getEqualizer();
-        if (eq == null) return;
-        short minLevel = eq.getBandLevelRange()[0];
-        short maxLevel = eq.getBandLevelRange()[1];
+    public void show() {
+        if (dialog != null && !dialog.isShowing()) {
+            dialog.show();
+        }
+    }
 
-        for (int i = 0; i < bandSeekBars.size() && i < dbs.length; i++) {
-            short level = (short) (dbs[i] * 100);
-            if (level < minLevel) level = minLevel;
-            if (level > maxLevel) level = maxLevel;
+    private class SimpleDarkAdapter extends BaseAdapter {
+        private String[] items;
+        SimpleDarkAdapter(String[] items) { this.items = items; }
+        @Override public int getCount() { return items.length; }
+        @Override public Object getItem(int position) { return items[position]; }
+        @Override public long getItemId(int position) { return position; }
 
-            aem.setBandLevel((short) i, level, context);
-            bandSeekBars.get(i).setProgress(level - minLevel);
-            int db = level / 100;
-            bandValTexts.get(i).setText((db > 0 ? "+" + db : "" + db) + "dB");
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(context);
+            tv.setTextSize(12);
+            tv.setTextColor(0xFF00E5FF);
+            tv.setGravity(Gravity.CENTER);
+            tv.setPadding(10, 4, 10, 4);
+            tv.setText(items[position] + " ▾");
+            return tv;
+        }
+
+        @Override
+        public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(context);
+            tv.setTextSize(13);
+            tv.setTextColor(0xFFE0E0E0);
+            tv.setGravity(Gravity.CENTER_VERTICAL);
+            tv.setPadding(24, 18, 24, 18);
+            tv.setBackgroundColor(0xFF1E222B);
+            tv.setText(items[position]);
+            return tv;
         }
     }
 }
