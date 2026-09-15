@@ -73,19 +73,22 @@ public class MainActivity extends Activity {
     private static final String[] BITRATE_LABELS = new String[]{"默认不变", "128K", "192K", "320K", "FLAC"};
     private static final String[] BITRATE_VALUES = new String[]{"auto", "128", "192", "320", "flac"};
 
+    // 搜索分类
+    private static final String[] SEARCH_TYPES = new String[]{"歌曲", "歌手", "专辑"};
+
     private static final int TAB_PLAYLISTS = 0;
     private static final int TAB_RANKING = 1;
     private int currentSelectedTab = TAB_PLAYLISTS;
 
     private EditText etServer, etUsername, etPassword, etSearchKeyword, etCacheSize;
     private EditText etTimeoutSec, etRetryCount, etDownloadPath;
-    private Spinner spinnerConfigBitrate, spinnerDetailBitrate;
+    private Spinner spinnerConfigBitrate, spinnerDetailBitrate, spinnerSearchType;
     private boolean isSpinnersInitializing = true;
 
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabRanking, btnSearchSubmit, btnBack;
     private Button btnMode, btnOpenEq;
     private ImageView btnPrev, btnPlayPause, btnNext;
-    private ImageView btnExitApp, btnDetailExitApp, btnTopSearch; // 圆形图标
+    private ImageView btnExitApp, btnDetailExitApp, btnTopSearch;
     private Button btnToggleQueue, btnCloseQueue, btnOpenDetail;
     private Button btnBottomFav, btnDetailFav, btnDetailDownload;
     private Button btnLyricDec, btnLyricInc;
@@ -94,7 +97,6 @@ public class MainActivity extends Activity {
     private ListView listView, lvQueue;
     private SeekBar seekBar;
 
-    // 下拉刷新组件
     private LinearLayout refreshHeaderView;
     private ProgressBar refreshProgressBar;
     private TextView refreshTextView;
@@ -103,15 +105,12 @@ public class MainActivity extends Activity {
     private boolean isPulling = false;
     private float touchStartY = 0;
 
-    // 当前页面状态记录
     private String currentActivePlaylistId = null;
     private String currentActivePlaylistName = null;
 
-    // 歌单分类缓存：常规歌单 vs 排行榜歌单
     private ArrayList<DisplayEntry> rawServerUserPlaylists = new ArrayList<DisplayEntry>();
     private ArrayList<DisplayEntry> rawServerRankingPlaylists = new ArrayList<DisplayEntry>();
 
-    // 详情页组件
     private Button btnCloseDetail, btnDetailMode, btnDetailEq;
     private ImageView btnDetailPrev, btnDetailPlayPause, btnDetailNext;
     private Button btnDetailKeepScreen, btnDetailQueue;
@@ -124,18 +123,15 @@ public class MainActivity extends Activity {
     private LinearLayout layoutDetailLyricsView, layoutDetailQueueView;
     private ListView lvDetailQueue;
 
-    // 封面模式与位图缓存
     private boolean isVinylDisplayMode = true;
     private Bitmap currentRawCoverBitmap;
     private Bitmap currentCircularCoverBitmap;
 
-    // 黑胶旋转动画控制
     private RotateAnimation vinylRotateAnim;
     private boolean isCurrentSongPlaying = false;
 
     private boolean isKeepScreenOn = false;
 
-    // 歌词滚动与字号相关
     private ScrollView scrollLyrics;
     private LinearLayout layoutLyricsContainer;
     private Handler lyricHandler = new Handler();
@@ -307,6 +303,7 @@ public class MainActivity extends Activity {
         initViews();
         setupControlIcons();
         setupBitrateSpinners();
+        setupSearchTypeSpinner();
         setupVinylAnimation();
         updateCoverDisplayMode();
         loadSavedConfig();
@@ -362,15 +359,10 @@ public class MainActivity extends Activity {
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            TextView tv;
-            if (convertView instanceof TextView) {
-                tv = (TextView) convertView;
-            } else {
-                tv = new TextView(MainActivity.this);
-                tv.setTextSize(12);
-                tv.setGravity(Gravity.CENTER);
-                tv.setPadding(6, 2, 6, 2);
-            }
+            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(MainActivity.this);
+            tv.setTextSize(12);
+            tv.setGravity(Gravity.CENTER);
+            tv.setPadding(6, 2, 6, 2);
             tv.setTextColor(0xFF00E5FF);
             tv.setText(items[position] + " ▾");
             return tv;
@@ -378,16 +370,11 @@ public class MainActivity extends Activity {
 
         @Override
         public View getDropDownView(int position, View convertView, ViewGroup parent) {
-            TextView tv;
-            if (convertView instanceof TextView) {
-                tv = (TextView) convertView;
-            } else {
-                tv = new TextView(MainActivity.this);
-                tv.setTextSize(13);
-                tv.setGravity(Gravity.CENTER_VERTICAL);
-                tv.setPadding(24, 18, 24, 18);
-                tv.setBackgroundColor(0xFF1E222B);
-            }
+            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(MainActivity.this);
+            tv.setTextSize(13);
+            tv.setGravity(Gravity.CENTER_VERTICAL);
+            tv.setPadding(24, 18, 24, 18);
+            tv.setBackgroundColor(0xFF1E222B);
             tv.setTextColor(0xFFE0E0E0);
             tv.setText(items[position]);
             return tv;
@@ -450,6 +437,24 @@ public class MainActivity extends Activity {
         }, 500);
     }
 
+    private void setupSearchTypeSpinner() {
+        BitrateSpinnerAdapter typeAdapter = new BitrateSpinnerAdapter(SEARCH_TYPES);
+        spinnerSearchType.setAdapter(typeAdapter);
+        spinnerSearchType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (position == 0) {
+                    etSearchKeyword.setHint("输入歌曲名检索...");
+                } else if (position == 1) {
+                    etSearchKeyword.setHint("输入歌手名检索...");
+                } else if (position == 2) {
+                    etSearchKeyword.setHint("输入专辑名检索...");
+                }
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
     private void onBitrateChanged(String newBitrate, String label) {
         Toast.makeText(this, "播放码率已设为: " + label, Toast.LENGTH_SHORT).show();
 
@@ -480,7 +485,6 @@ public class MainActivity extends Activity {
         int redIconColor = 0xFFFF6B6B;
         int cyanIconColor = 0xFF00E5FF;
 
-        // 播放控制
         btnPrev.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 18, lightIconColor));
         btnNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 18, lightIconColor));
         btnPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 22, darkIconColor));
@@ -489,10 +493,8 @@ public class MainActivity extends Activity {
         btnDetailNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 22, lightIconColor));
         btnDetailPlayPause.setImageDrawable(MediaIconHelper.createPlayIcon(this, 28, darkIconColor));
 
-        // 顶部居中放大镜搜索图标
         btnTopSearch.setImageDrawable(MediaIconHelper.createSearchIcon(this, 20, cyanIconColor));
 
-        // 退出软件圆形图标
         btnExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
         btnDetailExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
     }
@@ -879,6 +881,7 @@ public class MainActivity extends Activity {
 
         spinnerConfigBitrate = (Spinner) findViewById(R.id.spinner_config_bitrate);
         spinnerDetailBitrate = (Spinner) findViewById(R.id.spinner_detail_bitrate);
+        spinnerSearchType = (Spinner) findViewById(R.id.spinner_search_type);
 
         btnConnect = (Button) findViewById(R.id.btn_connect);
         btnClearCache = (Button) findViewById(R.id.btn_clear_cache);
@@ -1454,7 +1457,6 @@ public class MainActivity extends Activity {
         btnExitApp.setOnClickListener(exitListener);
         btnDetailExitApp.setOnClickListener(exitListener);
 
-        // 首页顶部放大镜搜索图标点击：展开/收起搜索框
         btnTopSearch.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1470,7 +1472,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 切换到【我的歌单】
         btnTabPlaylists.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1483,7 +1484,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 切换到【排行榜】
         btnTabRanking.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1679,7 +1679,13 @@ public class MainActivity extends Activity {
 
                 DisplayEntry entry = currentItems.get(pos);
                 if (!entry.isSong) {
-                    fetchPlaylistSongs(entry.id, entry.title);
+                    if (entry.id.startsWith("album_")) {
+                        fetchAlbumSongs(entry.id.substring(6), entry.title);
+                    } else if (entry.id.startsWith("artist_")) {
+                        fetchArtistAlbums(entry.id.substring(7), entry.title);
+                    } else {
+                        fetchPlaylistSongs(entry.id, entry.title);
+                    }
                 } else {
                     ArrayList<MusicService.SongItem> queue = new ArrayList<MusicService.SongItem>();
                     int clickedSongIndex = 0;
@@ -2103,7 +2109,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 从服务端抓取全部歌单并自动分离出排行榜
     private void fetchPlaylists() {
         new Thread(new Runnable() {
             @Override
@@ -2141,7 +2146,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 将带“榜单”字样的歌单分流到排行榜列表中
     private void categorizePlaylistItem(JSONObject p) throws Exception {
         String name = p.getString("name");
         int count = p.optInt("songCount", 0);
@@ -2165,7 +2169,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 展示“我的歌单”（只展示收藏、精选、车载以及常规歌单）
     private void showUserPlaylists() {
         currentActivePlaylistId = null;
         currentActivePlaylistName = null;
@@ -2202,7 +2205,6 @@ public class MainActivity extends Activity {
         adapter.notifyDataSetChanged();
     }
 
-    // 展示“排行榜”页（集中展示所有榜单歌单）
     private void showRankingPlaylists() {
         currentActivePlaylistId = null;
         currentActivePlaylistName = null;
@@ -2313,6 +2315,84 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    // 浏览专辑全部歌曲
+    private void fetchAlbumSongs(final String albumId, final String albumName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getAlbum.view?id=" + albumId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject album = root.getJSONObject("album");
+                            currentItems.clear();
+                            listData.clear();
+
+                            if (album.has("song")) {
+                                Object songObj = album.get("song");
+                                if (songObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) songObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        addSongRow(arr.getJSONObject(i));
+                                    }
+                                } else if (songObj instanceof JSONObject) {
+                                    addSongRow((JSONObject) songObj);
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText("专辑: " + albumName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "加载专辑失败", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    // 浏览歌手全部专辑
+    private void fetchArtistAlbums(final String artistId, final String artistName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getArtist.view?id=" + artistId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject artistObj = root.getJSONObject("artist");
+                            currentItems.clear();
+                            listData.clear();
+
+                            if (artistObj.has("album")) {
+                                Object albObj = artistObj.get("album");
+                                if (albObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) albObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        addAlbumRow(arr.getJSONObject(i));
+                                    }
+                                } else if (albObj instanceof JSONObject) {
+                                    addAlbumRow((JSONObject) albObj);
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText("歌手: " + artistName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "加载歌手详情失败", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
     private void fetchServerFavoriteSongs() {
         btnBack.setVisibility(View.VISIBLE);
         tvListTitle.setText("歌单: 我的收藏 (云端同步)");
@@ -2377,18 +2457,33 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 搜索音乐：加入 songCount=500 参数，列出全部匹配结果
+    // 核心搜索引擎：按照 下拉选择 (0: 歌曲, 1: 歌手, 2: 专辑) 全量匹配
     private void searchSongs(final String query) {
         if (query.length() == 0) {
             stopRefreshing();
             return;
         }
+
+        final int searchTypePos = spinnerSearchType != null ? spinnerSearchType.getSelectedItemPosition() : 0;
+
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
                     String encoded = URLEncoder.encode(query, "UTF-8");
-                    final String jsonStr = requestApi("search3.view?query=" + encoded + "&songCount=500&" + getAuthParams());
+                    String queryParams;
+                    if (searchTypePos == 1) {
+                        // 检索歌手
+                        queryParams = "search3.view?query=" + encoded + "&artistCount=100&albumCount=0&songCount=0&" + getAuthParams();
+                    } else if (searchTypePos == 2) {
+                        // 检索专辑
+                        queryParams = "search3.view?query=" + encoded + "&albumCount=100&artistCount=0&songCount=0&" + getAuthParams();
+                    } else {
+                        // 检索歌曲 (全量 500 首)
+                        queryParams = "search3.view?query=" + encoded + "&songCount=500&artistCount=0&albumCount=0&" + getAuthParams();
+                    }
+
+                    final String jsonStr = requestApi(queryParams);
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
@@ -2402,14 +2497,37 @@ public class MainActivity extends Activity {
                                 currentItems.clear();
                                 listData.clear();
 
-                                if (result != null && result.has("song")) {
-                                    JSONArray songs = result.getJSONArray("song");
-                                    for (int i = 0; i < songs.length(); i++) {
-                                        addSongRow(songs.getJSONObject(i));
+                                if (result != null) {
+                                    if (searchTypePos == 1 && result.has("artist")) {
+                                        Object artObj = result.get("artist");
+                                        if (artObj instanceof JSONArray) {
+                                            JSONArray arr = (JSONArray) artObj;
+                                            for (int i = 0; i < arr.length(); i++) addArtistRow(arr.getJSONObject(i));
+                                        } else if (artObj instanceof JSONObject) {
+                                            addArtistRow((JSONObject) artObj);
+                                        }
+                                        tvListTitle.setText("搜索歌手: " + query + " (" + currentItems.size() + " 位)");
+                                    } else if (searchTypePos == 2 && result.has("album")) {
+                                        Object albObj = result.get("album");
+                                        if (albObj instanceof JSONArray) {
+                                            JSONArray arr = (JSONArray) albObj;
+                                            for (int i = 0; i < arr.length(); i++) addAlbumRow(arr.getJSONObject(i));
+                                        } else if (albObj instanceof JSONObject) {
+                                            addAlbumRow((JSONObject) albObj);
+                                        }
+                                        tvListTitle.setText("搜索专辑: " + query + " (" + currentItems.size() + " 张)");
+                                    } else if (result.has("song")) {
+                                        Object sObj = result.get("song");
+                                        if (sObj instanceof JSONArray) {
+                                            JSONArray arr = (JSONArray) sObj;
+                                            for (int i = 0; i < arr.length(); i++) addSongRow(arr.getJSONObject(i));
+                                        } else if (sObj instanceof JSONObject) {
+                                            addSongRow((JSONObject) sObj);
+                                        }
+                                        tvListTitle.setText("搜索歌曲: " + query + " (" + currentItems.size() + " 首)");
                                     }
                                 }
                                 btnBack.setVisibility(View.VISIBLE);
-                                tvListTitle.setText("搜索结果 (" + currentItems.size() + " 条)");
                                 adapter.notifyDataSetChanged();
                             } catch (Exception ignored) {
                             } finally {
@@ -2422,6 +2540,30 @@ public class MainActivity extends Activity {
                 }
             }
         }).start();
+    }
+
+    private void addArtistRow(JSONObject a) throws Exception {
+        String id = a.getString("id");
+        String name = a.getString("name");
+        int albumCount = a.optInt("albumCount", 0);
+        currentItems.add(new DisplayEntry("artist_" + id, name, "歌手", albumCount > 0 ? (albumCount + " 张专辑") : "点击查看专辑与歌曲", null, "歌手", false));
+        Map<String, String> row = new HashMap<String, String>();
+        row.put("title", "👤  " + name);
+        row.put("subtitle", albumCount > 0 ? (albumCount + " 张专辑") : "歌手详情");
+        listData.add(row);
+    }
+
+    private void addAlbumRow(JSONObject a) throws Exception {
+        String id = a.getString("id");
+        String name = a.getString("name");
+        String artist = a.optString("artist", "未知艺术家");
+        int songCount = a.optInt("songCount", 0);
+        String coverArt = a.optString("coverArt", null);
+        currentItems.add(new DisplayEntry("album_" + id, name, artist, artist + (songCount > 0 ? (" • " + songCount + " 首") : ""), coverArt, "专辑", false));
+        Map<String, String> row = new HashMap<String, String>();
+        row.put("title", "💿  " + name);
+        row.put("subtitle", artist + (songCount > 0 ? ("  [" + songCount + " 首歌曲]") : ""));
+        listData.add(row);
     }
 
     private void addSongRow(JSONObject s) throws Exception {
