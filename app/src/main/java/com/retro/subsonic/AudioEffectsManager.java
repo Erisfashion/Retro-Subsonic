@@ -49,13 +49,6 @@ public class AudioEffectsManager {
         applyReverbToPlayer();
     }
 
-    public synchronized void attachSession(int sessionId, Context context) {
-        this.contextRef = new WeakReference<Context>(context);
-        loadSavedConfig(context);
-        initEffects(sessionId);
-        applyReverbToPlayer();
-    }
-
     private void loadSavedConfig(Context context) {
         if (context == null) return;
         SharedPreferences sp = context.getSharedPreferences("retro_audio_effects", Context.MODE_PRIVATE);
@@ -111,7 +104,7 @@ public class AudioEffectsManager {
             virtualizer = null;
         }
 
-        // 4. 核心修复：环境音效 (PresetReverb) 属于全局辅助混合效果，必须绑定 Session 0
+        // 4. 修复环境音效 (混响绑定全局 Session 0)
         try {
             if (presetReverb != null) {
                 try { presetReverb.release(); } catch (Throwable ignored) {}
@@ -121,7 +114,6 @@ public class AudioEffectsManager {
             presetReverb.setEnabled(isEnabled && savedReverbPreset != PresetReverb.PRESET_NONE);
         } catch (Throwable t) {
             try {
-                // 部分定制 ROM 容错降级
                 presetReverb = new PresetReverb(0, sessionId);
                 presetReverb.setPreset(savedReverbPreset);
                 presetReverb.setEnabled(isEnabled && savedReverbPreset != PresetReverb.PRESET_NONE);
@@ -131,7 +123,7 @@ public class AudioEffectsManager {
         }
     }
 
-    // 关键：将辅助混响挂载到 MediaPlayer 并将发送音量开至 1.0f
+    // 将混响路由至播放器并打开 1.0f 满级发送量
     public synchronized void applyReverbToPlayer() {
         if (mediaPlayerRef == null) return;
         MediaPlayer mp = mediaPlayerRef.get();
