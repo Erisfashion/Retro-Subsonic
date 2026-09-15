@@ -11,7 +11,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="Subsonic音乐"
+        android:label="Subsonic 音乐"
         android:icon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:largeHeap="true"
