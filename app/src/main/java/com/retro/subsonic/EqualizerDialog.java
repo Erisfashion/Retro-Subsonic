@@ -20,6 +20,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+
 public class EqualizerDialog {
 
     private Context context;
@@ -38,9 +40,28 @@ public class EqualizerDialog {
             PresetReverb.PRESET_PLATE
     };
 
+    private ArrayList<SeekBar> bandSeekBars = new ArrayList<SeekBar>();
+    private boolean isUpdatingEqFromPreset = false;
+
     public EqualizerDialog(Context context) {
         this.context = context;
         initDialog();
+    }
+
+    private String localizePresetName(String name) {
+        if (name == null) return "预设";
+        String n = name.trim().toLowerCase();
+        if (n.contains("normal")) return "常规 (默认)";
+        if (n.contains("classical") || n.contains("classic")) return "古典乐";
+        if (n.contains("dance")) return "舞曲";
+        if (n.contains("flat")) return "平直原声";
+        if (n.contains("folk")) return "民谣";
+        if (n.contains("heavy") || n.contains("metal")) return "重金属";
+        if (n.contains("hip") || n.contains("hop")) return "嘻哈/说唱";
+        if (n.contains("jazz")) return "爵士乐";
+        if (n.contains("pop")) return "流行乐";
+        if (n.contains("rock")) return "摇滚乐";
+        return name;
     }
 
     private void initDialog() {
@@ -57,7 +78,7 @@ public class EqualizerDialog {
         root.setBackgroundResource(R.drawable.bg_card);
         root.setPadding((int) (18 * density), (int) (16 * density), (int) (18 * density), (int) (16 * density));
 
-        // 顶栏：标题与总开关
+        // 顶栏：标题与开关
         LinearLayout header = new LinearLayout(context);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -90,7 +111,63 @@ public class EqualizerDialog {
         header.addView(btnMasterToggle);
         root.addView(header);
 
-        // 环境音效 (混响) 设置行
+        // 1. EQ 预设选择（流行/摇滚/舞曲等）
+        final Equalizer eq = aem.getEqualizer();
+        final Spinner spinnerEqPreset = new Spinner(context);
+
+        if (eq != null) {
+            TextView tvEqPresetLabel = new TextView(context);
+            tvEqPresetLabel.setText("均衡器预设风格:");
+            tvEqPresetLabel.setTextColor(0xFF00E5FF);
+            tvEqPresetLabel.setTextSize(13);
+            tvEqPresetLabel.setPadding(0, (int) (12 * density), 0, (int) (4 * density));
+            root.addView(tvEqPresetLabel);
+
+            final short numPresets = eq.getNumberOfPresets();
+            final ArrayList<String> presetDisplayList = new ArrayList<String>();
+            presetDisplayList.add("自定义"); // 索引 0 映射为自定义 (-1)
+
+            for (short p = 0; p < numPresets; p++) {
+                String rawName = eq.getPresetName(p);
+                presetDisplayList.add(localizePresetName(rawName));
+            }
+
+            spinnerEqPreset.setBackgroundResource(R.drawable.bg_btn_pill);
+            spinnerEqPreset.setPadding((int) (10 * density), 0, (int) (10 * density), 0);
+            spinnerEqPreset.setAdapter(new SimpleDarkAdapter(presetDisplayList.toArray(new String[0])));
+
+            short savedPreset = aem.getEqualizerPreset();
+            if (savedPreset >= 0 && savedPreset < numPresets) {
+                spinnerEqPreset.setSelection(savedPreset + 1);
+            } else {
+                spinnerEqPreset.setSelection(0);
+            }
+
+            spinnerEqPreset.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    if (position == 0) {
+                        return;
+                    }
+                    short targetPreset = (short) (position - 1);
+                    aem.setEqualizerPreset(targetPreset);
+
+                    // 联动更新下方推子
+                    isUpdatingEqFromPreset = true;
+                    short minEQ = eq.getBandLevelRange()[0];
+                    for (short b = 0; b < bandSeekBars.size(); b++) {
+                        bandSeekBars.get(b).setProgress(eq.getBandLevel(b) - minEQ);
+                    }
+                    isUpdatingEqFromPreset = false;
+                }
+
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {}
+            });
+            root.addView(spinnerEqPreset);
+        }
+
+        // 2. 环境空间音效 (混响)
         TextView tvReverbLabel = new TextView(context);
         tvReverbLabel.setText("环境空间音效 (混响):");
         tvReverbLabel.setTextColor(0xFF00E5FF);
@@ -124,7 +201,7 @@ public class EqualizerDialog {
         });
         root.addView(spinnerReverb);
 
-        // 低音增强调节 (BassBoost)
+        // 3. 低音增强 (Bass Boost)
         TextView tvBass = new TextView(context);
         tvBass.setText("低音增强 (Bass Boost):");
         tvBass.setTextColor(0xFFCCCCCC);
@@ -145,7 +222,7 @@ public class EqualizerDialog {
         });
         root.addView(sbBass);
 
-        // 3D 虚拟环绕 (Virtualizer)
+        // 4. 3D 虚拟现场 (Virtualizer)
         TextView tvVirt = new TextView(context);
         tvVirt.setText("3D 虚拟现场环绕:");
         tvVirt.setTextColor(0xFFCCCCCC);
@@ -166,11 +243,10 @@ public class EqualizerDialog {
         });
         root.addView(sbVirt);
 
-        // 均衡器各频段 (Equalizer Bands)
-        final Equalizer eq = aem.getEqualizer();
+        // 5. 均衡器各频段推子
         if (eq != null) {
             TextView tvEq = new TextView(context);
-            tvEq.setText("频段均衡调节 (10-Band EQ):");
+            tvEq.setText("频段均衡细调 (EQ Bands):");
             tvEq.setTextColor(0xFFCCCCCC);
             tvEq.setTextSize(13);
             tvEq.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
@@ -179,6 +255,7 @@ public class EqualizerDialog {
             final short minEQ = eq.getBandLevelRange()[0];
             final short maxEQ = eq.getBandLevelRange()[1];
             final int bands = eq.getNumberOfBands();
+            bandSeekBars.clear();
 
             for (short i = 0; i < bands; i++) {
                 final short band = i;
@@ -198,16 +275,23 @@ public class EqualizerDialog {
                 sbBand.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                     @Override
                     public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                        if (fromUser) aem.setBandLevel(band, (short) (progress + minEQ));
+                        if (fromUser && !isUpdatingEqFromPreset) {
+                            aem.setBandLevel(band, (short) (progress + minEQ));
+                            // 手动拉动推子，风格自动切换为“自定义”
+                            if (spinnerEqPreset != null && spinnerEqPreset.getSelectedItemPosition() != 0) {
+                                spinnerEqPreset.setSelection(0);
+                            }
+                        }
                     }
                     @Override public void onStartTrackingTouch(SeekBar seekBar) {}
                     @Override public void onStopTrackingTouch(SeekBar seekBar) {}
                 });
+                bandSeekBars.add(sbBand);
                 root.addView(sbBand);
             }
         }
 
-        // 关闭按钮
+        // 完成按钮
         Button btnClose = new Button(context);
         btnClose.setText("完成");
         btnClose.setTextColor(0xFFFFFFFF);
