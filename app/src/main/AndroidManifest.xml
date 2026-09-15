@@ -6,10 +6,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- 激活底层均衡器与混响硬件通道所必需的权限 -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <application
         android:allowBackup="true"
-        android:label="Subsonic 音乐"
+        android:label="Subsonic音乐"
         android:icon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:largeHeap="true"
