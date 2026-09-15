@@ -2,10 +2,13 @@ package com.retro.subsonic;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.media.MediaPlayer;
 import android.media.audiofx.BassBoost;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.PresetReverb;
 import android.media.audiofx.Virtualizer;
+
+import java.lang.ref.WeakReference;
 
 public class AudioEffectsManager {
 
@@ -15,9 +18,16 @@ public class AudioEffectsManager {
     private BassBoost bassBoost;
     private Virtualizer virtualizer;
     private PresetReverb presetReverb;
+
+    private WeakReference<MediaPlayer> mediaPlayerRef;
+    private WeakReference<Context> contextRef;
     private int currentSessionId = 0;
 
-    private AudioEffectsManager() {}
+    private boolean isEnabled = true;
+    private short savedReverbPreset = PresetReverb.PRESET_NONE;
+    private short savedBassStrength = 0;
+    private short savedVirtualizerStrength = 0;
+    private short savedEqualizerPreset = -1;
 
     public static synchronized AudioEffectsManager getInstance() {
         if (instance == null) {
@@ -26,170 +36,242 @@ public class AudioEffectsManager {
         return instance;
     }
 
-    // 每次切歌生成新的 SessionId 时，强制将保存的所有参数推送到新 Session
+    private AudioEffectsManager() {}
+
+    public synchronized void attachMediaPlayer(MediaPlayer mp, Context context) {
+        this.contextRef = new WeakReference<Context>(context);
+        this.mediaPlayerRef = new WeakReference<MediaPlayer>(mp);
+        if (mp == null) return;
+
+        int sessionId = mp.getAudioSessionId();
+        loadSavedConfig(context);
+        initEffects(sessionId);
+        applyReverbToPlayer();
+    }
+
     public synchronized void attachSession(int sessionId, Context context) {
-        if (sessionId <= 0) return;
-        
-        detach();
+        this.contextRef = new WeakReference<Context>(context);
+        loadSavedConfig(context);
+        initEffects(sessionId);
+        applyReverbToPlayer();
+    }
+
+    private void loadSavedConfig(Context context) {
+        if (context == null) return;
+        SharedPreferences sp = context.getSharedPreferences("retro_audio_effects", Context.MODE_PRIVATE);
+        isEnabled = sp.getBoolean("effects_enabled", true);
+        savedReverbPreset = (short) sp.getInt("reverb_preset", PresetReverb.PRESET_NONE);
+        savedBassStrength = (short) sp.getInt("bass_strength", 0);
+        savedVirtualizerStrength = (short) sp.getInt("virtualizer_strength", 0);
+        savedEqualizerPreset = (short) sp.getInt("equalizer_preset", -1);
+    }
+
+    private void initEffects(int sessionId) {
         currentSessionId = sessionId;
 
-        SharedPreferences sp = context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE);
-        boolean eqUserEnabled = sp.getBoolean("user_eq_active", false);
-
-        // 1. 挂载均衡器并强制还原各频段增益
+        // 1. 初始化均衡器
         try {
+            if (equalizer != null) {
+                try { equalizer.release(); } catch (Throwable ignored) {}
+            }
             equalizer = new Equalizer(0, sessionId);
-            equalizer.setEnabled(eqUserEnabled);
-            short bands = equalizer.getNumberOfBands();
-            for (short b = 0; b < bands; b++) {
-                int level = sp.getInt("band_" + b, 0);
-                equalizer.setBandLevel(b, (short) level);
+            equalizer.setEnabled(isEnabled);
+            if (savedEqualizerPreset >= 0 && savedEqualizerPreset < equalizer.getNumberOfPresets()) {
+                equalizer.usePreset(savedEqualizerPreset);
             }
         } catch (Throwable t) {
             equalizer = null;
         }
 
-        // 2. 挂载重低音增强并还原增益
+        // 2. 初始化低音增强
         try {
+            if (bassBoost != null) {
+                try { bassBoost.release(); } catch (Throwable ignored) {}
+            }
             bassBoost = new BassBoost(0, sessionId);
-            boolean bassEnabled = sp.getBoolean("bass_enabled", false);
-            bassBoost.setEnabled(bassEnabled && eqUserEnabled);
-            int strength = sp.getInt("bass_strength", 0);
-            bassBoost.setStrength((short) strength);
+            if (bassBoost.getStrengthSupported()) {
+                bassBoost.setStrength(savedBassStrength);
+                bassBoost.setEnabled(isEnabled && savedBassStrength > 0);
+            }
         } catch (Throwable t) {
             bassBoost = null;
         }
 
-        // 3. 挂载 3D 立体声环绕并还原深度
+        // 3. 初始化 3D 虚拟现场
         try {
+            if (virtualizer != null) {
+                try { virtualizer.release(); } catch (Throwable ignored) {}
+            }
             virtualizer = new Virtualizer(0, sessionId);
-            boolean virtEnabled = sp.getBoolean("virt_enabled", false);
-            virtualizer.setEnabled(virtEnabled && eqUserEnabled);
-            int strength = sp.getInt("virt_strength", 0);
-            virtualizer.setStrength((short) strength);
+            if (virtualizer.getStrengthSupported()) {
+                virtualizer.setStrength(savedVirtualizerStrength);
+                virtualizer.setEnabled(isEnabled && savedVirtualizerStrength > 0);
+            }
         } catch (Throwable t) {
             virtualizer = null;
         }
 
-        // 4. 挂载环境混响并还原预设 (Session 0 全局辅助混音总线)
+        // 4. 核心修复：环境音效 (PresetReverb) 属于全局辅助混合效果，必须绑定 Session 0
         try {
-            presetReverb = new PresetReverb(0, 0);
-            short revPreset = (short) sp.getInt("reverb_preset", PresetReverb.PRESET_NONE);
-            if (revPreset != PresetReverb.PRESET_NONE && eqUserEnabled) {
-                presetReverb.setEnabled(true);
-                presetReverb.setPreset(revPreset);
-            } else {
-                presetReverb.setEnabled(false);
+            if (presetReverb != null) {
+                try { presetReverb.release(); } catch (Throwable ignored) {}
             }
+            presetReverb = new PresetReverb(0, 0);
+            presetReverb.setPreset(savedReverbPreset);
+            presetReverb.setEnabled(isEnabled && savedReverbPreset != PresetReverb.PRESET_NONE);
         } catch (Throwable t) {
-            presetReverb = null;
+            try {
+                // 部分定制 ROM 容错降级
+                presetReverb = new PresetReverb(0, sessionId);
+                presetReverb.setPreset(savedReverbPreset);
+                presetReverb.setEnabled(isEnabled && savedReverbPreset != PresetReverb.PRESET_NONE);
+            } catch (Throwable ignored) {
+                presetReverb = null;
+            }
         }
     }
 
-    public Equalizer getEqualizer() {
-        return equalizer;
+    // 关键：将辅助混响挂载到 MediaPlayer 并将发送音量开至 1.0f
+    public synchronized void applyReverbToPlayer() {
+        if (mediaPlayerRef == null) return;
+        MediaPlayer mp = mediaPlayerRef.get();
+        if (mp == null) return;
+
+        try {
+            if (presetReverb != null) {
+                mp.attachAuxEffect(presetReverb.getId());
+            }
+            float sendLevel = (isEnabled && savedReverbPreset != PresetReverb.PRESET_NONE) ? 1.0f : 0.0f;
+            mp.setAuxEffectSendLevel(sendLevel);
+        } catch (Throwable ignored) {}
     }
 
-    public void setBandLevel(short band, short level, Context context) {
-        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("user_eq_active", true)
-                .putInt("band_" + band, level)
-                .commit();
+    public synchronized void setEnabled(boolean enabled) {
+        this.isEnabled = enabled;
+        saveSetting("effects_enabled", enabled);
 
         if (equalizer != null) {
-            try {
-                equalizer.setEnabled(true);
-                equalizer.setBandLevel(band, level);
-            } catch (Throwable ignored) {}
+            try { equalizer.setEnabled(enabled); } catch (Throwable ignored) {}
         }
-    }
-
-    public void setBassBoost(boolean enabled, int strength, Context context) {
-        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("user_eq_active", true)
-                .putBoolean("bass_enabled", enabled)
-                .putInt("bass_strength", strength)
-                .commit();
-
         if (bassBoost != null) {
-            try {
-                bassBoost.setEnabled(enabled);
-                bassBoost.setStrength((short) strength);
-            } catch (Throwable ignored) {}
+            try { bassBoost.setEnabled(enabled && savedBassStrength > 0); } catch (Throwable ignored) {}
         }
-    }
-
-    public boolean isBassBoostEnabled(Context context) {
-        return context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .getBoolean("bass_enabled", false);
-    }
-
-    public int getBassStrength(Context context) {
-        return context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .getInt("bass_strength", 0);
-    }
-
-    public void setVirtualizer(boolean enabled, int strength, Context context) {
-        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("user_eq_active", true)
-                .putBoolean("virt_enabled", enabled)
-                .putInt("virt_strength", strength)
-                .commit();
-
         if (virtualizer != null) {
-            try {
-                virtualizer.setEnabled(enabled);
-                virtualizer.setStrength((short) strength);
-            } catch (Throwable ignored) {}
+            try { virtualizer.setEnabled(enabled && savedVirtualizerStrength > 0); } catch (Throwable ignored) {}
         }
+        if (presetReverb != null) {
+            try { presetReverb.setEnabled(enabled && savedReverbPreset != PresetReverb.PRESET_NONE); } catch (Throwable ignored) {}
+        }
+        applyReverbToPlayer();
     }
 
-    public boolean isVirtualizerEnabled(Context context) {
-        return context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .getBoolean("virt_enabled", false);
-    }
+    public synchronized boolean isEnabled() { return isEnabled; }
 
-    public int getVirtualizerStrength(Context context) {
-        return context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .getInt("virt_strength", 0);
-    }
-
-    public void setReverbPreset(short preset, Context context) {
-        context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("user_eq_active", true)
-                .putInt("reverb_preset", preset)
-                .commit();
+    public synchronized void setPresetReverb(short preset) {
+        this.savedReverbPreset = preset;
+        saveSetting("reverb_preset", (int) preset);
 
         if (presetReverb != null) {
             try {
-                if (preset == PresetReverb.PRESET_NONE) {
-                    presetReverb.setEnabled(false);
-                } else {
-                    presetReverb.setEnabled(true);
-                    presetReverb.setPreset(preset);
-                }
+                presetReverb.setPreset(preset);
+                presetReverb.setEnabled(isEnabled && preset != PresetReverb.PRESET_NONE);
+            } catch (Throwable ignored) {}
+        }
+        applyReverbToPlayer();
+    }
+
+    public synchronized short getPresetReverb() { return savedReverbPreset; }
+
+    public synchronized void setBassBoostStrength(short strength) {
+        this.savedBassStrength = strength;
+        saveSetting("bass_strength", (int) strength);
+
+        if (bassBoost != null && bassBoost.getStrengthSupported()) {
+            try {
+                bassBoost.setStrength(strength);
+                bassBoost.setEnabled(isEnabled && strength > 0);
             } catch (Throwable ignored) {}
         }
     }
 
-    public short getReverbPreset(Context context) {
-        return (short) context.getSharedPreferences("subsonic_eq_cfg", Context.MODE_PRIVATE)
-                .getInt("reverb_preset", PresetReverb.PRESET_NONE);
+    public synchronized short getBassBoostStrength() { return savedBassStrength; }
+
+    public synchronized void setVirtualizerStrength(short strength) {
+        this.savedVirtualizerStrength = strength;
+        saveSetting("virtualizer_strength", (int) strength);
+
+        if (virtualizer != null && virtualizer.getStrengthSupported()) {
+            try {
+                virtualizer.setStrength(strength);
+                virtualizer.setEnabled(isEnabled && strength > 0);
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    public synchronized short getVirtualizerStrength() { return savedVirtualizerStrength; }
+
+    public synchronized Equalizer getEqualizer() { return equalizer; }
+
+    public synchronized void setEqualizerPreset(short preset) {
+        this.savedEqualizerPreset = preset;
+        saveSetting("equalizer_preset", (int) preset);
+
+        if (equalizer != null && preset >= 0 && preset < equalizer.getNumberOfPresets()) {
+            try {
+                equalizer.usePreset(preset);
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    public synchronized short getEqualizerPreset() { return savedEqualizerPreset; }
+
+    public synchronized void setBandLevel(short band, short level) {
+        if (equalizer != null) {
+            try {
+                equalizer.setBandLevel(band, level);
+                savedEqualizerPreset = -1;
+                saveSetting("equalizer_preset", -1);
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    private void saveSetting(String key, int value) {
+        if (contextRef != null && contextRef.get() != null) {
+            contextRef.get().getSharedPreferences("retro_audio_effects", Context.MODE_PRIVATE)
+                    .edit().putInt(key, value).commit();
+        }
+    }
+
+    private void saveSetting(String key, boolean value) {
+        if (contextRef != null && contextRef.get() != null) {
+            contextRef.get().getSharedPreferences("retro_audio_effects", Context.MODE_PRIVATE)
+                    .edit().putBoolean(key, value).commit();
+        }
     }
 
     public synchronized void detach() {
-        try { if (equalizer != null) equalizer.release(); } catch (Throwable ignored) {}
-        try { if (bassBoost != null) bassBoost.release(); } catch (Throwable ignored) {}
-        try { if (virtualizer != null) virtualizer.release(); } catch (Throwable ignored) {}
-        try { if (presetReverb != null) presetReverb.release(); } catch (Throwable ignored) {}
-        equalizer = null;
-        bassBoost = null;
-        virtualizer = null;
-        presetReverb = null;
-        currentSessionId = 0;
+        if (mediaPlayerRef != null) {
+            MediaPlayer mp = mediaPlayerRef.get();
+            if (mp != null) {
+                try { mp.setAuxEffectSendLevel(0.0f); } catch (Throwable ignored) {}
+            }
+            mediaPlayerRef.clear();
+        }
+        if (equalizer != null) {
+            try { equalizer.release(); } catch (Throwable ignored) {}
+            equalizer = null;
+        }
+        if (bassBoost != null) {
+            try { bassBoost.release(); } catch (Throwable ignored) {}
+            bassBoost = null;
+        }
+        if (virtualizer != null) {
+            try { virtualizer.release(); } catch (Throwable ignored) {}
+            virtualizer = null;
+        }
+        if (presetReverb != null) {
+            try { presetReverb.release(); } catch (Throwable ignored) {}
+            presetReverb = null;
+        }
     }
 }
