@@ -59,7 +59,7 @@
                     android:paddingRight="10dp"
                     android:layout_marginRight="8dp" />
 
-                <!-- 首页关闭软件：圆形图标按钮 -->
+                <!-- 关闭软件：圆形图标按钮 -->
                 <ImageView
                     android:id="@+id/btn_exit_app"
                     android:layout_width="34dp"
@@ -309,21 +309,33 @@
                 android:layout_marginLeft="6dp" />
         </LinearLayout>
 
-        <!-- 展开的搜索栏 -->
+        <!-- 展开的搜索栏：左侧加入区分 歌曲/歌手/专辑 的下拉选择 -->
         <LinearLayout
             android:id="@+id/layout_search_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:layout_marginTop="6dp"
             android:visibility="gone">
+
+            <!-- 搜索分类下拉框 -->
+            <Spinner
+                android:id="@+id/spinner_search_type"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_btn_pill"
+                android:paddingLeft="8dp"
+                android:paddingRight="8dp"
+                android:layout_marginRight="6dp"
+                android:spinnerMode="dropdown" />
 
             <EditText
                 android:id="@+id/et_search_keyword"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="输入歌曲名或歌手 (检索全部曲目)..."
+                android:hint="输入歌曲名检索..."
                 android:textColor="#ffffff"
                 android:textColorHint="#777777"
                 android:singleLine="true" />
@@ -617,7 +629,7 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 顶栏：关闭软件按钮移动到了音效调节右侧 -->
+        <!-- 顶栏：下载、音效与关闭按钮 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
@@ -665,7 +677,6 @@
                     android:paddingRight="8dp"
                     android:layout_marginLeft="6dp" />
 
-                <!-- 详情页关闭软件：移至音效调节右侧 -->
                 <ImageView
                     android:id="@+id/btn_detail_exit_app"
                     android:layout_width="34dp"
@@ -788,7 +799,7 @@
                     android:focusable="true"
                     android:visibility="gone" />
 
-                <!-- 核心：红心收藏移到歌曲名称左侧 -->
+                <!-- 歌曲标题与红心收藏 -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -796,7 +807,6 @@
                     android:gravity="center_vertical"
                     android:layout_marginTop="4dp">
 
-                    <!-- 红心收藏图标按钮（左侧） -->
                     <Button
                         android:id="@+id/btn_detail_fav"
                         android:layout_width="36dp"
@@ -805,30 +815,18 @@
                         android:text="♡"
                         android:textColor="#ff4081"
                         android:textSize="18sp"
-                        android:layout_marginRight="6dp" />
+                        android:layout_marginRight="8dp" />
 
-                    <!-- 歌曲名称 -->
                     <TextView
                         android:id="@+id/tv_detail_title"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:maxWidth="130dp"
+                        android:maxWidth="200dp"
                         android:text="歌曲名称"
                         android:textColor="#ffffff"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:singleLine="true" />
-
-                    <!-- 码率选择下拉框 -->
-                    <Spinner
-                        android:id="@+id/spinner_detail_bitrate"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:background="@drawable/bg_btn_pill"
-                        android:paddingLeft="8dp"
-                        android:paddingRight="8dp"
-                        android:layout_marginLeft="6dp"
-                        android:spinnerMode="dropdown" />
                 </LinearLayout>
 
                 <TextView
@@ -841,20 +839,39 @@
                     android:layout_marginTop="2dp"
                     android:singleLine="true" />
 
-                <TextView
-                    android:id="@+id/tv_detail_quality"
+                <!-- 核心：码率选择下拉框移动至码率信息显示的左侧 -->
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="标准音质"
-                    android:textColor="#00e5ff"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:background="#16181d"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:paddingTop="2dp"
-                    android:paddingBottom="2dp"
-                    android:layout_marginTop="4dp" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
+
+                    <!-- 码率选择下拉框 (左侧) -->
+                    <Spinner
+                        android:id="@+id/spinner_detail_bitrate"
+                        android:layout_width="wrap_content"
+                        android:layout_height="28dp"
+                        android:background="@drawable/bg_btn_pill"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                        android:layout_marginRight="6dp"
+                        android:spinnerMode="dropdown" />
+
+                    <!-- 码率信息展示 (右侧) -->
+                    <TextView
+                        android:id="@+id/tv_detail_quality"
+                        android:layout_width="wrap_content"
+                        android:layout_height="28dp"
+                        android:gravity="center"
+                        android:text="标准音质"
+                        android:textColor="#00e5ff"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:background="#16181d"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp" />
+                </LinearLayout>
 
                 <View
                     android:layout_width="match_parent"
