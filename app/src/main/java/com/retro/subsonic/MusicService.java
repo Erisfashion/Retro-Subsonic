@@ -79,10 +79,8 @@ public class MusicService extends Service {
     private Handler mainHandler = new Handler(Looper.getMainLooper());
     private Random random = new Random();
 
-    // 当前歌曲串流代理
     private LocalStreamProxy currentProxy;
 
-    // 下一首歌曲预缓冲后台任务控制
     private Thread preCacheThread;
     private volatile HttpURLConnection preCacheConn;
     private volatile boolean cancelPreCache = false;
@@ -92,6 +90,9 @@ public class MusicService extends Service {
     private boolean isPlaybackStarted = false;
     private int retryCount = 0;
     private boolean isRetrying = false;
+
+    // 记忆播放点
+    private static int pendingSeekPosition = 0;
 
     private Runnable timeoutRunnable = new Runnable() {
         @Override
@@ -110,10 +111,77 @@ public class MusicService extends Service {
         playlist.clear();
         playlist.addAll(list);
         currentIndex = index;
+        pendingSeekPosition = 0;
 
         Intent intent = new Intent(context, MusicService.class);
         intent.setAction(ACTION_PLAY_INDEX);
         context.startService(intent);
+    }
+
+    // 保存播放列表与播放记录
+    public static void savePlaybackState(Context context, MediaPlayer mp, boolean started) {
+        if (context == null) return;
+        try {
+            SharedPreferences sp = context.getSharedPreferences("retro_playback_state", MODE_PRIVATE);
+            SharedPreferences.Editor ed = sp.edit();
+            ed.putInt("saved_index", currentIndex);
+
+            if (mp != null && started) {
+                try {
+                    ed.putInt("saved_position", mp.getCurrentPosition());
+                    ed.putInt("saved_duration", mp.getDuration());
+                } catch (Throwable ignored) {}
+            }
+
+            JSONArray arr = new JSONArray();
+            for (SongItem item : playlist) {
+                JSONObject obj = new JSONObject();
+                obj.put("id", item.id);
+                obj.put("title", item.title);
+                obj.put("artist", item.artist);
+                obj.put("streamUrl", item.streamUrl);
+                obj.put("coverArtId", item.coverArtId);
+                obj.put("quality", item.quality);
+                arr.put(obj);
+            }
+            ed.putString("saved_queue", arr.toString());
+            ed.commit();
+        } catch (Throwable ignored) {}
+    }
+
+    // 启动时恢复上次播放的列表与进度
+    public static boolean restorePlaybackState(Context context) {
+        if (context == null) return false;
+        try {
+            SharedPreferences sp = context.getSharedPreferences("retro_playback_state", MODE_PRIVATE);
+            String queueJson = sp.getString("saved_queue", "");
+            if (queueJson == null || queueJson.length() == 0 || "[]".equals(queueJson)) {
+                return false;
+            }
+
+            JSONArray arr = new JSONArray(queueJson);
+            playlist.clear();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.getJSONObject(i);
+                playlist.add(new SongItem(
+                        o.getString("id"),
+                        o.getString("title"),
+                        o.optString("artist", "未知歌手"),
+                        o.optString("streamUrl", ""),
+                        o.optString("coverArtId", null),
+                        o.optString("quality", "标准音质")
+                ));
+            }
+
+            currentIndex = sp.getInt("saved_index", 0);
+            if (currentIndex < 0 || currentIndex >= playlist.size()) {
+                currentIndex = 0;
+            }
+            pendingSeekPosition = sp.getInt("saved_position", 0);
+            return !playlist.isEmpty();
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private int getTimeoutSeconds() {
@@ -174,12 +242,20 @@ public class MusicService extends Service {
                 retryCount = 0;
                 isRetrying = false;
 
-                mp.start();
-                // 核心修复：直接传入 MediaPlayer 实例以挂载辅助混响总线
+                // 核心修复：挂接系统辅助混响并开通通道
                 AudioEffectsManager.getInstance().attachMediaPlayer(mp, getApplicationContext());
 
+                if (pendingSeekPosition > 0) {
+                    try {
+                        mp.seekTo(pendingSeekPosition);
+                    } catch (Throwable ignored) {}
+                    pendingSeekPosition = 0;
+                }
+
+                mp.start();
                 updateNotification();
                 broadcastStatus();
+                savePlaybackState(getApplicationContext(), mediaPlayer, true);
             }
         });
 
@@ -195,7 +271,7 @@ public class MusicService extends Service {
             public boolean onError(MediaPlayer mp, int what, int extra) {
                 if (what == -38 || extra == -38) return true;
                 if (!isPlaybackStarted) {
-                    triggerRetry("音频文件解码错误 (code:" + what + ")");
+                    triggerRetry("音频解码错误 (code:" + what + ")");
                 }
                 return true;
             }
@@ -207,6 +283,7 @@ public class MusicService extends Service {
         if (intent != null && intent.getAction() != null) {
             String act = intent.getAction();
             if (ACTION_STOP.equals(act)) {
+                savePlaybackState(this, mediaPlayer, isPlaybackStarted);
                 cancelPreCacheTask();
                 stopForeground(true);
                 stopSelf();
@@ -222,10 +299,13 @@ public class MusicService extends Service {
                     try {
                         if (mediaPlayer.isPlaying()) {
                             mediaPlayer.pause();
+                            savePlaybackState(this, mediaPlayer, isPlaybackStarted);
                         } else {
                             mediaPlayer.start();
                         }
                     } catch (Throwable ignored) {}
+                } else {
+                    playCurrent(false);
                 }
                 updateNotification();
                 broadcastStatus();
@@ -238,6 +318,7 @@ public class MusicService extends Service {
                 if (mediaPlayer != null && isPlaybackStarted) {
                     try {
                         mediaPlayer.seekTo(pos);
+                        savePlaybackState(this, mediaPlayer, isPlaybackStarted);
                     } catch (Throwable ignored) {}
                 }
             } else if (ACTION_CYCLE_MODE.equals(act)) {
@@ -310,7 +391,6 @@ public class MusicService extends Service {
         }
     }
 
-    // 取消当前正在运行的预缓冲任务，彻底释放 Socket 资源
     private synchronized void cancelPreCacheTask() {
         cancelPreCache = true;
         if (preCacheConn != null) {
@@ -323,7 +403,6 @@ public class MusicService extends Service {
         }
     }
 
-    // 获取即将播放的下一首歌曲
     private SongItem getNextSongToPreCache() {
         if (playlist == null || playlist.isEmpty()) return null;
         int nextIdx = (currentIndex + 1) % playlist.size();
@@ -333,12 +412,9 @@ public class MusicService extends Service {
         return null;
     }
 
-    // 触发下一首歌曲的静默后台预缓冲
     private synchronized void triggerPreCacheNext() {
         final SongItem nextSong = getNextSongToPreCache();
         if (nextSong == null) return;
-
-        // 如果下一首本地已经有有效缓存，无需预下载
         if (CacheManager.isSongCached(this, nextSong.id)) return;
 
         cancelPreCacheTask();
@@ -348,7 +424,6 @@ public class MusicService extends Service {
             @Override
             public void run() {
                 try {
-                    // 启动前让出 1 秒 CPU 和网络通道，确保当前播放完全稳定
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
                     return;
@@ -376,11 +451,10 @@ public class MusicService extends Service {
                 }
             }
         });
-        preCacheThread.setPriority(Thread.MIN_PRIORITY); // 最低优先级线程，保证前台绝对流畅
+        preCacheThread.setPriority(Thread.MIN_PRIORITY);
         preCacheThread.start();
     }
 
-    // 预缓冲下载流水线：具备 302 重定向跟随与 JSON 提取
     private boolean downloadPreCachePipeline(String targetUrl, File destFile, int depth) {
         if (depth > 6 || cancelPreCache) return false;
 
@@ -497,7 +571,7 @@ public class MusicService extends Service {
         }
         isPlaybackStarted = false;
         stopCurrentProxy();
-        cancelPreCacheTask(); // 立即掐断旧的预缓冲任务，带宽 100% 专供新曲
+        cancelPreCacheTask();
 
         mainHandler.removeCallbacks(timeoutRunnable);
         mainHandler.postDelayed(timeoutRunnable, getTimeoutSeconds() * 1000L);
@@ -510,19 +584,20 @@ public class MusicService extends Service {
 
         recreateMediaPlayer();
 
-        // 1. 如果当前歌曲已被预缓冲（或已缓存），直接本地秒开，并立即启动下一首的预缓冲！
+        // 1. 本地缓存直接秒开
         if (CacheManager.isSongCached(this, song.id)) {
             File cached = CacheManager.getSongFile(this, song.id);
             if (startPlayFile(cached)) {
                 isBuffering = false;
                 bufferPercent = 100;
                 broadcastStatus();
-                triggerPreCacheNext(); // 本地秒开出声后，立刻预缓冲下一首！
+                triggerPreCacheNext();
+                savePlaybackState(this, mediaPlayer, true);
                 return;
             }
         }
 
-        // 2. 当前歌曲未缓存：启动实时流式代理边下边播
+        // 2. 流式代理边播边存
         isBuffering = true;
         bufferPercent = 0;
         broadcastStatus();
@@ -548,7 +623,6 @@ public class MusicService extends Service {
                             isBuffering = false;
                             bufferPercent = 100;
                             broadcastStatus();
-                            // 当前歌曲全部下载完毕，网络带宽空闲，立刻预缓冲下一首！
                             triggerPreCacheNext();
                         }
                     });
@@ -603,6 +677,7 @@ public class MusicService extends Service {
         } else {
             currentIndex = (currentIndex + 1) % playlist.size();
         }
+        pendingSeekPosition = 0;
         playCurrent(false);
     }
 
@@ -613,6 +688,7 @@ public class MusicService extends Service {
         } else {
             currentIndex = (currentIndex - 1 + playlist.size()) % playlist.size();
         }
+        pendingSeekPosition = 0;
         playCurrent(false);
     }
 
@@ -647,12 +723,19 @@ public class MusicService extends Service {
         startForeground(NOTIFICATION_ID, builder.build());
     }
 
+    private int saveProgressCounter = 0;
+
     private void startProgressTimer() {
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (isPlaybackStarted && mediaPlayer != null) {
                     broadcastStatus();
+                    saveProgressCounter++;
+                    if (saveProgressCounter >= 5) { // 每 5 秒静默存档一次进度
+                        saveProgressCounter = 0;
+                        savePlaybackState(getApplicationContext(), mediaPlayer, isPlaybackStarted);
+                    }
                 }
                 mainHandler.postDelayed(this, 1000);
             }
@@ -710,6 +793,7 @@ public class MusicService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        savePlaybackState(this, mediaPlayer, isPlaybackStarted);
         mainHandler.removeCallbacks(timeoutRunnable);
         mainHandler.removeCallbacksAndMessages(null);
         cancelPreCacheTask();
