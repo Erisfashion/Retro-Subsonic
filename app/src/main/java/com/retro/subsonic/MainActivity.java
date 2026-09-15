@@ -73,7 +73,6 @@ public class MainActivity extends Activity {
     private static final String[] BITRATE_LABELS = new String[]{"默认不变", "128K", "192K", "320K", "FLAC"};
     private static final String[] BITRATE_VALUES = new String[]{"auto", "128", "192", "320", "flac"};
 
-    // 搜索分类
     private static final String[] SEARCH_TYPES = new String[]{"歌曲", "歌手", "专辑"};
 
     private static final int TAB_PLAYLISTS = 0;
@@ -240,7 +239,7 @@ public class MainActivity extends Activity {
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
                         lastLoadedSongId = songId;
                         loadCoverArt(coverArtId != null ? coverArtId : songId);
-                        loadLyrics(artist, title);
+                        loadLyrics(songId, artist, title);
                         refreshQueueList();
                     }
 
@@ -310,8 +309,51 @@ public class MainActivity extends Activity {
         setupListeners();
         setupClickInterceptors();
 
+        // 核心修复：检查并恢复上次退出的播放记录与列表
+        restoreLastSessionIfAvailable();
+
         fetchPlaylists();
         syncServerFavoritesQuietly();
+    }
+
+    // 开机自动恢复上次的播放列表与歌曲进度
+    private void restoreLastSessionIfAvailable() {
+        if (MusicService.getPlaylist().isEmpty()) {
+            boolean restored = MusicService.restorePlaybackState(this);
+            if (restored) {
+                refreshQueueList();
+                int curIdx = MusicService.getCurrentIndex();
+                ArrayList<MusicService.SongItem> list = MusicService.getPlaylist();
+                if (curIdx >= 0 && curIdx < list.size()) {
+                    MusicService.SongItem song = list.get(curIdx);
+                    lastLoadedSongId = song.id;
+
+                    tvCurrentSong.setText(song.title + " - " + song.artist);
+                    tvDetailTitle.setText(song.title);
+                    tvDetailArtist.setText(song.artist);
+                    tvDetailQuality.setText(getBitrateDisplay(getSavedBitrate(), song.quality));
+
+                    SharedPreferences sp = getSharedPreferences("retro_playback_state", MODE_PRIVATE);
+                    int pos = sp.getInt("saved_position", 0);
+                    int dur = sp.getInt("saved_duration", 0);
+
+                    if (dur > 0) {
+                        seekBar.setMax(dur);
+                        seekBar.setProgress(pos);
+                        detailSeekBar.setMax(dur);
+                        detailSeekBar.setProgress(pos);
+                        String tStr = formatTime(pos) + " / " + formatTime(dur);
+                        tvTime.setText(tStr);
+                        tvDetailTime.setText(tStr);
+                    }
+
+                    loadCoverArt(song.coverArtId != null ? song.coverArtId : song.id);
+                    loadLyrics(song.id, song.artist, song.title);
+                    updateFavButtonState(song.id);
+                    updatePlayPauseIcons(false);
+                }
+            }
+        }
     }
 
     private String getSavedBitrate() {
@@ -1902,7 +1944,8 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    private void loadLyrics(final String artist, final String title) {
+    // 核心强化：多阶歌词穿透下载（直链/ID查询 -> 净化搜索词 -> 结构化LRC毫秒打点）
+    private void loadLyrics(final String songId, final String artist, final String title) {
         lyricRows.clear();
         currentLyricIndex = -1;
         layoutLyricsContainer.removeAllViews();
@@ -1915,42 +1958,126 @@ public class MainActivity extends Activity {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                try {
-                    String p = "artist=" + URLEncoder.encode(artist, "UTF-8") + "&title=" + URLEncoder.encode(title, "UTF-8");
-                    final String jsonStr = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (jsonStr == null) {
-                                showSimpleLyric("暂无歌词");
-                                return;
-                            }
-                            try {
-                                JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
-                                if (root.has("lyrics")) {
-                                    Object lyricsObj = root.get("lyrics");
-                                    String text = "";
-                                    if (lyricsObj instanceof JSONObject) {
-                                        JSONObject l = (JSONObject) lyricsObj;
-                                        text = l.optString("content", l.optString("value", ""));
-                                    } else if (lyricsObj instanceof String) {
-                                        text = (String) lyricsObj;
-                                    }
+                String lyricsText = null;
 
-                                    if (text != null && text.trim().length() > 0) {
-                                        buildLyricsView(text);
-                                        return;
-                                    }
-                                }
-                                showSimpleLyric("未找到匹配歌词");
-                            } catch (Exception e) {
-                                showSimpleLyric("歌词解析失败");
-                            }
+                // 阶段 1：首选使用 songId 获取服务端内嵌的真文件歌词 (Navidrome/OpenSubsonic 核心特性)
+                if (songId != null && songId.length() > 0) {
+                    try {
+                        String res = requestApi("getLyricsBySongId.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
+                        lyricsText = parseLyricsFromJson(res);
+                    } catch (Throwable ignored) {}
+
+                    if (lyricsText == null) {
+                        try {
+                            String res = requestApi("getLyrics.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
+                            lyricsText = parseLyricsFromJson(res);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+
+                // 阶段 2：使用 歌手 + 完整歌名 获取
+                if (lyricsText == null && title != null && title.length() > 0) {
+                    try {
+                        String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8")
+                                + "&title=" + URLEncoder.encode(title, "UTF-8");
+                        String res = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
+                        lyricsText = parseLyricsFromJson(res);
+                    } catch (Throwable ignored) {}
+                }
+
+                // 阶段 3：智能剥离括号（消除 (Live)、(Remix) 或 [FLAC] 等干扰项）进行再次匹配
+                if (lyricsText == null && title != null) {
+                    String cleanTitle = title.replaceAll("\\([^)]*\\)", "")
+                            .replaceAll("\\[[^\\]]*\\]", "")
+                            .replaceAll("（[^）]*）", "")
+                            .trim();
+
+                    if (cleanTitle.length() > 0 && !cleanTitle.equals(title)) {
+                        try {
+                            String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8")
+                                    + "&title=" + URLEncoder.encode(cleanTitle, "UTF-8");
+                            String res = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
+                            lyricsText = parseLyricsFromJson(res);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+
+                final String finalLyrics = lyricsText;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (finalLyrics != null && finalLyrics.trim().length() > 0) {
+                            buildLyricsView(finalLyrics);
+                        } else {
+                            showSimpleLyric("未找到匹配歌词");
                         }
-                    });
-                } catch (Exception ignored) {}
+                    }
+                });
             }
         }).start();
+    }
+
+    // 智能提取 JSON 结构中的歌词（兼容普通文本与结构化毫秒行）
+    private String parseLyricsFromJson(String jsonStr) {
+        if (jsonStr == null || jsonStr.length() == 0) return null;
+        try {
+            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+
+            // 1. 结构化打点歌词 (OpenSubsonic structuredLyrics)
+            if (root.has("lyricsList")) {
+                JSONObject list = root.optJSONObject("lyricsList");
+                if (list != null && list.has("structuredLyrics")) {
+                    Object slObj = list.get("structuredLyrics");
+                    JSONObject targetSL = null;
+                    if (slObj instanceof JSONArray) {
+                        JSONArray arr = (JSONArray) slObj;
+                        if (arr.length() > 0) targetSL = arr.getJSONObject(0);
+                    } else if (slObj instanceof JSONObject) {
+                        targetSL = (JSONObject) slObj;
+                    }
+
+                    if (targetSL != null && targetSL.has("line")) {
+                        Object lineObj = targetSL.get("line");
+                        StringBuilder lrcBuilder = new StringBuilder();
+                        if (lineObj instanceof JSONArray) {
+                            JSONArray lArr = (JSONArray) lineObj;
+                            for (int i = 0; i < lArr.length(); i++) {
+                                JSONObject l = lArr.getJSONObject(i);
+                                appendStructuredLrcLine(lrcBuilder, l);
+                            }
+                        } else if (lineObj instanceof JSONObject) {
+                            appendStructuredLrcLine(lrcBuilder, (JSONObject) lineObj);
+                        }
+                        if (lrcBuilder.length() > 0) {
+                            return lrcBuilder.toString();
+                        }
+                    }
+                }
+            }
+
+            // 2. 原生 lyrics 字段提取
+            if (root.has("lyrics")) {
+                Object lyricsObj = root.get("lyrics");
+                if (lyricsObj instanceof JSONObject) {
+                    JSONObject l = (JSONObject) lyricsObj;
+                    String text = l.optString("content", l.optString("value", ""));
+                    if (text.length() > 0) return text;
+                } else if (lyricsObj instanceof String) {
+                    String text = (String) lyricsObj;
+                    if (text.length() > 0) return text;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private void appendStructuredLrcLine(StringBuilder sb, JSONObject l) {
+        long startMs = l.optLong("start", 0);
+        String val = l.optString("value", "");
+        int sec = (int) ((startMs / 1000) % 60);
+        int min = (int) ((startMs / (1000 * 60)) % 60);
+        int cs = (int) ((startMs % 1000) / 10);
+        sb.append(String.format("[%02d:%02d.%02d]", min, sec, cs)).append(val).append("\n");
     }
 
     private void showSimpleLyric(String msg) {
@@ -2315,7 +2442,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 浏览专辑全部歌曲
     private void fetchAlbumSongs(final String albumId, final String albumName) {
         new Thread(new Runnable() {
             @Override
@@ -2354,7 +2480,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 浏览歌手全部专辑
     private void fetchArtistAlbums(final String artistId, final String artistName) {
         new Thread(new Runnable() {
             @Override
@@ -2457,7 +2582,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 核心搜索引擎：按照 下拉选择 (0: 歌曲, 1: 歌手, 2: 专辑) 全量匹配
     private void searchSongs(final String query) {
         if (query.length() == 0) {
             stopRefreshing();
@@ -2473,13 +2597,10 @@ public class MainActivity extends Activity {
                     String encoded = URLEncoder.encode(query, "UTF-8");
                     String queryParams;
                     if (searchTypePos == 1) {
-                        // 检索歌手
                         queryParams = "search3.view?query=" + encoded + "&artistCount=100&albumCount=0&songCount=0&" + getAuthParams();
                     } else if (searchTypePos == 2) {
-                        // 检索专辑
                         queryParams = "search3.view?query=" + encoded + "&albumCount=100&artistCount=0&songCount=0&" + getAuthParams();
                     } else {
-                        // 检索歌曲 (全量 500 首)
                         queryParams = "search3.view?query=" + encoded + "&songCount=500&artistCount=0&albumCount=0&" + getAuthParams();
                     }
 
