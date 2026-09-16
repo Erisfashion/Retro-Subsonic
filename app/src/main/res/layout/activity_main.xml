@@ -456,7 +456,7 @@
 
         </LinearLayout>
 
-        <!-- 底部常驻播放器条 -->
+        <!-- 底部常驻播放器条：模式按键与音效按键均为 36dp 纯净扁平图标 -->
         <LinearLayout
             android:id="@+id/layout_bottom_player"
             android:layout_width="match_parent"
@@ -527,7 +527,7 @@
                         android:paddingLeft="4dp" />
                 </LinearLayout>
 
-                <!-- 底栏对称控制 Dock：模式与切歌按键均完全无框扁平化 -->
+                <!-- 底栏对称控制 Dock：模式与音效均为 36dp 纯净扁平图标 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -542,7 +542,7 @@
                         android:gravity="right|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 底部模式图标：完全透明无框扁平 -->
+                        <!-- 底部模式图标：完全透明无框扁平 (36dp) -->
                         <ImageView
                             android:id="@+id/btn_mode"
                             android:layout_width="36dp"
@@ -552,7 +552,7 @@
                             android:clickable="true"
                             android:focusable="true" />
 
-                        <!-- 上一首：完全透明无框扁平 -->
+                        <!-- 上一首：完全透明无框扁平 (38dp) -->
                         <ImageView
                             android:id="@+id/btn_prev"
                             android:layout_width="38dp"
@@ -582,7 +582,7 @@
                         android:gravity="left|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 下一首：完全透明无框扁平 -->
+                        <!-- 下一首：完全透明无框扁平 (38dp) -->
                         <ImageView
                             android:id="@+id/btn_next"
                             android:layout_width="38dp"
@@ -594,16 +594,15 @@
                             android:clickable="true"
                             android:focusable="true" />
 
-                        <Button
+                        <!-- 底部音效图标：完全透明无框扁平推子图标 (36dp，与左侧模式图标完全对称) -->
+                        <ImageView
                             android:id="@+id/btn_open_eq"
-                            android:layout_width="wrap_content"
-                            android:layout_height="30dp"
-                            android:background="@drawable/bg_btn_pill_accent"
-                            android:text="音效"
-                            android:textColor="#00e5ff"
-                            android:textSize="11sp"
-                            android:paddingLeft="10dp"
-                            android:paddingRight="10dp" />
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="@android:color/transparent"
+                            android:scaleType="center"
+                            android:clickable="true"
+                            android:focusable="true" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
