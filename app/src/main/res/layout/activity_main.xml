@@ -192,8 +192,7 @@
                     android:hint="/sdcard/Music"
                     android:textColor="#ffffff"
                     android:textColorHint="#777777"
-                    android:singleLine="true"
-                    android:layout_marginLeft="4dp" />
+                    android:singleLine="true" />
             </LinearLayout>
 
             <LinearLayout
@@ -456,7 +455,7 @@
 
         </LinearLayout>
 
-        <!-- 底部常驻播放器条：模式按键与音效按键均为 36dp 纯净扁平图标 -->
+        <!-- 底部常驻播放器条 -->
         <LinearLayout
             android:id="@+id/layout_bottom_player"
             android:layout_width="match_parent"
@@ -542,7 +541,6 @@
                         android:gravity="right|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 底部模式图标：完全透明无框扁平 (36dp) -->
                         <ImageView
                             android:id="@+id/btn_mode"
                             android:layout_width="36dp"
@@ -552,7 +550,6 @@
                             android:clickable="true"
                             android:focusable="true" />
 
-                        <!-- 上一首：完全透明无框扁平 (38dp) -->
                         <ImageView
                             android:id="@+id/btn_prev"
                             android:layout_width="38dp"
@@ -565,7 +562,6 @@
                             android:focusable="true" />
                     </LinearLayout>
 
-                    <!-- 底栏中央：突出播放/暂停主按键 (46dp 严格居中) -->
                     <ImageView
                         android:id="@+id/btn_play_pause"
                         android:layout_width="46dp"
@@ -582,7 +578,6 @@
                         android:gravity="left|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 下一首：完全透明无框扁平 (38dp) -->
                         <ImageView
                             android:id="@+id/btn_next"
                             android:layout_width="38dp"
@@ -594,7 +589,6 @@
                             android:clickable="true"
                             android:focusable="true" />
 
-                        <!-- 底部音效图标：完全透明无框扁平推子图标 (36dp，与左侧模式图标完全对称) -->
                         <ImageView
                             android:id="@+id/btn_open_eq"
                             android:layout_width="36dp"
@@ -651,7 +645,7 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 顶栏：下载、音效与关闭按钮 -->
+        <!-- 顶栏：移除音效按钮，只保留收起、下载与关闭 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
@@ -681,18 +675,6 @@
                     android:layout_height="34dp"
                     android:background="@drawable/bg_btn_accent"
                     android:text="⬇ 下载"
-                    android:textColor="#00e5ff"
-                    android:textSize="12sp"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:layout_marginLeft="6dp" />
-
-                <Button
-                    android:id="@+id/btn_detail_eq"
-                    android:layout_width="wrap_content"
-                    android:layout_height="34dp"
-                    android:background="@drawable/bg_btn_accent"
-                    android:text="音效调节"
                     android:textColor="#00e5ff"
                     android:textSize="12sp"
                     android:paddingLeft="8dp"
@@ -923,7 +905,7 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 详情页控制排：模式切换无背景包裹，切歌无背景包裹，中轴绝对对称 -->
+                <!-- 核心更新：详情页对称控制排：右侧放置与底栏一致的音效推子按键，中轴严格对称 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
@@ -940,7 +922,7 @@
                         android:gravity="right|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 详情页模式图标：完全透明无框扁平 -->
+                        <!-- 详情页模式图标：完全透明无框扁平 (38dp) -->
                         <ImageView
                             android:id="@+id/btn_detail_mode"
                             android:layout_width="38dp"
@@ -963,7 +945,7 @@
                             android:focusable="true" />
                     </LinearLayout>
 
-                    <!-- 详情页正中心：64dp 青蓝突出圆形播放主键 -->
+                    <!-- 详情页正中心：64dp 青蓝突出圆形播放主键 (绝对居中) -->
                     <ImageView
                         android:id="@+id/btn_detail_play_pause"
                         android:layout_width="64dp"
@@ -992,11 +974,15 @@
                             android:clickable="true"
                             android:focusable="true" />
 
-                        <!-- 镜像隐形占位：与左侧 38dp 模式图标严格对齐 -->
-                        <View
+                        <!-- 详情页音效推子按键：与左侧 38dp 模式图标绝对物理对称 -->
+                        <ImageView
+                            android:id="@+id/btn_detail_eq"
                             android:layout_width="38dp"
                             android:layout_height="38dp"
-                            android:visibility="invisible" />
+                            android:background="@android:color/transparent"
+                            android:scaleType="center"
+                            android:clickable="true"
+                            android:focusable="true" />
                     </LinearLayout>
                 </LinearLayout>
 
