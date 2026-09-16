@@ -396,7 +396,6 @@
                         android:visibility="gone" />
                 </RelativeLayout>
 
-                <!-- 支持下拉刷新的 ListView -->
                 <ListView
                     android:id="@+id/list_view"
                     android:layout_width="match_parent"
@@ -457,7 +456,7 @@
 
         </LinearLayout>
 
-        <!-- 底部常驻播放器条：左右锁定等宽 126dp，中间列绝对居中，播放键绝对居中 -->
+        <!-- 底部常驻播放器条 -->
         <LinearLayout
             android:id="@+id/layout_bottom_player"
             android:layout_width="match_parent"
@@ -470,7 +469,6 @@
             android:clickable="true"
             android:focusable="true">
 
-            <!-- 左翼等宽基座 (126dp) -->
             <LinearLayout
                 android:layout_width="126dp"
                 android:layout_height="48dp"
@@ -488,7 +486,6 @@
                     android:paddingRight="10dp" />
             </LinearLayout>
 
-            <!-- 中间播放信息与控制区：两端对称，中轴与屏幕中心严格重合 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -530,7 +527,6 @@
                         android:paddingLeft="4dp" />
                 </LinearLayout>
 
-                <!-- 底栏对称控制 Dock：播放/暂停严格锁定在中轴正中心 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -538,7 +534,6 @@
                     android:gravity="center_vertical"
                     android:layout_marginTop="2dp">
 
-                    <!-- 左半翼 (权重 1，内容靠右对齐) -->
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
@@ -569,7 +564,6 @@
                             android:focusable="true" />
                     </LinearLayout>
 
-                    <!-- 底栏正中心：播放/暂停主按键 (46dp 突出圆形，处于数学绝对正中) -->
                     <ImageView
                         android:id="@+id/btn_play_pause"
                         android:layout_width="46dp"
@@ -579,7 +573,6 @@
                         android:clickable="true"
                         android:focusable="true" />
 
-                    <!-- 右半翼 (权重 1，内容靠左对齐，与左翼完全对称) -->
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
@@ -612,7 +605,6 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 右翼等宽基座 (126dp) -->
             <LinearLayout
                 android:layout_width="126dp"
                 android:layout_height="48dp"
@@ -929,7 +921,7 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 详情页对称控制 Dock：大尺寸播放/暂停按键严格锁定在中轴正中心 -->
+                <!-- 详情页对称控制 Dock：播放模式改为 36dp 小号圆形图标，与右侧 36dp 隐形占位完全对称 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
@@ -947,16 +939,15 @@
                         android:gravity="right|center_vertical"
                         android:orientation="horizontal">
 
-                        <Button
+                        <!-- 核心调整：播放模式小号圆形图标 (36dp x 36dp)，彻底杜绝竖屏截断 -->
+                        <ImageView
                             android:id="@+id/btn_detail_mode"
-                            android:layout_width="wrap_content"
+                            android:layout_width="36dp"
                             android:layout_height="36dp"
-                            android:background="@drawable/bg_btn_pill"
-                            android:text="列表循环"
-                            android:textColor="#cbd5e1"
-                            android:textSize="11sp"
-                            android:paddingLeft="12dp"
-                            android:paddingRight="12dp" />
+                            android:background="@drawable/bg_btn_circle_default"
+                            android:scaleType="center"
+                            android:clickable="true"
+                            android:focusable="true" />
 
                         <ImageView
                             android:id="@+id/btn_detail_prev"
@@ -964,13 +955,13 @@
                             android:layout_height="50dp"
                             android:background="@drawable/bg_btn_circle_nav"
                             android:scaleType="center"
-                            android:layout_marginLeft="14dp"
-                            android:layout_marginRight="14dp"
+                            android:layout_marginLeft="12dp"
+                            android:layout_marginRight="12dp"
                             android:clickable="true"
                             android:focusable="true" />
                     </LinearLayout>
 
-                    <!-- 详情页：播放/暂停 (64dp 大尺寸高亮正圆形图标，数学绝对居中) -->
+                    <!-- 详情页正中心：播放/暂停 (64dp 大尺寸高亮正圆形图标，数学绝对居中) -->
                     <ImageView
                         android:id="@+id/btn_detail_play_pause"
                         android:layout_width="64dp"
@@ -994,20 +985,15 @@
                             android:layout_height="50dp"
                             android:background="@drawable/bg_btn_circle_nav"
                             android:scaleType="center"
-                            android:layout_marginLeft="14dp"
-                            android:layout_marginRight="14dp"
+                            android:layout_marginLeft="12dp"
+                            android:layout_marginRight="12dp"
                             android:clickable="true"
                             android:focusable="true" />
 
-                        <!-- 镜像隐形占位：尺寸与 btn_detail_mode 完全相同，实现 100% 绝对物理对齐 -->
-                        <Button
-                            android:layout_width="wrap_content"
+                        <!-- 镜像隐形占位：与左侧 36dp 模式按键等宽等高，实现 100% 绝对物理对称 -->
+                        <View
+                            android:layout_width="36dp"
                             android:layout_height="36dp"
-                            android:background="@drawable/bg_btn_pill"
-                            android:text="列表循环"
-                            android:textSize="11sp"
-                            android:paddingLeft="12dp"
-                            android:paddingRight="12dp"
                             android:visibility="invisible" />
                     </LinearLayout>
                 </LinearLayout>
