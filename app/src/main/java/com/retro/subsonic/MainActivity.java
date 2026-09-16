@@ -85,10 +85,11 @@ public class MainActivity extends Activity {
     private boolean isSpinnersInitializing = true;
 
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabRanking, btnSearchSubmit, btnBack;
-    // 核心更新：底栏音效按钮改为 ImageView
-    private ImageView btnOpenEq;
-    private ImageView btnMode;
+    // 核心更新：底栏与详情页音效按钮均为 ImageView
+    private ImageView btnOpenEq, btnDetailEq;
+    private ImageView btnMode, btnDetailMode;
     private ImageView btnPrev, btnPlayPause, btnNext;
+    private ImageView btnDetailPrev, btnDetailPlayPause, btnDetailNext;
     private ImageView btnExitApp, btnDetailExitApp, btnTopSearch;
     private Button btnToggleQueue, btnCloseQueue, btnOpenDetail;
     private Button btnBottomFav, btnDetailFav, btnDetailDownload;
@@ -112,8 +113,7 @@ public class MainActivity extends Activity {
     private ArrayList<DisplayEntry> rawServerUserPlaylists = new ArrayList<DisplayEntry>();
     private ArrayList<DisplayEntry> rawServerRankingPlaylists = new ArrayList<DisplayEntry>();
 
-    private Button btnCloseDetail, btnDetailEq;
-    private ImageView btnDetailMode, btnDetailPrev, btnDetailPlayPause, btnDetailNext;
+    private Button btnCloseDetail;
     private Button btnDetailKeepScreen, btnDetailQueue;
     private FrameLayout layoutVinylContainer, flVinylDisc;
     private ImageView ivVinylCircularCover, ivSquareCover;
@@ -539,8 +539,9 @@ public class MainActivity extends Activity {
         btnExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
         btnDetailExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
 
-        // 核心更新：设置底栏音效推子矢量图标
+        // 核心更新：底栏与详情页两处的音效按钮统一赋予发烧青蓝扁平推子图标
         btnOpenEq.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 18, cyanIconColor));
+        btnDetailEq.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 20, cyanIconColor));
 
         updateModeIcons(MusicService.getCurrentMode());
     }
@@ -549,13 +550,13 @@ public class MainActivity extends Activity {
         int iconColor = 0xFF00E5FF;
         if (mode == MusicService.MODE_SHUFFLE) {
             if (btnMode != null) btnMode.setImageDrawable(MediaIconHelper.createShuffleIcon(this, 18, iconColor));
-            if (btnDetailMode != null) btnDetailMode.setImageDrawable(MediaIconHelper.createShuffleIcon(this, 18, iconColor));
+            if (btnDetailMode != null) btnDetailMode.setImageDrawable(MediaIconHelper.createShuffleIcon(this, 20, iconColor));
         } else if (mode == MusicService.MODE_SINGLE) {
             if (btnMode != null) btnMode.setImageDrawable(MediaIconHelper.createRepeatOneIcon(this, 18, iconColor));
-            if (btnDetailMode != null) btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatOneIcon(this, 18, iconColor));
+            if (btnDetailMode != null) btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatOneIcon(this, 20, iconColor));
         } else {
             if (btnMode != null) btnMode.setImageDrawable(MediaIconHelper.createRepeatIcon(this, 18, iconColor));
-            if (btnDetailMode != null) btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatIcon(this, 18, iconColor));
+            if (btnDetailMode != null) btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatIcon(this, 20, iconColor));
         }
     }
 
@@ -956,14 +957,18 @@ public class MainActivity extends Activity {
         btnDetailExitApp = (ImageView) findViewById(R.id.btn_detail_exit_app);
         btnTopSearch = (ImageView) findViewById(R.id.btn_top_search);
 
-        // 核心更新：初始化底栏音效推子按键 (ImageView)
+        // 核心更新：初始化两处音效按键与模式按键
         btnOpenEq = (ImageView) findViewById(R.id.btn_open_eq);
+        btnDetailEq = (ImageView) findViewById(R.id.btn_detail_eq);
         btnMode = (ImageView) findViewById(R.id.btn_mode);
         btnDetailMode = (ImageView) findViewById(R.id.btn_detail_mode);
 
         btnPrev = (ImageView) findViewById(R.id.btn_prev);
         btnPlayPause = (ImageView) findViewById(R.id.btn_play_pause);
         btnNext = (ImageView) findViewById(R.id.btn_next);
+        btnDetailPrev = (ImageView) findViewById(R.id.btn_detail_prev);
+        btnDetailPlayPause = (ImageView) findViewById(R.id.btn_detail_play_pause);
+        btnDetailNext = (ImageView) findViewById(R.id.btn_detail_next);
 
         btnToggleQueue = (Button) findViewById(R.id.btn_toggle_queue);
         btnCloseQueue = (Button) findViewById(R.id.btn_close_queue);
@@ -986,10 +991,6 @@ public class MainActivity extends Activity {
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
         btnDetailFav = (Button) findViewById(R.id.btn_detail_fav);
         btnDetailDownload = (Button) findViewById(R.id.btn_detail_download);
-        btnDetailEq = (Button) findViewById(R.id.btn_detail_eq);
-        btnDetailPrev = (ImageView) findViewById(R.id.btn_detail_prev);
-        btnDetailPlayPause = (ImageView) findViewById(R.id.btn_detail_play_pause);
-        btnDetailNext = (ImageView) findViewById(R.id.btn_detail_next);
         btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
 
@@ -1466,7 +1467,8 @@ public class MainActivity extends Activity {
         for (int i = 0; i < lyricRows.size(); i++) {
             LyricRow row = lyricRows.get(i);
             if (row.view != null) {
-                row.view.setTextSize(i == currentLyricIndex ? (lyricBaseFontSize + 3) : lyricBaseFontSize);
+                // 当前正在唱的歌词比基础大 5sp，其它保持基准字号
+                row.view.setTextSize(i == currentLyricIndex ? (lyricBaseFontSize + 5) : lyricBaseFontSize);
             }
         }
         Toast.makeText(this, "歌词字号: " + lyricBaseFontSize + "sp", Toast.LENGTH_SHORT).show();
@@ -1661,7 +1663,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 点击音效按钮弹窗 (底栏与详情页两处统一绑定)
+        // 点击音效按钮弹窗 (底栏与详情页两处 ImageView 统一绑定)
         View.OnClickListener eqListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) { new EqualizerDialog(MainActivity.this).show(); }
@@ -1811,8 +1813,8 @@ public class MainActivity extends Activity {
         btnDetailNext.setOnTouchListener(touchFeedbackListener);
         btnMode.setOnTouchListener(touchFeedbackListener);
         btnDetailMode.setOnTouchListener(touchFeedbackListener);
-        // 为底栏音效推子图标添加轻触反馈
         btnOpenEq.setOnTouchListener(touchFeedbackListener);
+        btnDetailEq.setOnTouchListener(touchFeedbackListener);
         btnExitApp.setOnTouchListener(touchFeedbackListener);
         btnDetailExitApp.setOnTouchListener(touchFeedbackListener);
         btnTopSearch.setOnTouchListener(touchFeedbackListener);
@@ -2176,6 +2178,7 @@ public class MainActivity extends Activity {
         return -1;
     }
 
+    // 核心更新：正在唱的歌词不仅亮色，同时字号放大 +5sp 并加粗
     private void updateLyricPosition(int currentPosMs) {
         if (lyricRows.isEmpty() || isUserTouchingLyrics) return;
 
@@ -2189,6 +2192,7 @@ public class MainActivity extends Activity {
         }
 
         if (targetIndex != currentLyricIndex && targetIndex >= 0) {
+            // 将上一句已唱完的歌词恢复为标准字号与沉浸暗灰
             if (currentLyricIndex >= 0 && currentLyricIndex < lyricRows.size()) {
                 LyricRow oldRow = lyricRows.get(currentLyricIndex);
                 if (oldRow.view != null) {
@@ -2201,8 +2205,9 @@ public class MainActivity extends Activity {
             currentLyricIndex = targetIndex;
             final LyricRow curRow = lyricRows.get(currentLyricIndex);
             if (curRow.view != null) {
+                // 正在唱的当句：变亮电光青蓝 + 字号放大 5sp + 加粗
                 curRow.view.setTextColor(0xFF00E5FF);
-                curRow.view.setTextSize(lyricBaseFontSize + 3);
+                curRow.view.setTextSize(lyricBaseFontSize + 5);
                 curRow.view.setTypeface(Typeface.DEFAULT_BOLD);
 
                 scrollLyrics.post(new Runnable() {
