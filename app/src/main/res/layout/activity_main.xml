@@ -192,7 +192,8 @@
                     android:hint="/sdcard/Music"
                     android:textColor="#ffffff"
                     android:textColorHint="#777777"
-                    android:singleLine="true" />
+                    android:singleLine="true"
+                    android:layout_marginLeft="4dp" />
             </LinearLayout>
 
             <LinearLayout
@@ -403,14 +404,15 @@
                     android:dividerHeight="1dp" />
             </LinearLayout>
 
+            <!-- 核心升级：首页弹出播放列表抽屉面板，专属暗蓝渐变与 1.5dp 微光立体边框 -->
             <LinearLayout
                 android:id="@+id/layout_queue_panel"
-                android:layout_width="290dp"
+                android:layout_width="300dp"
                 android:layout_height="match_parent"
                 android:orientation="vertical"
-                android:background="@drawable/bg_card"
-                android:padding="8dp"
-                android:layout_marginLeft="6dp"
+                android:background="@drawable/bg_queue_drawer"
+                android:padding="10dp"
+                android:layout_marginLeft="8dp"
                 android:clickable="true"
                 android:focusable="true"
                 android:visibility="gone">
@@ -419,37 +421,53 @@
                     android:layout_width="match_parent"
                     android:layout_height="40dp"
                     android:gravity="center_vertical"
-                    android:layout_marginBottom="4dp">
+                    android:layout_marginBottom="6dp">
 
-                    <TextView
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_alignParentLeft="true"
                         android:layout_centerVertical="true"
-                        android:text="当前播放列表"
-                        android:textColor="#ffffff"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <!-- 青蓝色小光点，增强视觉层级感 -->
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="● "
+                            android:textColor="#00e5ff"
+                            android:textSize="11sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="当前播放列表"
+                            android:textColor="#ffffff"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
 
                     <Button
                         android:id="@+id/btn_close_queue"
                         android:layout_width="wrap_content"
-                        android:layout_height="32dp"
+                        android:layout_height="30dp"
                         android:layout_alignParentRight="true"
                         android:layout_centerVertical="true"
                         android:background="@drawable/bg_btn_default"
                         android:text="关闭"
-                        android:textColor="#e0e0e0"
+                        android:textColor="#cbd5e1"
                         android:textSize="12sp"
                         android:paddingLeft="12dp"
                         android:paddingRight="12dp" />
                 </RelativeLayout>
 
+                <!-- 抽屉内部歌曲列表：专属微亮分割线 -->
                 <ListView
                     android:id="@+id/lv_queue"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:divider="#333842"
+                    android:divider="#252b38"
                     android:dividerHeight="1dp" />
             </LinearLayout>
 
@@ -645,7 +663,7 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 顶栏：移除音效按钮，只保留收起、下载与关闭 -->
+        <!-- 顶栏：下载与关闭按钮 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
@@ -905,7 +923,7 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 核心更新：详情页对称控制排：右侧放置与底栏一致的音效推子按键，中轴严格对称 -->
+                <!-- 详情页对称控制排：右侧放置音效推子按键，中轴严格居中 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
