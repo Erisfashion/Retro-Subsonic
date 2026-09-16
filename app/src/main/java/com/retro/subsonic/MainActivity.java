@@ -85,8 +85,8 @@ public class MainActivity extends Activity {
     private boolean isSpinnersInitializing = true;
 
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabRanking, btnSearchSubmit, btnBack;
-    private Button btnOpenEq;
-    // 核心更新：底部模式按钮改为 ImageView
+    // 核心更新：底栏音效按钮改为 ImageView
+    private ImageView btnOpenEq;
     private ImageView btnMode;
     private ImageView btnPrev, btnPlayPause, btnNext;
     private ImageView btnExitApp, btnDetailExitApp, btnTopSearch;
@@ -539,10 +539,12 @@ public class MainActivity extends Activity {
         btnExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
         btnDetailExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
 
+        // 核心更新：设置底栏音效推子矢量图标
+        btnOpenEq.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 18, cyanIconColor));
+
         updateModeIcons(MusicService.getCurrentMode());
     }
 
-    // 核心更新：同步更新底部播放器与详情页两处的扁平模式图标
     private void updateModeIcons(int mode) {
         int iconColor = 0xFF00E5FF;
         if (mode == MusicService.MODE_SHUFFLE) {
@@ -954,8 +956,8 @@ public class MainActivity extends Activity {
         btnDetailExitApp = (ImageView) findViewById(R.id.btn_detail_exit_app);
         btnTopSearch = (ImageView) findViewById(R.id.btn_top_search);
 
-        btnOpenEq = (Button) findViewById(R.id.btn_open_eq);
-        // 核心更新：初始化底部与详情页两处 ImageView 模式按钮
+        // 核心更新：初始化底栏音效推子按键 (ImageView)
+        btnOpenEq = (ImageView) findViewById(R.id.btn_open_eq);
         btnMode = (ImageView) findViewById(R.id.btn_mode);
         btnDetailMode = (ImageView) findViewById(R.id.btn_detail_mode);
 
@@ -1659,6 +1661,7 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 点击音效按钮弹窗 (底栏与详情页两处统一绑定)
         View.OnClickListener eqListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) { new EqualizerDialog(MainActivity.this).show(); }
@@ -1806,9 +1809,10 @@ public class MainActivity extends Activity {
         btnDetailPrev.setOnTouchListener(touchFeedbackListener);
         btnDetailPlayPause.setOnTouchListener(touchFeedbackListener);
         btnDetailNext.setOnTouchListener(touchFeedbackListener);
-        // 核心更新：为模式按钮添加触碰反馈
         btnMode.setOnTouchListener(touchFeedbackListener);
         btnDetailMode.setOnTouchListener(touchFeedbackListener);
+        // 为底栏音效推子图标添加轻触反馈
+        btnOpenEq.setOnTouchListener(touchFeedbackListener);
         btnExitApp.setOnTouchListener(touchFeedbackListener);
         btnDetailExitApp.setOnTouchListener(touchFeedbackListener);
         btnTopSearch.setOnTouchListener(touchFeedbackListener);
@@ -1840,7 +1844,6 @@ public class MainActivity extends Activity {
         btnPrev.setOnClickListener(prevListener);
         btnDetailPrev.setOnClickListener(prevListener);
 
-        // 核心更新：点击底部模式按钮或详情页模式按钮统一循环切换
         View.OnClickListener modeListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
