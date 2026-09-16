@@ -134,7 +134,7 @@ public class MediaIconHelper {
         float triRight = right - barW - 1.5f * density;
         path.moveTo(left, top);
         path.lineTo(triRight, half);
-        path.lineTo(right, bottom);
+        path.lineTo(left, bottom);
         path.close();
 
         canvas.drawPath(path, paint);
@@ -194,7 +194,7 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 列表循环图标 (双循环轨道箭头)
+    // 扁平风格：列表循环图标 (双向扁平闭环导轨)
     public static Drawable createRepeatIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -211,60 +211,65 @@ public class MediaIconHelper {
         fill.setStyle(Paint.Style.FILL);
         fill.setColor(color);
 
-        float l = sizePx * 0.26f;
-        float r = sizePx * 0.74f;
-        float t = sizePx * 0.32f;
-        float b = sizePx * 0.68f;
+        float l = sizePx * 0.28f;
+        float r = sizePx * 0.72f;
+        float t = sizePx * 0.28f;
+        float b = sizePx * 0.72f;
         float cr = sizePx * 0.12f;
 
-        // 上半轨道 (从左下拐角向上、向右)
+        float ahW = sizePx * 0.12f;
+        float ahH = sizePx * 0.12f;
+
+        // 上半轨道 (左垂直段 -> 圆角 -> 上水平段)
         Path p1 = new Path();
-        p1.moveTo(l, (t + b) / 2f);
+        p1.moveTo(l, sizePx * 0.56f);
         p1.lineTo(l, t + cr);
         p1.quadTo(l, t, l + cr, t);
-        p1.lineTo(r - 2 * density, t);
+        p1.lineTo(r - sizePx * 0.04f, t);
         canvas.drawPath(p1, stroke);
 
-        // 上半右侧向右箭头
+        // 上半向右扁平三角箭头
+        float tipX1 = r + sizePx * 0.04f;
         Path a1 = new Path();
-        a1.moveTo(r + 3 * density, t);
-        a1.lineTo(r - 3 * density, t - 3.5f * density);
-        a1.lineTo(r - 3 * density, t + 3.5f * density);
+        a1.moveTo(tipX1, t);
+        a1.lineTo(tipX1 - ahW, t - ahH);
+        a1.lineTo(tipX1 - ahW, t + ahH);
         a1.close();
         canvas.drawPath(a1, fill);
 
-        // 下半轨道 (从右上拐角向下、向左)
+        // 下半轨道 (右垂直段 -> 圆角 -> 下水平段)
         Path p2 = new Path();
-        p2.moveTo(r, (t + b) / 2f);
+        p2.moveTo(r, sizePx * 0.44f);
         p2.lineTo(r, b - cr);
         p2.quadTo(r, b, r - cr, b);
-        p2.lineTo(l + 2 * density, b);
+        p2.lineTo(l + sizePx * 0.04f, b);
         canvas.drawPath(p2, stroke);
 
-        // 下半左侧向左箭头
+        // 下半向左扁平三角箭头
+        float tipX2 = l - sizePx * 0.04f;
         Path a2 = new Path();
-        a2.moveTo(l - 3 * density, b);
-        a2.lineTo(l + 3 * density, b - 3.5f * density);
-        a2.lineTo(l + 3 * density, b + 3.5f * density);
+        a2.moveTo(tipX2, b);
+        a2.lineTo(tipX2 + ahW, b - ahH);
+        a2.lineTo(tipX2 + ahW, b + ahH);
         a2.close();
         canvas.drawPath(a2, fill);
 
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 单曲循环图标 (双循环轨道 + 中心数字 1)
+    // 扁平风格：单曲循环图标 (双向扁平闭环导轨 + 中心数字 1)
     public static Drawable createRepeatOneIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
         Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
 
-        // 绘制基础双循环轨道
+        // 绘制基础循环框架
         Drawable base = createRepeatIcon(context, sizeDp, color);
         base.setBounds(0, 0, sizePx, sizePx);
         base.draw(canvas);
 
-        // 中心精细绘制数字 1
+        // 中心扁平数字 1
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setStyle(Paint.Style.STROKE);
         paint.setColor(color);
@@ -275,7 +280,7 @@ public class MediaIconHelper {
         float cy = sizePx / 2f;
 
         Path path1 = new Path();
-        path1.moveTo(cx - 2.5f * density, cy - 1.5f * density);
+        path1.moveTo(cx - 2.5f * density, cy - 2.0f * density);
         path1.lineTo(cx, cy - 4.5f * density);
         path1.lineTo(cx, cy + 4.5f * density);
         canvas.drawPath(path1, paint);
@@ -285,7 +290,7 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 随机播放图标 (交叉重叠箭头)
+    // 扁平风格：随机播放图标 (扁平交叉平滑穿插箭头)
     public static Drawable createShuffleIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -302,48 +307,55 @@ public class MediaIconHelper {
         fill.setStyle(Paint.Style.FILL);
         fill.setColor(color);
 
-        float x1 = sizePx * 0.22f;
+        float x1 = sizePx * 0.24f;
         float x2 = sizePx * 0.38f;
         float x3 = sizePx * 0.62f;
-        float x4 = sizePx * 0.74f;
+        float x4 = sizePx * 0.70f;
 
-        float yTop = sizePx * 0.36f;
-        float yBottom = sizePx * 0.64f;
+        float yt = sizePx * 0.36f;
+        float yb = sizePx * 0.64f;
 
-        // 路径 1: 从左上平滑穿插至右下
+        float ahW = sizePx * 0.11f;
+        float ahH = sizePx * 0.11f;
+
+        // 起点两段水平线
+        canvas.drawLine(x1, yt, x2, yt, stroke);
+        canvas.drawLine(x1, yb, x2, yb, stroke);
+
+        // 路径 1: 从左上平滑下穿至右下
         Path p1 = new Path();
-        p1.moveTo(x1, yTop);
-        p1.lineTo(x2, yTop);
-        p1.cubicTo(sizePx * 0.5f, yTop, sizePx * 0.5f, yBottom, x3, yBottom);
-        p1.lineTo(x4, yBottom);
+        p1.moveTo(x2, yt);
+        p1.cubicTo(sizePx * 0.5f, yt, sizePx * 0.5f, yb, x3, yb);
+        p1.lineTo(x4, yb);
         canvas.drawPath(p1, stroke);
 
-        // 箭头 1: 右下箭头
+        // 路径 2: 从左下上穿至右上 (中间留白产生前后交错感)
+        Path p2a = new Path();
+        p2a.moveTo(x2, yb);
+        p2a.cubicTo(sizePx * 0.42f, yb, sizePx * 0.46f, sizePx * 0.55f, sizePx * 0.46f, sizePx * 0.55f);
+        canvas.drawPath(p2a, stroke);
+
+        Path p2b = new Path();
+        p2b.moveTo(sizePx * 0.54f, sizePx * 0.45f);
+        p2b.cubicTo(sizePx * 0.54f, sizePx * 0.45f, sizePx * 0.58f, yt, x3, yt);
+        p2b.lineTo(x4, yt);
+        canvas.drawPath(p2b, stroke);
+
+        // 箭头 1: 右上实心箭头
+        float tipX1 = x4 + sizePx * 0.08f;
         Path a1 = new Path();
-        a1.moveTo(x4 + 4 * density, yBottom);
-        a1.lineTo(x4 - 2 * density, yBottom - 3.5f * density);
-        a1.lineTo(x4 - 2 * density, yBottom + 3.5f * density);
+        a1.moveTo(tipX1, yt);
+        a1.lineTo(tipX1 - ahW, yt - ahH);
+        a1.lineTo(tipX1 - ahW, yt + ahH);
         a1.close();
         canvas.drawPath(a1, fill);
 
-        // 路径 2: 从左下至中间留白后至右上
-        Path p2Left = new Path();
-        p2Left.moveTo(x1, yBottom);
-        p2Left.lineTo(x2, yBottom);
-        p2Left.lineTo(sizePx * 0.44f, sizePx * 0.58f);
-        canvas.drawPath(p2Left, stroke);
-
-        Path p2Right = new Path();
-        p2Right.moveTo(sizePx * 0.56f, sizePx * 0.42f);
-        p2Right.lineTo(x3, yTop);
-        p2Right.lineTo(x4, yTop);
-        canvas.drawPath(p2Right, stroke);
-
-        // 箭头 2: 右上箭头
+        // 箭头 2: 右下实心箭头
+        float tipX2 = x4 + sizePx * 0.08f;
         Path a2 = new Path();
-        a2.moveTo(x4 + 4 * density, yTop);
-        a2.lineTo(x4 - 2 * density, yTop - 3.5f * density);
-        a2.lineTo(x4 - 2 * density, yTop + 3.5f * density);
+        a2.moveTo(tipX2, yb);
+        a2.lineTo(tipX2 - ahW, yb - ahH);
+        a2.lineTo(tipX2 - ahW, yb + ahH);
         a2.close();
         canvas.drawPath(a2, fill);
 
