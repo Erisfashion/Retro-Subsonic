@@ -348,6 +348,7 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
+    // 扁平风格：音效调节调音推子图标 (上下平行滑轨 + 错位圆环旋钮)
     public static Drawable createEqualizerIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -366,13 +367,15 @@ public class MediaIconHelper {
         float xRight = sizePx * 0.78f;
 
         float r = sizePx * 0.09f;
-        float cx1 = sizePx * 0.61f;
-        float cx2 = sizePx * 0.39f;
+        float cx1 = sizePx * 0.61f; // 上方旋钮偏右
+        float cx2 = sizePx * 0.39f; // 下方旋钮偏左
 
+        // 上方滑轨与旋钮
         canvas.drawLine(xLeft, y1, cx1 - r, y1, stroke);
         canvas.drawCircle(cx1, y1, r, stroke);
         canvas.drawLine(cx1 + r, y1, xRight, y1, stroke);
 
+        // 下方滑轨与旋钮
         canvas.drawLine(xLeft, y2, cx2 - r, y2, stroke);
         canvas.drawCircle(cx2, y2, r, stroke);
         canvas.drawLine(cx2 + r, y2, xRight, y2, stroke);
