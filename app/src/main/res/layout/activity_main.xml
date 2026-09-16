@@ -527,7 +527,7 @@
                         android:paddingLeft="4dp" />
                 </LinearLayout>
 
-                <!-- 底栏对称控制 Dock：模式为长方扁平按钮，上一首/下一首去除圆形包裹 -->
+                <!-- 底栏对称控制 Dock：模式与切歌按键均完全无框扁平化 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -542,30 +542,30 @@
                         android:gravity="right|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 底部长方扁平模式按钮 (44dp x 30dp) -->
+                        <!-- 底部模式图标：完全透明无框扁平 -->
                         <ImageView
                             android:id="@+id/btn_mode"
-                            android:layout_width="44dp"
-                            android:layout_height="30dp"
-                            android:background="@drawable/bg_btn_pill"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="@android:color/transparent"
                             android:scaleType="center"
                             android:clickable="true"
                             android:focusable="true" />
 
-                        <!-- 上一首：去除圆形包裹，纯净扁平图标 -->
+                        <!-- 上一首：完全透明无框扁平 -->
                         <ImageView
                             android:id="@+id/btn_prev"
                             android:layout_width="38dp"
                             android:layout_height="38dp"
                             android:background="@android:color/transparent"
                             android:scaleType="center"
-                            android:layout_marginLeft="12dp"
+                            android:layout_marginLeft="14dp"
                             android:layout_marginRight="10dp"
                             android:clickable="true"
                             android:focusable="true" />
                     </LinearLayout>
 
-                    <!-- 底栏中央：突出播放/暂停主按键 (46dp 居中) -->
+                    <!-- 底栏中央：突出播放/暂停主按键 (46dp 严格居中) -->
                     <ImageView
                         android:id="@+id/btn_play_pause"
                         android:layout_width="46dp"
@@ -582,7 +582,7 @@
                         android:gravity="left|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 下一首：去除圆形包裹，纯净扁平图标 -->
+                        <!-- 下一首：完全透明无框扁平 -->
                         <ImageView
                             android:id="@+id/btn_next"
                             android:layout_width="38dp"
@@ -590,7 +590,7 @@
                             android:background="@android:color/transparent"
                             android:scaleType="center"
                             android:layout_marginLeft="10dp"
-                            android:layout_marginRight="12dp"
+                            android:layout_marginRight="14dp"
                             android:clickable="true"
                             android:focusable="true" />
 
@@ -924,7 +924,7 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 详情页控制排：模式为长方扁平按钮，上一首/下一首去除圆形包裹，中轴绝对对称 -->
+                <!-- 详情页控制排：模式切换无背景包裹，切歌无背景包裹，中轴绝对对称 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
@@ -941,30 +941,30 @@
                         android:gravity="right|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 详情页长方扁平模式按钮 (46dp x 32dp) -->
+                        <!-- 详情页模式图标：完全透明无框扁平 -->
                         <ImageView
                             android:id="@+id/btn_detail_mode"
-                            android:layout_width="46dp"
-                            android:layout_height="32dp"
-                            android:background="@drawable/bg_btn_pill"
+                            android:layout_width="38dp"
+                            android:layout_height="38dp"
+                            android:background="@android:color/transparent"
                             android:scaleType="center"
                             android:clickable="true"
                             android:focusable="true" />
 
-                        <!-- 上一首：去除圆形包裹，纯净扁平图标 -->
+                        <!-- 上一首：完全透明无框扁平 -->
                         <ImageView
                             android:id="@+id/btn_detail_prev"
                             android:layout_width="48dp"
                             android:layout_height="48dp"
                             android:background="@android:color/transparent"
                             android:scaleType="center"
-                            android:layout_marginLeft="14dp"
+                            android:layout_marginLeft="16dp"
                             android:layout_marginRight="14dp"
                             android:clickable="true"
                             android:focusable="true" />
                     </LinearLayout>
 
-                    <!-- 详情页正中心：64dp 青蓝突出播放/暂停主按键 -->
+                    <!-- 详情页正中心：64dp 青蓝突出圆形播放主键 -->
                     <ImageView
                         android:id="@+id/btn_detail_play_pause"
                         android:layout_width="64dp"
@@ -981,7 +981,7 @@
                         android:gravity="left|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 下一首：去除圆形包裹，纯净扁平图标 -->
+                        <!-- 下一首：完全透明无框扁平 -->
                         <ImageView
                             android:id="@+id/btn_detail_next"
                             android:layout_width="48dp"
@@ -989,14 +989,14 @@
                             android:background="@android:color/transparent"
                             android:scaleType="center"
                             android:layout_marginLeft="14dp"
-                            android:layout_marginRight="14dp"
+                            android:layout_marginRight="16dp"
                             android:clickable="true"
                             android:focusable="true" />
 
-                        <!-- 镜像隐形占位：与左侧 46dp x 32dp 长方扁平按钮等宽等高，实现 100% 绝对物理对齐 -->
+                        <!-- 镜像隐形占位：与左侧 38dp 模式图标严格对齐 -->
                         <View
-                            android:layout_width="46dp"
-                            android:layout_height="32dp"
+                            android:layout_width="38dp"
+                            android:layout_height="38dp"
                             android:visibility="invisible" />
                     </LinearLayout>
                 </LinearLayout>
