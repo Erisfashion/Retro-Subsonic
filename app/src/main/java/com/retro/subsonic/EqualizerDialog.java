@@ -3,6 +3,7 @@ package com.retro.subsonic;
 import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.PresetReverb;
@@ -41,6 +42,7 @@ public class EqualizerDialog {
     };
 
     private ArrayList<SeekBar> bandSeekBars = new ArrayList<SeekBar>();
+    private ArrayList<TextView> bandValTextViews = new ArrayList<TextView>();
     private boolean isUpdatingEqFromPreset = false;
 
     public EqualizerDialog(Context context) {
@@ -64,6 +66,17 @@ public class EqualizerDialog {
         return name;
     }
 
+    private String formatDb(short mB) {
+        float db = mB / 100.0f;
+        if (db > 0.05f) {
+            return String.format("+%.1f dB", db);
+        } else if (db < -0.05f) {
+            return String.format("%.1f dB", db);
+        } else {
+            return "0.0 dB";
+        }
+    }
+
     private void initDialog() {
         dialog = new Dialog(context);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -78,7 +91,7 @@ public class EqualizerDialog {
         root.setBackgroundResource(R.drawable.bg_card);
         root.setPadding((int) (18 * density), (int) (16 * density), (int) (18 * density), (int) (16 * density));
 
-        // 顶栏：标题与开关
+        // 顶栏：标题与总开关
         LinearLayout header = new LinearLayout(context);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -87,7 +100,7 @@ public class EqualizerDialog {
         tvTitle.setText("专业音效调节");
         tvTitle.setTextColor(0xFFFFFFFF);
         tvTitle.setTextSize(17);
-        tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        tvTitle.setTypeface(null, Typeface.BOLD);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         header.addView(tvTitle, titleLp);
 
@@ -111,7 +124,7 @@ public class EqualizerDialog {
         header.addView(btnMasterToggle);
         root.addView(header);
 
-        // 1. EQ 预设选择（流行/摇滚/舞曲等）
+        // 1. 均衡器预设风格
         final Equalizer eq = aem.getEqualizer();
         final Spinner spinnerEqPreset = new Spinner(context);
 
@@ -125,7 +138,7 @@ public class EqualizerDialog {
 
             final short numPresets = eq.getNumberOfPresets();
             final ArrayList<String> presetDisplayList = new ArrayList<String>();
-            presetDisplayList.add("自定义"); // 索引 0 映射为自定义 (-1)
+            presetDisplayList.add("自定义");
 
             for (short p = 0; p < numPresets; p++) {
                 String rawName = eq.getPresetName(p);
@@ -152,11 +165,13 @@ public class EqualizerDialog {
                     short targetPreset = (short) (position - 1);
                     aem.setEqualizerPreset(targetPreset);
 
-                    // 联动更新下方推子
                     isUpdatingEqFromPreset = true;
                     short minEQ = eq.getBandLevelRange()[0];
                     for (short b = 0; b < bandSeekBars.size(); b++) {
-                        bandSeekBars.get(b).setProgress(eq.getBandLevel(b) - minEQ);
+                        short lvl = eq.getBandLevel(b);
+                        bandSeekBars.get(b).setProgress(lvl - minEQ);
+                        bandValTextViews.get(b).setText(formatDb(lvl));
+                        bandValTextViews.get(b).setTextColor(lvl == 0 ? 0xFF888C99 : 0xFF00E5FF);
                     }
                     isUpdatingEqFromPreset = false;
                 }
@@ -201,13 +216,27 @@ public class EqualizerDialog {
         });
         root.addView(spinnerReverb);
 
-        // 3. 低音增强 (Bass Boost)
+        // 3. 低音增强 (含百分比显示)
+        LinearLayout bassHeader = new LinearLayout(context);
+        bassHeader.setOrientation(LinearLayout.HORIZONTAL);
+        bassHeader.setGravity(Gravity.CENTER_VERTICAL);
+        bassHeader.setPadding(0, (int) (14 * density), 0, (int) (4 * density));
+
         TextView tvBass = new TextView(context);
         tvBass.setText("低音增强 (Bass Boost):");
         tvBass.setTextColor(0xFFCCCCCC);
         tvBass.setTextSize(13);
-        tvBass.setPadding(0, (int) (14 * density), 0, (int) (4 * density));
-        root.addView(tvBass);
+        bassHeader.addView(tvBass, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        final TextView tvBassVal = new TextView(context);
+        int bassPct = Math.round(aem.getBassBoostStrength() / 10.0f);
+        tvBassVal.setText(bassPct + "%");
+        tvBassVal.setTextColor(0xFF00E5FF);
+        tvBassVal.setTextSize(13);
+        tvBassVal.setTypeface(Typeface.DEFAULT_BOLD);
+        bassHeader.addView(tvBassVal);
+
+        root.addView(bassHeader);
 
         SeekBar sbBass = new SeekBar(context);
         sbBass.setMax(1000);
@@ -215,6 +244,8 @@ public class EqualizerDialog {
         sbBass.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int pct = Math.round(progress / 10.0f);
+                tvBassVal.setText(pct + "%");
                 if (fromUser) aem.setBassBoostStrength((short) progress);
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
@@ -222,13 +253,27 @@ public class EqualizerDialog {
         });
         root.addView(sbBass);
 
-        // 4. 3D 虚拟现场 (Virtualizer)
+        // 4. 3D 虚拟现场环绕 (含百分比显示)
+        LinearLayout virtHeader = new LinearLayout(context);
+        virtHeader.setOrientation(LinearLayout.HORIZONTAL);
+        virtHeader.setGravity(Gravity.CENTER_VERTICAL);
+        virtHeader.setPadding(0, (int) (10 * density), 0, (int) (4 * density));
+
         TextView tvVirt = new TextView(context);
         tvVirt.setText("3D 虚拟现场环绕:");
         tvVirt.setTextColor(0xFFCCCCCC);
         tvVirt.setTextSize(13);
-        tvVirt.setPadding(0, (int) (10 * density), 0, (int) (4 * density));
-        root.addView(tvVirt);
+        virtHeader.addView(tvVirt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        final TextView tvVirtVal = new TextView(context);
+        int virtPct = Math.round(aem.getVirtualizerStrength() / 10.0f);
+        tvVirtVal.setText(virtPct + "%");
+        tvVirtVal.setTextColor(0xFF00E5FF);
+        tvVirtVal.setTextSize(13);
+        tvVirtVal.setTypeface(Typeface.DEFAULT_BOLD);
+        virtHeader.addView(tvVirtVal);
+
+        root.addView(virtHeader);
 
         SeekBar sbVirt = new SeekBar(context);
         sbVirt.setMax(1000);
@@ -236,6 +281,8 @@ public class EqualizerDialog {
         sbVirt.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int pct = Math.round(progress / 10.0f);
+                tvVirtVal.setText(pct + "%");
                 if (fromUser) aem.setVirtualizerStrength((short) progress);
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
@@ -243,7 +290,7 @@ public class EqualizerDialog {
         });
         root.addView(sbVirt);
 
-        // 5. 均衡器各频段推子
+        // 5. 均衡器各频段 (含精确加减 dB 值显示)
         if (eq != null) {
             TextView tvEq = new TextView(context);
             tvEq.setText("频段均衡细调 (EQ Bands):");
@@ -256,28 +303,45 @@ public class EqualizerDialog {
             final short maxEQ = eq.getBandLevelRange()[1];
             final int bands = eq.getNumberOfBands();
             bandSeekBars.clear();
+            bandValTextViews.clear();
 
             for (short i = 0; i < bands; i++) {
                 final short band = i;
                 int centerFreq = eq.getCenterFreq(band) / 1000;
                 String freqStr = centerFreq >= 1000 ? ((centerFreq / 1000) + "kHz") : (centerFreq + "Hz");
 
+                LinearLayout bandHeader = new LinearLayout(context);
+                bandHeader.setOrientation(LinearLayout.HORIZONTAL);
+                bandHeader.setGravity(Gravity.CENTER_VERTICAL);
+                bandHeader.setPadding(0, (int) (4 * density), 0, 0);
+
                 TextView tvBand = new TextView(context);
                 tvBand.setText(freqStr);
                 tvBand.setTextColor(0xFF888C99);
                 tvBand.setTextSize(11);
-                tvBand.setPadding(0, (int) (2 * density), 0, 0);
-                root.addView(tvBand);
+                bandHeader.addView(tvBand, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+                final TextView tvBandVal = new TextView(context);
+                short curLevel = eq.getBandLevel(band);
+                tvBandVal.setText(formatDb(curLevel));
+                tvBandVal.setTextColor(curLevel == 0 ? 0xFF888C99 : 0xFF00E5FF);
+                tvBandVal.setTextSize(11);
+                bandHeader.addView(tvBandVal);
+
+                root.addView(bandHeader);
 
                 SeekBar sbBand = new SeekBar(context);
                 sbBand.setMax(maxEQ - minEQ);
-                sbBand.setProgress(eq.getBandLevel(band) - minEQ);
+                sbBand.setProgress(curLevel - minEQ);
                 sbBand.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                     @Override
                     public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                        short lvl = (short) (progress + minEQ);
+                        tvBandVal.setText(formatDb(lvl));
+                        tvBandVal.setTextColor(lvl == 0 ? 0xFF888C99 : 0xFF00E5FF);
+
                         if (fromUser && !isUpdatingEqFromPreset) {
-                            aem.setBandLevel(band, (short) (progress + minEQ));
-                            // 手动拉动推子，风格自动切换为“自定义”
+                            aem.setBandLevel(band, lvl);
                             if (spinnerEqPreset != null && spinnerEqPreset.getSelectedItemPosition() != 0) {
                                 spinnerEqPreset.setSelection(0);
                             }
@@ -287,6 +351,7 @@ public class EqualizerDialog {
                     @Override public void onStopTrackingTouch(SeekBar seekBar) {}
                 });
                 bandSeekBars.add(sbBand);
+                bandValTextViews.add(tvBandVal);
                 root.addView(sbBand);
             }
         }
