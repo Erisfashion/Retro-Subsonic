@@ -456,7 +456,7 @@
 
         </LinearLayout>
 
-        <!-- 底部常驻播放器条 -->
+        <!-- 底部常驻播放器条：模式按钮已更新为小号圆形扁平图标 -->
         <LinearLayout
             android:id="@+id/layout_bottom_player"
             android:layout_width="match_parent"
@@ -541,16 +541,15 @@
                         android:gravity="right|center_vertical"
                         android:orientation="horizontal">
 
-                        <Button
+                        <!-- 底部模式按钮：使用与详情页完全一致的圆形扁平图标按钮 (34dp) -->
+                        <ImageView
                             android:id="@+id/btn_mode"
-                            android:layout_width="wrap_content"
-                            android:layout_height="32dp"
-                            android:background="@drawable/bg_btn_pill"
-                            android:text="列表循环"
-                            android:textColor="#cbd5e1"
-                            android:textSize="11sp"
-                            android:paddingLeft="10dp"
-                            android:paddingRight="10dp" />
+                            android:layout_width="34dp"
+                            android:layout_height="34dp"
+                            android:background="@drawable/bg_btn_circle_default"
+                            android:scaleType="center"
+                            android:clickable="true"
+                            android:focusable="true" />
 
                         <ImageView
                             android:id="@+id/btn_prev"
@@ -921,7 +920,7 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 详情页对称控制 Dock：播放模式改为 36dp 小号圆形图标，与右侧 36dp 隐形占位完全对称 -->
+                <!-- 详情页对称控制 Dock：播放模式采用小号圆形图标 (36dp x 36dp) -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
@@ -939,7 +938,6 @@
                         android:gravity="right|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 核心调整：播放模式小号圆形图标 (36dp x 36dp)，彻底杜绝竖屏截断 -->
                         <ImageView
                             android:id="@+id/btn_detail_mode"
                             android:layout_width="36dp"
