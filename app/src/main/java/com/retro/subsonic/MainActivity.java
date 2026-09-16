@@ -110,8 +110,8 @@ public class MainActivity extends Activity {
     private ArrayList<DisplayEntry> rawServerUserPlaylists = new ArrayList<DisplayEntry>();
     private ArrayList<DisplayEntry> rawServerRankingPlaylists = new ArrayList<DisplayEntry>();
 
-    private Button btnCloseDetail, btnDetailMode, btnDetailEq;
-    private ImageView btnDetailPrev, btnDetailPlayPause, btnDetailNext;
+    private Button btnCloseDetail, btnDetailEq;
+    private ImageView btnDetailMode, btnDetailPrev, btnDetailPlayPause, btnDetailNext;
     private Button btnDetailKeepScreen, btnDetailQueue;
     private FrameLayout layoutVinylContainer, flVinylDisc;
     private ImageView ivVinylCircularCover, ivSquareCover;
@@ -199,7 +199,7 @@ public class MainActivity extends Activity {
                 int mode = intent.getIntExtra("mode", MusicService.MODE_LOOP_ALL);
                 String modeText = getModeString(mode);
                 btnMode.setText(modeText);
-                btnDetailMode.setText(modeText);
+                updateDetailModeIcon(mode);
 
                 boolean isBuffering = intent.getBooleanExtra("isBuffering", false);
                 int bufferPercent = intent.getIntExtra("bufferPercent", 0);
@@ -309,14 +309,12 @@ public class MainActivity extends Activity {
         setupListeners();
         setupClickInterceptors();
 
-        // 核心修复：检查并恢复上次退出的播放记录与列表
         restoreLastSessionIfAvailable();
 
         fetchPlaylists();
         syncServerFavoritesQuietly();
     }
 
-    // 开机自动恢复上次的播放列表与歌曲进度
     private void restoreLastSessionIfAvailable() {
         if (MusicService.getPlaylist().isEmpty()) {
             boolean restored = MusicService.restorePlaybackState(this);
@@ -351,6 +349,7 @@ public class MainActivity extends Activity {
                     loadLyrics(song.id, song.artist, song.title);
                     updateFavButtonState(song.id);
                     updatePlayPauseIcons(false);
+                    updateDetailModeIcon(MusicService.getCurrentMode());
                 }
             }
         }
@@ -539,6 +538,21 @@ public class MainActivity extends Activity {
 
         btnExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
         btnDetailExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
+
+        updateDetailModeIcon(MusicService.getCurrentMode());
+    }
+
+    // 动态切换详情页循环模式图标
+    private void updateDetailModeIcon(int mode) {
+        if (btnDetailMode == null) return;
+        int iconColor = 0xFF00E5FF;
+        if (mode == MusicService.MODE_SHUFFLE) {
+            btnDetailMode.setImageDrawable(MediaIconHelper.createShuffleIcon(this, 18, iconColor));
+        } else if (mode == MusicService.MODE_SINGLE) {
+            btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatOneIcon(this, 18, iconColor));
+        } else {
+            btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatIcon(this, 18, iconColor));
+        }
     }
 
     private void updatePlayPauseIcons(boolean isPlaying) {
@@ -965,7 +979,7 @@ public class MainActivity extends Activity {
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
         btnDetailFav = (Button) findViewById(R.id.btn_detail_fav);
         btnDetailDownload = (Button) findViewById(R.id.btn_detail_download);
-        btnDetailMode = (Button) findViewById(R.id.btn_detail_mode);
+        btnDetailMode = (ImageView) findViewById(R.id.btn_detail_mode);
         btnDetailEq = (Button) findViewById(R.id.btn_detail_eq);
         btnDetailPrev = (ImageView) findViewById(R.id.btn_detail_prev);
         btnDetailPlayPause = (ImageView) findViewById(R.id.btn_detail_play_pause);
@@ -1788,6 +1802,7 @@ public class MainActivity extends Activity {
         btnDetailPrev.setOnTouchListener(touchFeedbackListener);
         btnDetailPlayPause.setOnTouchListener(touchFeedbackListener);
         btnDetailNext.setOnTouchListener(touchFeedbackListener);
+        btnDetailMode.setOnTouchListener(touchFeedbackListener);
         btnExitApp.setOnTouchListener(touchFeedbackListener);
         btnDetailExitApp.setOnTouchListener(touchFeedbackListener);
         btnTopSearch.setOnTouchListener(touchFeedbackListener);
@@ -1823,6 +1838,8 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) {
                 startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_CYCLE_MODE));
+                int nextMode = (MusicService.getCurrentMode() + 1) % 3;
+                Toast.makeText(MainActivity.this, getModeString(nextMode), Toast.LENGTH_SHORT).show();
             }
         };
         btnMode.setOnClickListener(modeListener);
@@ -1944,7 +1961,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 核心强化：多阶歌词穿透下载（直链/ID查询 -> 净化搜索词 -> 结构化LRC毫秒打点）
     private void loadLyrics(final String songId, final String artist, final String title) {
         lyricRows.clear();
         currentLyricIndex = -1;
@@ -1960,7 +1976,6 @@ public class MainActivity extends Activity {
             public void run() {
                 String lyricsText = null;
 
-                // 阶段 1：首选使用 songId 获取服务端内嵌的真文件歌词 (Navidrome/OpenSubsonic 核心特性)
                 if (songId != null && songId.length() > 0) {
                     try {
                         String res = requestApi("getLyricsBySongId.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
@@ -1975,7 +1990,6 @@ public class MainActivity extends Activity {
                     }
                 }
 
-                // 阶段 2：使用 歌手 + 完整歌名 获取
                 if (lyricsText == null && title != null && title.length() > 0) {
                     try {
                         String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8")
@@ -1985,7 +1999,6 @@ public class MainActivity extends Activity {
                     } catch (Throwable ignored) {}
                 }
 
-                // 阶段 3：智能剥离括号（消除 (Live)、(Remix) 或 [FLAC] 等干扰项）进行再次匹配
                 if (lyricsText == null && title != null) {
                     String cleanTitle = title.replaceAll("\\([^)]*\\)", "")
                             .replaceAll("\\[[^\\]]*\\]", "")
@@ -2017,13 +2030,11 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 智能提取 JSON 结构中的歌词（兼容普通文本与结构化毫秒行）
     private String parseLyricsFromJson(String jsonStr) {
         if (jsonStr == null || jsonStr.length() == 0) return null;
         try {
             JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
 
-            // 1. 结构化打点歌词 (OpenSubsonic structuredLyrics)
             if (root.has("lyricsList")) {
                 JSONObject list = root.optJSONObject("lyricsList");
                 if (list != null && list.has("structuredLyrics")) {
@@ -2055,7 +2066,6 @@ public class MainActivity extends Activity {
                 }
             }
 
-            // 2. 原生 lyrics 字段提取
             if (root.has("lyrics")) {
                 Object lyricsObj = root.get("lyrics");
                 if (lyricsObj instanceof JSONObject) {
