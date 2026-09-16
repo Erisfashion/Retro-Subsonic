@@ -85,7 +85,9 @@ public class MainActivity extends Activity {
     private boolean isSpinnersInitializing = true;
 
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabRanking, btnSearchSubmit, btnBack;
-    private Button btnMode, btnOpenEq;
+    private Button btnOpenEq;
+    // 核心更新：底部模式按钮改为 ImageView
+    private ImageView btnMode;
     private ImageView btnPrev, btnPlayPause, btnNext;
     private ImageView btnExitApp, btnDetailExitApp, btnTopSearch;
     private Button btnToggleQueue, btnCloseQueue, btnOpenDetail;
@@ -197,9 +199,7 @@ public class MainActivity extends Activity {
                 updateVinylAnimationState();
 
                 int mode = intent.getIntExtra("mode", MusicService.MODE_LOOP_ALL);
-                String modeText = getModeString(mode);
-                btnMode.setText(modeText);
-                updateDetailModeIcon(mode);
+                updateModeIcons(mode);
 
                 boolean isBuffering = intent.getBooleanExtra("isBuffering", false);
                 int bufferPercent = intent.getIntExtra("bufferPercent", 0);
@@ -349,7 +349,7 @@ public class MainActivity extends Activity {
                     loadLyrics(song.id, song.artist, song.title);
                     updateFavButtonState(song.id);
                     updatePlayPauseIcons(false);
-                    updateDetailModeIcon(MusicService.getCurrentMode());
+                    updateModeIcons(MusicService.getCurrentMode());
                 }
             }
         }
@@ -539,19 +539,21 @@ public class MainActivity extends Activity {
         btnExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
         btnDetailExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
 
-        updateDetailModeIcon(MusicService.getCurrentMode());
+        updateModeIcons(MusicService.getCurrentMode());
     }
 
-    // 动态切换详情页循环模式图标
-    private void updateDetailModeIcon(int mode) {
-        if (btnDetailMode == null) return;
+    // 核心更新：同步更新底部播放器与详情页两处的扁平模式图标
+    private void updateModeIcons(int mode) {
         int iconColor = 0xFF00E5FF;
         if (mode == MusicService.MODE_SHUFFLE) {
-            btnDetailMode.setImageDrawable(MediaIconHelper.createShuffleIcon(this, 18, iconColor));
+            if (btnMode != null) btnMode.setImageDrawable(MediaIconHelper.createShuffleIcon(this, 18, iconColor));
+            if (btnDetailMode != null) btnDetailMode.setImageDrawable(MediaIconHelper.createShuffleIcon(this, 18, iconColor));
         } else if (mode == MusicService.MODE_SINGLE) {
-            btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatOneIcon(this, 18, iconColor));
+            if (btnMode != null) btnMode.setImageDrawable(MediaIconHelper.createRepeatOneIcon(this, 18, iconColor));
+            if (btnDetailMode != null) btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatOneIcon(this, 18, iconColor));
         } else {
-            btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatIcon(this, 18, iconColor));
+            if (btnMode != null) btnMode.setImageDrawable(MediaIconHelper.createRepeatIcon(this, 18, iconColor));
+            if (btnDetailMode != null) btnDetailMode.setImageDrawable(MediaIconHelper.createRepeatIcon(this, 18, iconColor));
         }
     }
 
@@ -952,8 +954,11 @@ public class MainActivity extends Activity {
         btnDetailExitApp = (ImageView) findViewById(R.id.btn_detail_exit_app);
         btnTopSearch = (ImageView) findViewById(R.id.btn_top_search);
 
-        btnMode = (Button) findViewById(R.id.btn_mode);
         btnOpenEq = (Button) findViewById(R.id.btn_open_eq);
+        // 核心更新：初始化底部与详情页两处 ImageView 模式按钮
+        btnMode = (ImageView) findViewById(R.id.btn_mode);
+        btnDetailMode = (ImageView) findViewById(R.id.btn_detail_mode);
+
         btnPrev = (ImageView) findViewById(R.id.btn_prev);
         btnPlayPause = (ImageView) findViewById(R.id.btn_play_pause);
         btnNext = (ImageView) findViewById(R.id.btn_next);
@@ -979,7 +984,6 @@ public class MainActivity extends Activity {
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
         btnDetailFav = (Button) findViewById(R.id.btn_detail_fav);
         btnDetailDownload = (Button) findViewById(R.id.btn_detail_download);
-        btnDetailMode = (ImageView) findViewById(R.id.btn_detail_mode);
         btnDetailEq = (Button) findViewById(R.id.btn_detail_eq);
         btnDetailPrev = (ImageView) findViewById(R.id.btn_detail_prev);
         btnDetailPlayPause = (ImageView) findViewById(R.id.btn_detail_play_pause);
@@ -1802,6 +1806,8 @@ public class MainActivity extends Activity {
         btnDetailPrev.setOnTouchListener(touchFeedbackListener);
         btnDetailPlayPause.setOnTouchListener(touchFeedbackListener);
         btnDetailNext.setOnTouchListener(touchFeedbackListener);
+        // 核心更新：为模式按钮添加触碰反馈
+        btnMode.setOnTouchListener(touchFeedbackListener);
         btnDetailMode.setOnTouchListener(touchFeedbackListener);
         btnExitApp.setOnTouchListener(touchFeedbackListener);
         btnDetailExitApp.setOnTouchListener(touchFeedbackListener);
@@ -1834,6 +1840,7 @@ public class MainActivity extends Activity {
         btnPrev.setOnClickListener(prevListener);
         btnDetailPrev.setOnClickListener(prevListener);
 
+        // 核心更新：点击底部模式按钮或详情页模式按钮统一循环切换
         View.OnClickListener modeListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
