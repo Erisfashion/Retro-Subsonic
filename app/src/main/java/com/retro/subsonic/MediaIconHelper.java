@@ -194,7 +194,6 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 扁平风格：列表循环图标 (双向扁平闭环导轨)
     public static Drawable createRepeatIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -220,7 +219,6 @@ public class MediaIconHelper {
         float ahW = sizePx * 0.12f;
         float ahH = sizePx * 0.12f;
 
-        // 上半轨道 (左垂直段 -> 圆角 -> 上水平段)
         Path p1 = new Path();
         p1.moveTo(l, sizePx * 0.56f);
         p1.lineTo(l, t + cr);
@@ -228,7 +226,6 @@ public class MediaIconHelper {
         p1.lineTo(r - sizePx * 0.04f, t);
         canvas.drawPath(p1, stroke);
 
-        // 上半向右扁平三角箭头
         float tipX1 = r + sizePx * 0.04f;
         Path a1 = new Path();
         a1.moveTo(tipX1, t);
@@ -237,7 +234,6 @@ public class MediaIconHelper {
         a1.close();
         canvas.drawPath(a1, fill);
 
-        // 下半轨道 (右垂直段 -> 圆角 -> 下水平段)
         Path p2 = new Path();
         p2.moveTo(r, sizePx * 0.44f);
         p2.lineTo(r, b - cr);
@@ -245,7 +241,6 @@ public class MediaIconHelper {
         p2.lineTo(l + sizePx * 0.04f, b);
         canvas.drawPath(p2, stroke);
 
-        // 下半向左扁平三角箭头
         float tipX2 = l - sizePx * 0.04f;
         Path a2 = new Path();
         a2.moveTo(tipX2, b);
@@ -257,19 +252,16 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 扁平风格：单曲循环图标 (双向扁平闭环导轨 + 中心数字 1)
     public static Drawable createRepeatOneIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
         Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
 
-        // 绘制基础循环框架
         Drawable base = createRepeatIcon(context, sizeDp, color);
         base.setBounds(0, 0, sizePx, sizePx);
         base.draw(canvas);
 
-        // 中心扁平数字 1
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setStyle(Paint.Style.STROKE);
         paint.setColor(color);
@@ -290,7 +282,6 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 扁平风格：随机播放图标 (扁平交叉平滑穿插箭头)
     public static Drawable createShuffleIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -318,18 +309,15 @@ public class MediaIconHelper {
         float ahW = sizePx * 0.11f;
         float ahH = sizePx * 0.11f;
 
-        // 起点两段水平线
         canvas.drawLine(x1, yt, x2, yt, stroke);
         canvas.drawLine(x1, yb, x2, yb, stroke);
 
-        // 路径 1: 从左上平滑下穿至右下
         Path p1 = new Path();
         p1.moveTo(x2, yt);
         p1.cubicTo(sizePx * 0.5f, yt, sizePx * 0.5f, yb, x3, yb);
         p1.lineTo(x4, yb);
         canvas.drawPath(p1, stroke);
 
-        // 路径 2: 从左下上穿至右上 (中间留白产生前后交错感)
         Path p2a = new Path();
         p2a.moveTo(x2, yb);
         p2a.cubicTo(sizePx * 0.42f, yb, sizePx * 0.46f, sizePx * 0.55f, sizePx * 0.46f, sizePx * 0.55f);
@@ -341,7 +329,6 @@ public class MediaIconHelper {
         p2b.lineTo(x4, yt);
         canvas.drawPath(p2b, stroke);
 
-        // 箭头 1: 右上实心箭头
         float tipX1 = x4 + sizePx * 0.08f;
         Path a1 = new Path();
         a1.moveTo(tipX1, yt);
@@ -350,7 +337,6 @@ public class MediaIconHelper {
         a1.close();
         canvas.drawPath(a1, fill);
 
-        // 箭头 2: 右下实心箭头
         float tipX2 = x4 + sizePx * 0.08f;
         Path a2 = new Path();
         a2.moveTo(tipX2, yb);
@@ -358,6 +344,41 @@ public class MediaIconHelper {
         a2.lineTo(tipX2 - ahW, yb + ahH);
         a2.close();
         canvas.drawPath(a2, fill);
+
+        return new BitmapDrawable(context.getResources(), bitmap);
+    }
+
+    // 扁平风格：音效调节调音推子图标 (上下平行滑轨 + 错位圆环旋钮)
+    public static Drawable createEqualizerIcon(Context context, int sizeDp, int color) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int sizePx = (int) (sizeDp * density);
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        stroke.setStyle(Paint.Style.STROKE);
+        stroke.setColor(color);
+        stroke.setStrokeWidth(2.0f * density);
+        stroke.setStrokeCap(Paint.Cap.ROUND);
+
+        float y1 = sizePx * 0.35f;
+        float y2 = sizePx * 0.65f;
+        float xLeft = sizePx * 0.22f;
+        float xRight = sizePx * 0.78f;
+
+        float r = sizePx * 0.09f;
+        float cx1 = sizePx * 0.61f; // 上方旋钮偏右
+        float cx2 = sizePx * 0.39f; // 下方旋钮偏左
+
+        // 上方滑轨与旋钮
+        canvas.drawLine(xLeft, y1, cx1 - r, y1, stroke);
+        canvas.drawCircle(cx1, y1, r, stroke);
+        canvas.drawLine(cx1 + r, y1, xRight, y1, stroke);
+
+        // 下方滑轨与旋钮
+        canvas.drawLine(xLeft, y2, cx2 - r, y2, stroke);
+        canvas.drawCircle(cx2, y2, r, stroke);
+        canvas.drawLine(cx2 + r, y2, xRight, y2, stroke);
 
         return new BitmapDrawable(context.getResources(), bitmap);
     }
