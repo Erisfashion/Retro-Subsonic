@@ -12,21 +12,39 @@
         android:orientation="vertical"
         android:padding="8dp">
 
-        <!-- 顶栏：标题、居中放大镜搜索图标、服务器设置与圆形关闭图标 -->
+        <!-- 顶栏：左侧标题与下方小字体版本号、居中放大镜搜索图标、服务器设置与圆形关闭图标 -->
         <RelativeLayout
             android:layout_width="match_parent"
-            android:layout_height="40dp"
+            android:layout_height="44dp"
             android:gravity="center_vertical">
 
-            <TextView
+            <!-- 核心调整：Subsonic Player 与正下方小号版本号垂直组合 -->
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_alignParentLeft="true"
                 android:layout_centerVertical="true"
-                android:text="Subsonic Player (v1.0.2)"
-                android:textColor="#ffffff"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Subsonic Player"
+                    android:textColor="#ffffff"
+                    android:textSize="17sp"
+                    android:textStyle="bold"
+                    android:includeFontPadding="false" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="v1.0.2"
+                    android:textColor="#7e8597"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:includeFontPadding="false"
+                    android:layout_marginTop="1dp" />
+            </LinearLayout>
 
             <!-- 首页顶部居中：放大镜搜索图标按钮 -->
             <ImageView
@@ -404,7 +422,7 @@
                     android:dividerHeight="1dp" />
             </LinearLayout>
 
-            <!-- 核心升级：首页弹出播放列表抽屉面板，专属暗蓝渐变与 1.5dp 微光立体边框 -->
+            <!-- 首页弹出播放列表抽屉面板 -->
             <LinearLayout
                 android:id="@+id/layout_queue_panel"
                 android:layout_width="300dp"
@@ -431,7 +449,6 @@
                         android:orientation="horizontal"
                         android:gravity="center_vertical">
 
-                        <!-- 青蓝色小光点，增强视觉层级感 -->
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
@@ -462,7 +479,6 @@
                         android:paddingRight="12dp" />
                 </RelativeLayout>
 
-                <!-- 抽屉内部歌曲列表：专属微亮分割线 -->
                 <ListView
                     android:id="@+id/lv_queue"
                     android:layout_width="match_parent"
