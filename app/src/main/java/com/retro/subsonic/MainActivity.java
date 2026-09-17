@@ -16,6 +16,7 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -53,7 +54,6 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -80,13 +80,9 @@ public class MainActivity extends Activity {
     private static final int TAB_RANKING = 1;
     private int currentSelectedTab = TAB_PLAYLISTS;
 
-    // 主题模式控制
     private boolean isDarkTheme = true;
-
-    // 搜索历史记录
     private ArrayList<String> searchHistoryList = new ArrayList<String>();
 
-    // 批量添加歌曲至特定歌单的目标记录 (若为 null 表示通过悬浮按钮自选)
     private String targetPlaylistIdToAdd = null;
     private String targetPlaylistNameToAdd = null;
 
@@ -105,21 +101,22 @@ public class MainActivity extends Activity {
     private ListView listView, lvQueue;
     private SeekBar seekBar;
 
-    // 搜索单页控件
+    private EditText etServer, etUsername, etPassword;
+    private Spinner spinnerConfigBitrate;
+    private Button btnConnect, btnClearCache;
+
     private Button btnSearchPageBack, btnSearchSubmit, btnFloatingAddPlaylist;
     private ImageView btnClearHistory;
     private Spinner spinnerSearchType;
     private EditText etSearchKeyword;
     private ListView lvSearchResults;
 
-    // 搜索多选状态
     private ArrayList<DisplayEntry> searchResultsList = new ArrayList<DisplayEntry>();
     private Set<String> checkedSongIds = new HashSet<String>();
     private SearchResultAdapter searchAdapter;
 
-    // 详情页响应式控件引用
     private FrameLayout layoutVinylContainer, flVinylDisc;
-    private ImageView ivVinylCircularCover, ivSquareCover;
+    private ImageView ivVinylCircularCover;
     private TonearmView viewTonearm;
     private TextView tvDetailTitle, tvDetailArtist, tvDetailQuality, tvDetailBuffer, tvDetailTime;
     private Spinner spinnerDetailBitrate;
@@ -129,7 +126,6 @@ public class MainActivity extends Activity {
     private ScrollView scrollLyrics;
     private LinearLayout layoutLyricsContainer;
 
-    // 平滑黑胶旋转调度 (60fps 定时器，彻底告别 View 掉帧顿挫)
     private Handler vinylHandler = new Handler();
     private float currentVinylDegree = 0f;
     private boolean isCurrentSongPlaying = false;
@@ -144,14 +140,10 @@ public class MainActivity extends Activity {
         }
     };
 
-    private boolean isVinylDisplayMode = true;
-    private Bitmap currentRawCoverBitmap;
-    private Bitmap currentCircularCoverBitmap;
     private boolean isKeepScreenOn = false;
-
-    // 歌词滚动
     private int currentLyricIndex = -1;
     private int lyricBaseFontSize = 15;
+
     private static class LyricRow {
         long timeMs;
         String text;
@@ -194,6 +186,7 @@ public class MainActivity extends Activity {
 
     private boolean isUserSeeking = false;
     private String lastLoadedSongId = "";
+    private boolean isSpinnersInitializing = true;
 
     private BroadcastReceiver statusReceiver = new BroadcastReceiver() {
         @Override
@@ -232,7 +225,6 @@ public class MainActivity extends Activity {
                     String currentBitrate = getSavedBitrate();
                     if (tvDetailQuality != null) tvDetailQuality.setText(getBitrateDisplay(currentBitrate, quality));
 
-                    // 缓冲数值移到码率右侧显示
                     if (tvDetailBuffer != null) {
                         if (isBuffering && bufferPercent < 100) {
                             tvDetailBuffer.setVisibility(View.VISIBLE);
@@ -277,7 +269,6 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // 核心升级：程序崩溃日志本地持久化捕获
         setupCrashHandler();
 
         super.onCreate(savedInstanceState);
@@ -288,7 +279,6 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("subsonic_cfg", MODE_PRIVATE);
         isDarkTheme = prefs.getBoolean("is_dark_theme", true);
         lyricBaseFontSize = prefs.getInt("lyric_font_size", 15);
-        isVinylDisplayMode = prefs.getBoolean("is_vinyl_display_mode", true);
 
         loadFavSet();
         loadLocalPlaylists();
@@ -297,6 +287,7 @@ public class MainActivity extends Activity {
         initViews();
         setupControlIcons();
         setupBitrateSpinners();
+        setupSearchTypeSpinner();
         setupThemeColors();
         buildDetailResponsiveLayout();
         loadSavedConfig();
@@ -307,7 +298,6 @@ public class MainActivity extends Activity {
         syncServerFavoritesQuietly();
     }
 
-    // 崩溃日志收集与提示
     private void setupCrashHandler() {
         final Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
@@ -431,7 +421,13 @@ public class MainActivity extends Activity {
         lvQueue = (ListView) findViewById(R.id.lv_queue);
         seekBar = (SeekBar) findViewById(R.id.seek_bar);
 
-        // 搜索单页
+        etServer = (EditText) findViewById(R.id.et_server);
+        etUsername = (EditText) findViewById(R.id.et_username);
+        etPassword = (EditText) findViewById(R.id.et_password);
+        spinnerConfigBitrate = (Spinner) findViewById(R.id.spinner_config_bitrate);
+        btnConnect = (Button) findViewById(R.id.btn_connect);
+        btnClearCache = (Button) findViewById(R.id.btn_clear_cache);
+
         btnSearchPageBack = (Button) findViewById(R.id.btn_search_page_back);
         btnSearchSubmit = (Button) findViewById(R.id.btn_search_submit);
         btnClearHistory = (ImageView) findViewById(R.id.btn_clear_history);
@@ -440,14 +436,12 @@ public class MainActivity extends Activity {
         etSearchKeyword = (EditText) findViewById(R.id.et_search_keyword);
         lvSearchResults = (ListView) findViewById(R.id.lv_search_results);
 
-        // 详情顶栏
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
         btnDetailDownload = (Button) findViewById(R.id.btn_detail_download);
         btnDetailExitApp = (ImageView) findViewById(R.id.btn_detail_exit_app);
         btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
 
-        // 适配器挂载
         adapter = new PlaylistsCustomAdapter();
         listView.setAdapter(adapter);
 
@@ -486,18 +480,9 @@ public class MainActivity extends Activity {
         Toast.makeText(this, isDarkTheme ? "已切换至现代深色主题" : "已切换至通透浅色主题", Toast.LENGTH_SHORT).show();
     }
 
-    // 核心构建：竖屏流式从上往下布局 (大黑胶 -> 信息 -> 3行歌词 -> 控制排)
     private void buildDetailResponsiveLayout() {
         layoutDetailDynamicContainer.removeAllViews();
-        boolean isLandscape = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
-
-        if (isLandscape) {
-            // 横屏维持经典左右双栏
-            buildLandscapeDetailViews();
-        } else {
-            // 竖屏从上到下专属流式响应排布
-            buildPortraitDetailViews();
-        }
+        buildPortraitDetailViews();
     }
 
     private void buildPortraitDetailViews() {
@@ -507,19 +492,18 @@ public class MainActivity extends Activity {
         vContainer.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         vContainer.setGravity(Gravity.CENTER_HORIZONTAL);
 
-        // 1. 顶部放大尺寸黑胶唱片 (280dp)
         layoutVinylContainer = new FrameLayout(this);
-        LinearLayout.LayoutParams discLp = new LinearLayout.LayoutParams((int) (280 * density), (int) (280 * density));
+        LinearLayout.LayoutParams discLp = new LinearLayout.LayoutParams((int) (260 * density), (int) (260 * density));
         discLp.topMargin = (int) (6 * density);
         layoutVinylContainer.setLayoutParams(discLp);
 
         flVinylDisc = new FrameLayout(this);
-        FrameLayout.LayoutParams flLp = new FrameLayout.LayoutParams((int) (260 * density), (int) (260 * density), Gravity.CENTER);
+        FrameLayout.LayoutParams flLp = new FrameLayout.LayoutParams((int) (240 * density), (int) (240 * density), Gravity.CENTER);
         flVinylDisc.setLayoutParams(flLp);
         flVinylDisc.setBackgroundResource(R.drawable.bg_vinyl);
 
         ivVinylCircularCover = new ImageView(this);
-        FrameLayout.LayoutParams cLp = new FrameLayout.LayoutParams((int) (150 * density), (int) (150 * density), Gravity.CENTER);
+        FrameLayout.LayoutParams cLp = new FrameLayout.LayoutParams((int) (140 * density), (int) (140 * density), Gravity.CENTER);
         ivVinylCircularCover.setLayoutParams(cLp);
         ivVinylCircularCover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         flVinylDisc.addView(ivVinylCircularCover);
@@ -529,11 +513,10 @@ public class MainActivity extends Activity {
         layoutVinylContainer.addView(viewTonearm);
         vContainer.addView(layoutVinylContainer);
 
-        // 2. 歌曲信息行与码率、缓冲
         LinearLayout infoRow = new LinearLayout(this);
         infoRow.setOrientation(LinearLayout.HORIZONTAL);
         infoRow.setGravity(Gravity.CENTER);
-        infoRow.setPadding(0, (int) (8 * density), 0, 0);
+        infoRow.setPadding(0, (int) (6 * density), 0, 0);
 
         btnDetailFav = new Button(this);
         btnDetailFav.setText("♡");
@@ -560,7 +543,6 @@ public class MainActivity extends Activity {
         tvDetailArtist.setGravity(Gravity.CENTER);
         vContainer.addView(tvDetailArtist);
 
-        // 码率选择器 + 音质标签 + 缓冲显示 (缓冲位于右侧)
         LinearLayout qualityRow = new LinearLayout(this);
         qualityRow.setOrientation(LinearLayout.HORIZONTAL);
         qualityRow.setGravity(Gravity.CENTER);
@@ -592,22 +574,20 @@ public class MainActivity extends Activity {
 
         vContainer.addView(qualityRow);
 
-        // 3. 竖屏 3 行沉浸滚动歌词
         scrollLyrics = new ScrollView(this);
         scrollLyrics.setFillViewport(true);
         scrollLyrics.setVerticalScrollBarEnabled(false);
         LinearLayout.LayoutParams lyrLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (110 * density));
-        lyrLp.topMargin = (int) (8 * density);
+        lyrLp.topMargin = (int) (6 * density);
         scrollLyrics.setLayoutParams(lyrLp);
 
         layoutLyricsContainer = new LinearLayout(this);
         layoutLyricsContainer.setOrientation(LinearLayout.VERTICAL);
         layoutLyricsContainer.setGravity(Gravity.CENTER_HORIZONTAL);
-        layoutLyricsContainer.setPadding(0, (int) (28 * density), 0, (int) (28 * density));
+        layoutLyricsContainer.setPadding(0, (int) (26 * density), 0, (int) (26 * density));
         scrollLyrics.addView(layoutLyricsContainer);
         vContainer.addView(scrollLyrics);
 
-        // 4. 进度条与控制排
         detailSeekBar = new SeekBar(this);
         vContainer.addView(detailSeekBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -618,30 +598,29 @@ public class MainActivity extends Activity {
         tvDetailTime.setGravity(Gravity.CENTER);
         vContainer.addView(tvDetailTime);
 
-        // 对称控制 Dock
         LinearLayout ctrlDock = new LinearLayout(this);
         ctrlDock.setOrientation(LinearLayout.HORIZONTAL);
         ctrlDock.setGravity(Gravity.CENTER);
-        ctrlDock.setPadding(0, (int) (6 * density), 0, (int) (6 * density));
+        ctrlDock.setPadding(0, (int) (4 * density), 0, (int) (4 * density));
 
         btnDetailMode = new ImageView(this);
         btnDetailMode.setScaleType(ImageView.ScaleType.CENTER);
         ctrlDock.addView(btnDetailMode, new LinearLayout.LayoutParams((int) (38 * density), (int) (38 * density)));
 
         btnDetailPrev = new ImageView(this);
-        LinearLayout.LayoutParams prevLp = new LinearLayout.LayoutParams((int) (46 * density), (int) (46 * density));
+        LinearLayout.LayoutParams prevLp = new LinearLayout.LayoutParams((int) (44 * density), (int) (44 * density));
         prevLp.leftMargin = (int) (16 * density);
         ctrlDock.addView(btnDetailPrev, prevLp);
 
         btnDetailPlayPause = new ImageView(this);
         btnDetailPlayPause.setBackgroundResource(R.drawable.bg_btn_circle_play);
-        LinearLayout.LayoutParams playLp = new LinearLayout.LayoutParams((int) (60 * density), (int) (60 * density));
+        LinearLayout.LayoutParams playLp = new LinearLayout.LayoutParams((int) (58 * density), (int) (58 * density));
         playLp.leftMargin = (int) (18 * density);
         playLp.rightMargin = (int) (18 * density);
         ctrlDock.addView(btnDetailPlayPause, playLp);
 
         btnDetailNext = new ImageView(this);
-        LinearLayout.LayoutParams nextLp = new LinearLayout.LayoutParams((int) (46 * density), (int) (46 * density));
+        LinearLayout.LayoutParams nextLp = new LinearLayout.LayoutParams((int) (44 * density), (int) (44 * density));
         nextLp.rightMargin = (int) (16 * density);
         ctrlDock.addView(btnDetailNext, nextLp);
 
@@ -650,7 +629,6 @@ public class MainActivity extends Activity {
 
         vContainer.addView(ctrlDock);
 
-        // 底部空白轻触呼出播放列表
         LinearLayout blankArea = new LinearLayout(this);
         blankArea.setOrientation(LinearLayout.VERTICAL);
         blankArea.setGravity(Gravity.CENTER);
@@ -670,15 +648,10 @@ public class MainActivity extends Activity {
                 }
             }
         });
-        vContainer.addView(blankArea, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (36 * density)));
+        vContainer.addView(blankArea, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (34 * density)));
 
         layoutDetailDynamicContainer.addView(vContainer);
         bindDetailCommonActions();
-    }
-
-    private void buildLandscapeDetailViews() {
-        // 横屏保留经典的双栏精致布局，同上绑定引用
-        buildPortraitDetailViews(); // 统一响应适配并注入双栏
     }
 
     private void bindDetailCommonActions() {
@@ -689,10 +662,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 歌单列表适配器：在末尾添加 "+ 新建歌单(云同步)"，支持右侧竖三点菜单
     private class PlaylistsCustomAdapter extends BaseAdapter {
         @Override public int getCount() {
-            // 当前列表项 + 底部 1 项 "+ 新建歌单" (仅在"我的歌单"Tab显示)
             return currentSelectedTab == TAB_PLAYLISTS ? (currentItems.size() + 1) : currentItems.size();
         }
         @Override public Object getItem(int position) {
@@ -709,7 +680,6 @@ public class MainActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding((int) (12 * density), (int) (12 * density), (int) (12 * density), (int) (12 * density));
 
-            // 末尾的新建歌单项
             if (currentSelectedTab == TAB_PLAYLISTS && position == currentItems.size()) {
                 TextView addTv = new TextView(MainActivity.this);
                 addTv.setText("+  新建歌单 (云同步)");
@@ -740,7 +710,6 @@ public class MainActivity extends Activity {
             textCol.addView(sub);
             row.addView(textCol, tLp);
 
-            // 除“我的收藏”、精选、车载以及排行榜歌单外，右侧添加竖三点菜单
             boolean isProtected = item.id.equals("fav_entry") || item.id.equals("local_featured")
                     || item.id.equals("local_car") || item.title.contains("榜");
 
@@ -761,7 +730,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 歌单竖三点功能菜单：重命名 / 删除 / 添加歌曲
     private void showPlaylistMenuDialog(final DisplayEntry pl) {
         String[] opts = new String[]{"重命名歌单 (云端)", "添加歌曲到此歌单", "删除歌单 (云端)"};
         new AlertDialog.Builder(this)
@@ -772,7 +740,6 @@ public class MainActivity extends Activity {
                         if (which == 0) {
                             showRenamePlaylistDialog(pl);
                         } else if (which == 1) {
-                            // 打开歌曲搜索单页，并将添加目标锁定到此歌单
                             targetPlaylistIdToAdd = pl.id;
                             targetPlaylistNameToAdd = pl.title;
                             openSearchPage("添加歌曲到【" + pl.title + "】");
@@ -783,7 +750,6 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
-    // 云端删除歌单
     private void deleteCloudPlaylist(final DisplayEntry pl) {
         new AlertDialog.Builder(this)
                 .setTitle("删除歌单")
@@ -811,7 +777,6 @@ public class MainActivity extends Activity {
                 .setNegativeButton("取消", null).show();
     }
 
-    // 云端重命名歌单
     private void showRenamePlaylistDialog(final DisplayEntry pl) {
         final EditText et = new EditText(this);
         et.setText(pl.title);
@@ -843,7 +808,6 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("取消", null).show();
     }
 
-    // 云端新建歌单
     private void showCreatePlaylistDialog(final ArrayList<String> songIdsToAdd) {
         final EditText et = new EditText(this);
         et.setHint("输入新歌单名称...");
@@ -881,7 +845,6 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("取消", null).show();
     }
 
-    // 搜索单页适配器 (带 CheckBox 多选与歌名点击播放)
     private class SearchResultAdapter extends BaseAdapter {
         @Override public int getCount() { return searchResultsList.size(); }
         @Override public Object getItem(int position) { return searchResultsList.get(position); }
@@ -897,7 +860,6 @@ public class MainActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding((int) (12 * density), (int) (10 * density), (int) (12 * density), (int) (10 * density));
 
-            // 左侧信息列：点击直接开播
             LinearLayout textCol = new LinearLayout(MainActivity.this);
             textCol.setOrientation(LinearLayout.VERTICAL);
             LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -918,7 +880,6 @@ public class MainActivity extends Activity {
             textCol.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    // 点击歌名立即起播
                     ArrayList<MusicService.SongItem> queue = new ArrayList<MusicService.SongItem>();
                     queue.add(new MusicService.SongItem(item.id, item.title, item.artist, buildStreamUrl(item.id), item.coverArt, item.quality));
                     MusicService.setQueue(queue, 0, MainActivity.this);
@@ -926,7 +887,6 @@ public class MainActivity extends Activity {
             });
             row.addView(textCol, tLp);
 
-            // 右侧勾选框 CheckBox
             if (item.isSong) {
                 final CheckBox cb = new CheckBox(MainActivity.this);
                 cb.setChecked(checkedSongIds.contains(item.id));
@@ -969,6 +929,8 @@ public class MainActivity extends Activity {
         renderSearchHistoryTags();
         if (hintTitle != null) {
             etSearchKeyword.setHint(hintTitle);
+        } else {
+            etSearchKeyword.setHint("输入关键词检索...");
         }
     }
 
@@ -1011,24 +973,26 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 悬浮添加到歌单按钮点击
+        btnSearchSubmit.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                searchSongs(etSearchKeyword.getText().toString().trim());
+            }
+        });
+
         btnFloatingAddPlaylist.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 if (checkedSongIds.isEmpty()) return;
                 final ArrayList<String> sids = new ArrayList<String>(checkedSongIds);
-
-                // 若之前是从某个歌单的“添加歌曲”进入，直接执行添加
                 if (targetPlaylistIdToAdd != null) {
                     addSongsToCloudPlaylist(targetPlaylistIdToAdd, sids);
                 } else {
-                    // 弹出歌单选择框 (排除收藏与榜单，支持新建)
                     showChoosePlaylistDialog(sids);
                 }
             }
         });
 
-        // 底部封面点击：打开播放详情页
         ivBottomCover.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1036,7 +1000,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 歌单列表点击与末尾新建项
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1050,9 +1013,155 @@ public class MainActivity extends Activity {
                 }
             }
         });
+
+        btnTabPlaylists.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                currentSelectedTab = TAB_PLAYLISTS;
+                btnTabPlaylists.setTextColor(0xFF00E5FF);
+                btnTabRanking.setTextColor(0xFFA0A5B5);
+                showUserPlaylists();
+            }
+        });
+
+        btnTabRanking.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                currentSelectedTab = TAB_RANKING;
+                btnTabRanking.setTextColor(0xFF00E5FF);
+                btnTabPlaylists.setTextColor(0xFFA0A5B5);
+                showRankingPlaylists();
+            }
+        });
+
+        btnBack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                btnBack.setVisibility(View.GONE);
+                showCurrentTabContent();
+            }
+        });
+
+        btnToggleQueue.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (layoutQueuePanel.getVisibility() == View.VISIBLE) {
+                    layoutQueuePanel.setVisibility(View.GONE);
+                } else {
+                    refreshQueueList();
+                    layoutQueuePanel.setVisibility(View.VISIBLE);
+                }
+            }
+        });
+
+        btnCloseQueue.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                layoutQueuePanel.setVisibility(View.GONE);
+            }
+        });
+
+        btnConnect.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                saveConfig();
+                layoutConfigPanel.setVisibility(View.GONE);
+                fetchPlaylists();
+                syncServerFavoritesQuietly();
+            }
+        });
+
+        btnClearCache.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                CacheManager.clearAllCache(MainActivity.this);
+                Toast.makeText(MainActivity.this, "已清理缓存", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        View.OnClickListener exitListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { performAppExit(); }
+        };
+        btnExitApp.setOnClickListener(exitListener);
+        btnDetailExitApp.setOnClickListener(exitListener);
+
+        btnCloseDetail.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                layoutDetailOverlay.setVisibility(View.GONE);
+            }
+        });
+
+        View.OnClickListener eqListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                new EqualizerDialog(MainActivity.this).show();
+            }
+        };
+        btnOpenEq.setOnClickListener(eqListener);
+        if (btnDetailEq != null) btnDetailEq.setOnClickListener(eqListener);
+
+        View.OnClickListener togglePlayListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_TOGGLE));
+            }
+        };
+        btnPlayPause.setOnClickListener(togglePlayListener);
+        if (btnDetailPlayPause != null) btnDetailPlayPause.setOnClickListener(togglePlayListener);
+
+        View.OnClickListener nextListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_NEXT));
+            }
+        };
+        btnNext.setOnClickListener(nextListener);
+        if (btnDetailNext != null) btnDetailNext.setOnClickListener(nextListener);
+
+        View.OnClickListener prevListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_PREV));
+            }
+        };
+        btnPrev.setOnClickListener(prevListener);
+        if (btnDetailPrev != null) btnDetailPrev.setOnClickListener(prevListener);
+
+        View.OnClickListener modeListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_CYCLE_MODE));
+                int nextMode = (MusicService.getCurrentMode() + 1) % 3;
+                Toast.makeText(MainActivity.this, getModeString(nextMode), Toast.LENGTH_SHORT).show();
+            }
+        };
+        btnMode.setOnClickListener(modeListener);
+        if (btnDetailMode != null) btnDetailMode.setOnClickListener(modeListener);
+
+        SeekBar.OnSeekBarChangeListener seekListener = new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                if (fromUser) {
+                    String t = formatTime(progress) + " / " + formatTime(sb.getMax());
+                    tvTime.setText(t);
+                    if (tvDetailTime != null) tvDetailTime.setText(t);
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) { isUserSeeking = true; }
+            @Override public void onStopTrackingTouch(SeekBar sb) {
+                isUserSeeking = false;
+                Intent intent = new Intent(MainActivity.this, MusicService.class);
+                intent.setAction(MusicService.ACTION_SEEK);
+                intent.putExtra("position", sb.getProgress());
+                startService(intent);
+            }
+        };
+        seekBar.setOnSeekBarChangeListener(seekListener);
+        if (detailSeekBar != null) detailSeekBar.setOnSeekBarChangeListener(seekListener);
     }
 
-    // 弹出可添加的歌单列表 (支持新建歌单)
     private void showChoosePlaylistDialog(final ArrayList<String> songIds) {
         final ArrayList<DisplayEntry> targetLists = new ArrayList<DisplayEntry>();
         final ArrayList<String> names = new ArrayList<String>();
@@ -1081,7 +1190,6 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
-    // 向指定云端歌单批量写入歌曲并同步服务器
     private void addSongsToCloudPlaylist(final String playlistId, final ArrayList<String> songIds) {
         new Thread(new Runnable() {
             @Override
@@ -1097,7 +1205,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            Toast.makeText(MainActivity.this, "已成功将 " + songIds.size() + " 首歌曲同步添加至云端歌单！", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "已成功添加 " + songIds.size() + " 首歌曲至云端歌单！", Toast.LENGTH_SHORT).show();
                             checkedSongIds.clear();
                             updateFloatingAddButtonState();
                             layoutSearchPage.setVisibility(View.GONE);
@@ -1152,7 +1260,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 歌词高亮同时放大字号 +5sp
     private void updateLyricPosition(int currentPosMs) {
         if (lyricRows.isEmpty()) return;
         int targetIndex = -1;
@@ -1210,7 +1317,6 @@ public class MainActivity extends Activity {
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
-                                // 底部封面圆角渲染
                                 ivBottomCover.setImageBitmap(bitmap);
                                 if (ivVinylCircularCover != null) ivVinylCircularCover.setImageBitmap(bitmap);
                             }
@@ -1295,7 +1401,6 @@ public class MainActivity extends Activity {
     private void showCurrentTabContent() {
         currentItems.clear();
         if (currentSelectedTab == TAB_PLAYLISTS) {
-            // “我的收藏”只保留唯一一个同步项
             currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
             currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "精选曲库 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
             currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行常备 (" + carSongs.size() + "首)", null, "本地歌单", false));
@@ -1304,6 +1409,14 @@ public class MainActivity extends Activity {
             currentItems.addAll(rawServerRankingPlaylists);
         }
         adapter.notifyDataSetChanged();
+    }
+
+    private void showUserPlaylists() {
+        showCurrentTabContent();
+    }
+
+    private void showRankingPlaylists() {
+        showCurrentTabContent();
     }
 
     private void restoreLastSessionIfAvailable() {
@@ -1364,13 +1477,384 @@ public class MainActivity extends Activity {
 
     private String getSavedBitrate() { return prefs.getString("default_bitrate", "auto"); }
     private String getBitrateDisplay(String v, String orig) { return (orig != null && orig.length() > 0) ? orig : "标准音质"; }
-    private void loadSavedConfig() {}
-    private void setupBitrateSpinners() {}
-    private void loadFavSet() {}
-    private void loadLocalPlaylists() {}
-    private void syncServerFavoritesQuietly() {}
-    private void updateFavButtonState(String id) {}
-    private void loadLyrics(String id, String a, String t) {}
-    private void fetchPlaylistSongs(String id, String n) {}
-    private String buildStreamUrl(String id) { return ""; }
+
+    private void loadSavedConfig() {
+        etServer.setText(prefs.getString("server", "http://192.168.1.100:4533"));
+        etUsername.setText(prefs.getString("user", "admin"));
+        etPassword.setText(prefs.getString("pass", "admin"));
+    }
+
+    private void saveConfig() {
+        prefs.edit()
+                .putString("server", etServer.getText().toString().trim())
+                .putString("user", etUsername.getText().toString().trim())
+                .putString("pass", etPassword.getText().toString().trim())
+                .commit();
+    }
+
+    private void setupBitrateSpinners() {
+        BitrateSpinnerAdapter adapterConfig = new BitrateSpinnerAdapter(BITRATE_LABELS);
+        spinnerConfigBitrate.setAdapter(adapterConfig);
+        if (spinnerDetailBitrate != null) spinnerDetailBitrate.setAdapter(new BitrateSpinnerAdapter(BITRATE_LABELS));
+    }
+
+    private void setupSearchTypeSpinner() {
+        BitrateSpinnerAdapter typeAdapter = new BitrateSpinnerAdapter(SEARCH_TYPES);
+        spinnerSearchType.setAdapter(typeAdapter);
+    }
+
+    private class BitrateSpinnerAdapter extends BaseAdapter {
+        private String[] items;
+        BitrateSpinnerAdapter(String[] items) { this.items = items; }
+        @Override public int getCount() { return items.length; }
+        @Override public Object getItem(int position) { return items[position]; }
+        @Override public long getItemId(int position) { return position; }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(MainActivity.this);
+            tv.setTextSize(12);
+            tv.setTextColor(isDarkTheme ? 0xFF00E5FF : 0xFF0091EA);
+            tv.setGravity(Gravity.CENTER);
+            tv.setPadding(6, 2, 6, 2);
+            tv.setText(items[position] + " ▾");
+            return tv;
+        }
+
+        @Override
+        public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(MainActivity.this);
+            tv.setTextSize(13);
+            tv.setGravity(Gravity.CENTER_VERTICAL);
+            tv.setPadding(24, 18, 24, 18);
+            tv.setBackgroundColor(isDarkTheme ? 0xFF1E222B : 0xFFFFFFFF);
+            tv.setTextColor(isDarkTheme ? 0xFFE0E0E0 : 0xFF1F2937);
+            tv.setText(items[position]);
+            return tv;
+        }
+    }
+
+    private void loadFavSet() {
+        Set<String> set = prefs.getStringSet("fav_songs_set", new HashSet<String>());
+        favSongIds = new HashSet<String>(set);
+    }
+
+    private void saveFavSet() {
+        prefs.edit().putStringSet("fav_songs_set", favSongIds).commit();
+    }
+
+    private boolean isFav(String songId) {
+        return songId != null && favSongIds.contains(songId);
+    }
+
+    private void loadLocalPlaylists() {
+        featuredSongs.clear();
+        carSongs.clear();
+        try {
+            String fStr = prefs.getString("local_playlist_featured", "[]");
+            JSONArray fArr = new JSONArray(fStr);
+            for (int i = 0; i < fArr.length(); i++) {
+                JSONObject o = fArr.getJSONObject(i);
+                featuredSongs.add(new DisplayEntry(o.getString("id"), o.getString("title"), o.optString("artist", "未知歌手"), "", o.optString("coverArt", null), o.optString("quality", "标准音质"), true));
+            }
+
+            String cStr = prefs.getString("local_playlist_car", "[]");
+            JSONArray cArr = new JSONArray(cStr);
+            for (int i = 0; i < cArr.length(); i++) {
+                JSONObject o = cArr.getJSONObject(i);
+                carSongs.add(new DisplayEntry(o.getString("id"), o.getString("title"), o.optString("artist", "未知歌手"), "", o.optString("coverArt", null), o.optString("quality", "标准音质"), true));
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void syncServerFavoritesQuietly() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String jsonStr = requestApi("getStarred2.view?" + getAuthParams());
+                if (jsonStr == null || !jsonStr.contains("\"song\"")) {
+                    jsonStr = requestApi("getStarred.view?" + getAuthParams());
+                }
+                if (jsonStr == null) return;
+
+                try {
+                    JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                    JSONObject starred = root.optJSONObject("starred2");
+                    if (starred == null) starred = root.optJSONObject("starred");
+                    if (starred != null && starred.has("song")) {
+                        favSongIds.clear();
+                        Object songObj = starred.get("song");
+                        if (songObj instanceof JSONArray) {
+                            JSONArray arr = (JSONArray) songObj;
+                            for (int i = 0; i < arr.length(); i++) {
+                                favSongIds.add(arr.getJSONObject(i).getString("id"));
+                            }
+                        } else if (songObj instanceof JSONObject) {
+                            favSongIds.add(((JSONObject) songObj).getString("id"));
+                        }
+                        saveFavSet();
+                        runOnUiThread(new Runnable() {
+                            @Override public void run() { updateFavButtonState(null); }
+                        });
+                    }
+                } catch (Exception ignored) {}
+            }
+        }).start();
+    }
+
+    private void updateFavButtonState(String currentPlayingSongId) {
+        String targetId = currentPlayingSongId;
+        if (targetId == null || targetId.length() == 0) {
+            ArrayList<MusicService.SongItem> q = MusicService.getPlaylist();
+            int idx = MusicService.getCurrentIndex();
+            if (q != null && idx >= 0 && idx < q.size()) {
+                targetId = q.get(idx).id;
+            }
+        }
+        boolean fav = isFav(targetId);
+        String symbol = fav ? "♥" : "♡";
+        if (btnBottomFav != null) btnBottomFav.setText(symbol);
+        if (btnDetailFav != null) btnDetailFav.setText(symbol);
+    }
+
+    private void loadLyrics(final String songId, final String artist, final String title) {
+        if (layoutLyricsContainer == null) return;
+        lyricRows.clear();
+        currentLyricIndex = -1;
+        layoutLyricsContainer.removeAllViews();
+        TextView loadingTv = new TextView(this);
+        loadingTv.setText("歌词加载中...");
+        loadingTv.setTextColor(0xFF888888);
+        loadingTv.setGravity(Gravity.CENTER);
+        layoutLyricsContainer.addView(loadingTv);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String lyricsText = null;
+                if (songId != null && songId.length() > 0) {
+                    try {
+                        String res = requestApi("getLyricsBySongId.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
+                        lyricsText = parseLyricsFromJson(res);
+                    } catch (Throwable ignored) {}
+                }
+                if (lyricsText == null && title != null && title.length() > 0) {
+                    try {
+                        String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8") + "&title=" + URLEncoder.encode(title, "UTF-8");
+                        String res = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
+                        lyricsText = parseLyricsFromJson(res);
+                    } catch (Throwable ignored) {}
+                }
+
+                final String finalLyrics = lyricsText;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (finalLyrics != null && finalLyrics.trim().length() > 0) {
+                            buildLyricsView(finalLyrics);
+                        } else {
+                            layoutLyricsContainer.removeAllViews();
+                            TextView tv = new TextView(MainActivity.this);
+                            tv.setText("未找到匹配歌词");
+                            tv.setTextColor(0xFF888888);
+                            tv.setGravity(Gravity.CENTER);
+                            layoutLyricsContainer.addView(tv);
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private String parseLyricsFromJson(String jsonStr) {
+        if (jsonStr == null || jsonStr.length() == 0) return null;
+        try {
+            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+            if (root.has("lyrics")) {
+                Object lyricsObj = root.get("lyrics");
+                if (lyricsObj instanceof JSONObject) {
+                    return ((JSONObject) lyricsObj).optString("content", "");
+                } else if (lyricsObj instanceof String) {
+                    return (String) lyricsObj;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private void buildLyricsView(String rawText) {
+        layoutLyricsContainer.removeAllViews();
+        lyricRows.clear();
+        currentLyricIndex = -1;
+
+        String[] lines = rawText.split("\n");
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (line.length() == 0) continue;
+            int closeBracket = line.indexOf(']');
+            if (line.startsWith("[") && closeBracket > 1) {
+                String timePart = line.substring(1, closeBracket);
+                long timeMs = parseTime(timePart);
+                if (timeMs >= 0) {
+                    String content = line.substring(closeBracket + 1).trim();
+                    if (content.length() == 0) content = "···";
+                    lyricRows.add(new LyricRow(timeMs, content));
+                }
+            }
+        }
+
+        if (lyricRows.isEmpty()) {
+            for (String raw : lines) {
+                if (raw.trim().length() == 0) continue;
+                TextView tv = new TextView(this);
+                tv.setText(raw.trim());
+                tv.setTextColor(0xFFCCCCCC);
+                tv.setTextSize(lyricBaseFontSize);
+                tv.setGravity(Gravity.CENTER);
+                tv.setPadding(0, 10, 0, 10);
+                layoutLyricsContainer.addView(tv);
+            }
+            return;
+        }
+
+        Collections.sort(lyricRows, new Comparator<LyricRow>() {
+            @Override
+            public int compare(LyricRow a, LyricRow b) {
+                return Long.valueOf(a.timeMs).compareTo(b.timeMs);
+            }
+        });
+
+        for (LyricRow row : lyricRows) {
+            TextView tv = new TextView(this);
+            tv.setText(row.text);
+            tv.setTextColor(0xFF777777);
+            tv.setTextSize(lyricBaseFontSize);
+            tv.setGravity(Gravity.CENTER);
+            tv.setPadding(0, 8, 0, 8);
+            row.view = tv;
+            layoutLyricsContainer.addView(tv);
+        }
+    }
+
+    private long parseTime(String timeStr) {
+        try {
+            String[] parts = timeStr.split(":");
+            if (parts.length >= 2) {
+                long min = Long.parseLong(parts[0]);
+                float sec = Float.parseFloat(parts[1]);
+                return (long) (min * 60 * 1000 + sec * 1000);
+            }
+        } catch (Exception ignored) {}
+        return -1;
+    }
+
+    private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getPlaylist.view?id=" + playlistId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject playlist = root.getJSONObject("playlist");
+                            currentItems.clear();
+
+                            if (playlist.has("entry")) {
+                                Object entryObj = playlist.get("entry");
+                                if (entryObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) entryObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        JSONObject s = arr.getJSONObject(i);
+                                        currentItems.add(new DisplayEntry(
+                                                s.getString("id"), s.getString("title"), s.optString("artist", "未知歌手"),
+                                                "", s.optString("coverArt", null), "标准音质", true
+                                        ));
+                                    }
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText(playlistName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception ignored) {}
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private String buildStreamUrl(String songId) {
+        String base = prefs.getString("server", "");
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String u = prefs.getString("user", "");
+        String p = prefs.getString("pass", "");
+        try {
+            return base + "/rest/stream.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&u=" + URLEncoder.encode(u, "UTF-8") + "&p=" + URLEncoder.encode(p, "UTF-8") + "&v=1.12.0&c=RetroSubsonic";
+        } catch (Exception e) {
+            return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic";
+        }
+    }
+
+    private String getModeString(int mode) {
+        if (mode == MusicService.MODE_SHUFFLE) return "随机播放";
+        if (mode == MusicService.MODE_SINGLE) return "单曲循环";
+        return "列表循环";
+    }
+
+    private void performAppExit() {
+        new AlertDialog.Builder(MainActivity.this)
+                .setTitle("关闭软件")
+                .setMessage("确定要退出并彻底关闭播放器吗？")
+                .setPositiveButton("退出", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        try {
+                            Intent stopIntent = new Intent(MainActivity.this, MusicService.class);
+                            stopIntent.setAction(MusicService.ACTION_STOP);
+                            startService(stopIntent);
+                        } catch (Exception ignored) {}
+                        finish();
+                        System.exit(0);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        registerReceiver(statusReceiver, new IntentFilter(MusicService.BROADCAST_STATUS));
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        try { unregisterReceiver(statusReceiver); } catch (Exception ignored) {}
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (layoutSearchPage != null && layoutSearchPage.getVisibility() == View.VISIBLE) {
+                layoutSearchPage.setVisibility(View.GONE);
+                return true;
+            }
+            if (layoutDetailOverlay != null && layoutDetailOverlay.getVisibility() == View.VISIBLE) {
+                layoutDetailOverlay.setVisibility(View.GONE);
+                return true;
+            }
+            if (layoutQueuePanel != null && layoutQueuePanel.getVisibility() == View.VISIBLE) {
+                layoutQueuePanel.setVisibility(View.GONE);
+                return true;
+            }
+            if (btnBack != null && btnBack.getVisibility() == View.VISIBLE) {
+                btnBack.performClick();
+                return true;
+            }
+        }
+        return super.onKeyDown(keyCode, event);
+    }
 }
