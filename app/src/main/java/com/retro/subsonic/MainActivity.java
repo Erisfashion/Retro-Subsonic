@@ -1327,427 +1327,33 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void scrollQueueToCenter(final ListView lv) {
-        final int idx = MusicService.getCurrentIndex();
-        if (idx >= 0 && lv != null) {
-            lv.post(new Runnable() {
-                @Override
-                public void run() {
-                    int h = lv.getHeight();
-                    lv.setSelectionFromTop(idx, Math.max(0, h / 2 - 35));
-                }
-            });
-        }
+    private String buildStreamUrl(String songId) {
+        return buildStreamUrl(songId, getSavedBitrate());
     }
 
-    private void showChoosePlaylistDialog(final ArrayList<String> songIds) {
-        final ArrayList<DisplayEntry> targetLists = new ArrayList<DisplayEntry>();
-        final ArrayList<String> names = new ArrayList<String>();
-
-        names.add("➕ 新建歌单 (同步云端)");
-
-        for (DisplayEntry e : rawServerUserPlaylists) {
-            if (!e.title.contains("榜")) {
-                targetLists.add(e);
-                names.add("📁 " + e.title);
-            }
-        }
-
-        new AlertDialog.Builder(this)
-                .setTitle("选择要加入的目标歌单")
-                .setItems(names.toArray(new String[0]), new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        if (which == 0) {
-                            showCreatePlaylistDialog(songIds);
-                        } else {
-                            DisplayEntry target = targetLists.get(which - 1);
-                            addSongsToCloudPlaylist(target.id, songIds);
-                        }
-                    }
-                }).show();
-    }
-
-    private void addSongsToCloudPlaylist(final String playlistId, final ArrayList<String> songIds) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    StringBuilder sb = new StringBuilder("updatePlaylist.view?playlistId=" + URLEncoder.encode(playlistId, "UTF-8"));
-                    for (String sid : songIds) {
-                        sb.append("&songIdToAdd=").append(URLEncoder.encode(sid, "UTF-8"));
-                    }
-                    sb.append("&").append(getAuthParams());
-                    requestApi(sb.toString());
-
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(MainActivity.this, "已成功添加 " + songIds.size() + " 首歌曲至云端歌单！", Toast.LENGTH_SHORT).show();
-                            checkedSongIds.clear();
-                            updateFloatingAddButtonState();
-                            layoutSearchPage.setVisibility(View.GONE);
-                            fetchPlaylists();
-                        }
-                    });
-                } catch (Throwable ignored) {}
-            }
-        }).start();
-    }
-
-    private void searchSongs(final String query) {
-        if (query.trim().length() == 0) return;
-        addSearchHistoryWord(query.trim());
-
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    String encoded = URLEncoder.encode(query, "UTF-8");
-                    String res = requestApi("search3.view?query=" + encoded + "&songCount=500&" + getAuthParams());
-                    final ArrayList<DisplayEntry> list = new ArrayList<DisplayEntry>();
-
-                    if (res != null) {
-                        JSONObject root = new JSONObject(res).getJSONObject("subsonic-response");
-                        JSONObject result = root.optJSONObject("searchResult3");
-                        if (result != null && result.has("song")) {
-                            JSONArray arr = result.getJSONArray("song");
-                            for (int i = 0; i < arr.length(); i++) {
-                                JSONObject s = arr.getJSONObject(i);
-                                list.add(new DisplayEntry(
-                                        s.getString("id"), s.getString("title"), s.optString("artist", "未知歌手"),
-                                        "", s.optString("coverArt", null), "标准音质", true
-                                ));
-                            }
-                        }
-                    }
-
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            searchResultsList.clear();
-                            searchResultsList.addAll(list);
-                            searchAdapter.notifyDataSetChanged();
-                            if (list.isEmpty()) {
-                                Toast.makeText(MainActivity.this, "未检索到匹配曲目", Toast.LENGTH_SHORT).show();
-                            }
-                        }
-                    });
-                } catch (Throwable ignored) {}
-            }
-        }).start();
-    }
-
-    private void applyLyricFontSize(int delta) {
-        lyricBaseFontSize += delta;
-        if (lyricBaseFontSize < 11) lyricBaseFontSize = 11;
-        if (lyricBaseFontSize > 26) lyricBaseFontSize = 26;
-
-        prefs.edit().putInt("lyric_font_size", lyricBaseFontSize).commit();
-
-        for (int i = 0; i < lyricRows.size(); i++) {
-            LyricRow row = lyricRows.get(i);
-            int size = (i == currentLyricIndex) ? (lyricBaseFontSize + 5) : lyricBaseFontSize;
-            if (row.viewLand != null) row.viewLand.setTextSize(size);
-            if (row.viewPort != null) row.viewPort.setTextSize(size);
-        }
-        Toast.makeText(this, "歌词字号: " + lyricBaseFontSize + "sp", Toast.LENGTH_SHORT).show();
-    }
-
-    private void updateLyricPosition(int currentPosMs) {
-        if (lyricRows.isEmpty()) return;
-        int targetIndex = -1;
-        for (int i = 0; i < lyricRows.size(); i++) {
-            if (currentPosMs >= lyricRows.get(i).timeMs) targetIndex = i; else break;
-        }
-
-        if (targetIndex != currentLyricIndex && targetIndex >= 0) {
-            if (currentLyricIndex >= 0 && currentLyricIndex < lyricRows.size()) {
-                LyricRow oldRow = lyricRows.get(currentLyricIndex);
-                int oldColor = isDarkTheme ? 0xFF777777 : 0xFF9CA3AF;
-                if (oldRow.viewLand != null) {
-                    oldRow.viewLand.setTextColor(oldColor);
-                    oldRow.viewLand.setTextSize(lyricBaseFontSize);
-                    oldRow.viewLand.setTypeface(Typeface.DEFAULT);
-                }
-                if (oldRow.viewPort != null) {
-                    oldRow.viewPort.setTextColor(oldColor);
-                    oldRow.viewPort.setTextSize(lyricBaseFontSize);
-                    oldRow.viewPort.setTypeface(Typeface.DEFAULT);
-                }
-            }
-            currentLyricIndex = targetIndex;
-            final LyricRow curRow = lyricRows.get(currentLyricIndex);
-            if (curRow != null) {
-                if (curRow.viewLand != null) {
-                    curRow.viewLand.setTextColor(0xFF00E5FF);
-                    curRow.viewLand.setTextSize(lyricBaseFontSize + 5);
-                    curRow.viewLand.setTypeface(Typeface.DEFAULT_BOLD);
-                }
-                if (curRow.viewPort != null) {
-                    curRow.viewPort.setTextColor(0xFF00E5FF);
-                    curRow.viewPort.setTextSize(lyricBaseFontSize + 5);
-                    curRow.viewPort.setTypeface(Typeface.DEFAULT_BOLD);
-                }
-
-                if (scrollLyricsLand != null && curRow.viewLand != null) {
-                    scrollLyricsLand.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            int scrollY = curRow.viewLand.getTop() - (scrollLyricsLand.getHeight() / 2) + (curRow.viewLand.getHeight() / 2);
-                            scrollLyricsLand.smoothScrollTo(0, Math.max(0, scrollY));
-                        }
-                    });
-                }
-                if (scrollLyricsPort != null && curRow.viewPort != null) {
-                    scrollLyricsPort.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            int scrollY = curRow.viewPort.getTop() - (scrollLyricsPort.getHeight() / 2) + (curRow.viewPort.getHeight() / 2);
-                            scrollLyricsPort.smoothScrollTo(0, Math.max(0, scrollY));
-                        }
-                    });
-                }
-            }
-        }
-    }
-
-    private void loadCoverArt(final String coverId) {
-        if (coverId == null || coverId.length() == 0) return;
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                String base = prefs.getString("server", "");
-                if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-                String urlStr = base + "/rest/getCoverArt.view?id=" + coverId + "&size=400&" + getAuthParams();
-                try {
-                    URL url = new URL(urlStr);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setConnectTimeout(6000);
-                    InputStream is = conn.getInputStream();
-                    final Bitmap bitmap = BitmapFactory.decodeStream(is);
-                    is.close();
-                    conn.disconnect();
-
-                    if (bitmap != null) {
-                        final Bitmap circular = getCircularBitmap(bitmap, 240);
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                ivBottomCover.setImageBitmap(bitmap);
-                                if (ivVinylCircularCoverLand != null) ivVinylCircularCoverLand.setImageBitmap(circular);
-                                if (ivVinylCircularCoverPort != null) ivVinylCircularCoverPort.setImageBitmap(circular);
-                            }
-                        });
-                    }
-                } catch (Throwable ignored) {}
-            }
-        }).start();
-    }
-
-    private Bitmap getCircularBitmap(Bitmap bitmap, int targetSize) {
-        if (bitmap == null || bitmap.isRecycled()) return null;
-        Bitmap output = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(output);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        float r = targetSize / 2f;
-        canvas.drawCircle(r, r, r, paint);
-        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
-        int srcW = bitmap.getWidth();
-        int srcH = bitmap.getHeight();
-        int minEdge = Math.min(srcW, srcH);
-        Rect srcRect = new Rect((srcW - minEdge) / 2, (srcH - minEdge) / 2, (srcW + minEdge) / 2, (srcH + minEdge) / 2);
-        Rect dstRect = new Rect(0, 0, targetSize, targetSize);
-        canvas.drawBitmap(bitmap, srcRect, dstRect, paint);
-        return output;
-    }
-
-    private String getAuthParams() {
-        String u = prefs.getString("user", "");
-        String p = prefs.getString("pass", "");
-        return "u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic&f=json";
-    }
-
-    private String requestApi(String pathWithParams) {
+    private String buildStreamUrl(String songId, String bitrate) {
         String base = prefs.getString("server", "");
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-        HttpURLConnection conn = null;
+        String u = prefs.getString("user", "");
+        String p = prefs.getString("pass", "");
+
+        String bitrateParam = "";
+        if ("128".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=128";
+        } else if ("192".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=192";
+        } else if ("320".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=320";
+        } else if ("flac".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&format=flac";
+        }
+
         try {
-            URL url = new URL(base + "/rest/" + pathWithParams);
-            conn = (HttpURLConnection) url.openConnection();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) sb.append(line);
-            reader.close();
-            return sb.toString();
-        } catch (Throwable e) {
-            return null;
-        } finally {
-            if (conn != null) conn.disconnect();
+            String encodedId = URLEncoder.encode(songId, "UTF-8");
+            return base + "/rest/stream.view?id=" + encodedId + "&u=" + URLEncoder.encode(u, "UTF-8") + "&p=" + URLEncoder.encode(p, "UTF-8") + "&v=1.12.0&c=RetroSubsonic" + bitrateParam;
+        } catch (Exception e) {
+            return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic" + bitrateParam;
         }
-    }
-
-    private void fetchPlaylists() {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                final String jsonStr = requestApi("getPlaylists.view?" + getAuthParams());
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        rawServerUserPlaylists.clear();
-                        rawServerRankingPlaylists.clear();
-                        if (jsonStr != null) {
-                            try {
-                                JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
-                                JSONObject plObj = root.optJSONObject("playlists");
-                                if (plObj != null && plObj.has("playlist")) {
-                                    Object p = plObj.get("playlist");
-                                    if (p instanceof JSONArray) {
-                                        JSONArray arr = (JSONArray) p;
-                                        for (int i = 0; i < arr.length(); i++) parsePlaylistItem(arr.getJSONObject(i));
-                                    } else if (p instanceof JSONObject) {
-                                        parsePlaylistItem((JSONObject) p);
-                                    }
-                                }
-                            } catch (Throwable ignored) {}
-                        }
-                        showCurrentTabContent();
-                    }
-                });
-            }
-        }).start();
-    }
-
-    private void parsePlaylistItem(JSONObject o) throws Exception {
-        String name = o.getString("name");
-        String id = o.getString("id");
-        int count = o.optInt("songCount", 0);
-        DisplayEntry entry = new DisplayEntry(id, name, "", "共 " + count + " 首", null, "歌单", false);
-
-        if (name.contains("榜") || name.startsWith("榜单")) {
-            rawServerRankingPlaylists.add(entry);
-        } else {
-            rawServerUserPlaylists.add(entry);
-        }
-    }
-
-    private void showCurrentTabContent() {
-        currentItems.clear();
-        if (currentSelectedTab == TAB_PLAYLISTS) {
-            currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
-            currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "精选曲库 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
-            currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行常备 (" + carSongs.size() + "首)", null, "本地歌单", false));
-            currentItems.addAll(rawServerUserPlaylists);
-        } else {
-            currentItems.addAll(rawServerRankingPlaylists);
-        }
-        adapter.notifyDataSetChanged();
-    }
-
-    private void showUserPlaylists() {
-        showCurrentTabContent();
-    }
-
-    private void showRankingPlaylists() {
-        showCurrentTabContent();
-    }
-
-    private void restoreLastSessionIfAvailable() {
-        MusicService.restorePlaybackState(this);
-        refreshQueueList();
-    }
-
-    private void refreshQueueList() {
-        queueData.clear();
-        for (MusicService.SongItem item : MusicService.getPlaylist()) {
-            Map<String, String> m = new HashMap<String, String>();
-            m.put("title", item.title);
-            m.put("subtitle", item.artist);
-            queueData.add(m);
-        }
-        queueAdapter.notifyDataSetChanged();
-        if (detailQueueAdapterLand != null) detailQueueAdapterLand.notifyDataSetChanged();
-    }
-
-    private void updatePlayPauseIcons(boolean isPlaying) {
-        int color = isDarkTheme ? 0xFF10141A : 0xFFFFFFFF;
-        btnPlayPause.setImageDrawable(isPlaying ? MediaIconHelper.createPauseIcon(this, 20, color) : MediaIconHelper.createPlayIcon(this, 22, color));
-        if (btnDetailPlayPauseLand != null) {
-            btnDetailPlayPauseLand.setImageDrawable(isPlaying ? MediaIconHelper.createPauseIcon(this, 26, color) : MediaIconHelper.createPlayIcon(this, 28, color));
-        }
-        if (btnDetailPlayPausePort != null) {
-            btnDetailPlayPausePort.setImageDrawable(isPlaying ? MediaIconHelper.createPauseIcon(this, 26, color) : MediaIconHelper.createPlayIcon(this, 28, color));
-        }
-    }
-
-    private void updateModeIcons(int mode) {
-        int color = isDarkTheme ? 0xFF00E5FF : 0xFF0091EA;
-        Drawable d = (mode == MusicService.MODE_SHUFFLE) ? MediaIconHelper.createShuffleIcon(this, 18, color)
-                : (mode == MusicService.MODE_SINGLE) ? MediaIconHelper.createRepeatOneIcon(this, 18, color)
-                : MediaIconHelper.createRepeatIcon(this, 18, color);
-        btnMode.setImageDrawable(d);
-        if (btnDetailModeLand != null) btnDetailModeLand.setImageDrawable(d);
-        if (btnDetailModePort != null) btnDetailModePort.setImageDrawable(d);
-    }
-
-    private void setupControlIcons() {
-        int navColor = isDarkTheme ? 0xFFE2E8F0 : 0xFF4B5563;
-        int accent = isDarkTheme ? 0xFF00E5FF : 0xFF0091EA;
-
-        btnPrev.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 18, navColor));
-        btnNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 18, navColor));
-        btnOpenEq.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 18, accent));
-
-        btnSettingsIcon.setImageDrawable(MediaIconHelper.createSettingsIcon(this, 20, navColor));
-        btnExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, 0xFFFF6B6B));
-        btnTopSearch.setImageDrawable(MediaIconHelper.createSearchIcon(this, 20, accent));
-
-        if (btnDetailPrevLand != null) btnDetailPrevLand.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 22, navColor));
-        if (btnDetailNextLand != null) btnDetailNextLand.setImageDrawable(MediaIconHelper.createNextIcon(this, 22, navColor));
-        if (btnDetailEqLand != null) btnDetailEqLand.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 20, accent));
-
-        if (btnDetailPrevPort != null) btnDetailPrevPort.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 22, navColor));
-        if (btnDetailNextPort != null) btnDetailNextPort.setImageDrawable(MediaIconHelper.createNextIcon(this, 22, navColor));
-        if (btnDetailEqPort != null) btnDetailEqPort.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 20, accent));
-    }
-
-    private String formatTime(int ms) {
-        int s = (ms / 1000) % 60;
-        int m = (ms / (1000 * 60)) % 60;
-        return String.format(Locale.getDefault(), "%02d:%02d", m, s);
-    }
-
-    private String getSavedBitrate() { return prefs.getString("default_bitrate", "auto"); }
-
-    private String getBitrateDisplay(String val, String originalQuality) {
-        if ("auto".equalsIgnoreCase(val)) {
-            if (originalQuality != null && originalQuality.length() > 0) return originalQuality;
-            return "原曲音质";
-        }
-        if ("128".equalsIgnoreCase(val)) return "128K MP3";
-        if ("192".equalsIgnoreCase(val)) return "192K MP3";
-        if ("320".equalsIgnoreCase(val)) return "320K MP3";
-        if ("flac".equalsIgnoreCase(val)) return "FLAC 无损";
-        return (originalQuality != null && originalQuality.length() > 0) ? originalQuality : "原曲音质";
-    }
-
-    private int getBitrateIndex(String val) {
-        for (int i = 0; i < BITRATE_VALUES.length; i++) {
-            if (BITRATE_VALUES[i].equalsIgnoreCase(val)) return i;
-        }
-        return 0;
-    }
-
-    private void loadSavedConfig() {
-        etServer.setText(prefs.getString("server", "http://192.168.1.100:4533"));
-        etUsername.setText(prefs.getString("user", "admin"));
-        etPassword.setText(prefs.getString("pass", "admin"));
-        etTimeoutSec.setText(prefs.getString("play_timeout_sec", "20"));
-        etRetryCount.setText(prefs.getString("play_retry_count", "3"));
-        etCacheSize.setText(prefs.getString("cache_size_mb", "500"));
-        etDownloadPath.setText(prefs.getString("download_path", getDefaultDownloadPath()));
     }
 
     private void saveConfig() {
@@ -1760,103 +1366,6 @@ public class MainActivity extends Activity {
                 .putString("cache_size_mb", etCacheSize.getText().toString().trim())
                 .putString("download_path", etDownloadPath.getText().toString().trim())
                 .commit();
-    }
-
-    private void setupBitrateSpinners() {
-        BitrateSpinnerAdapter adapterConfig = new BitrateSpinnerAdapter(BITRATE_LABELS);
-        spinnerConfigBitrate.setAdapter(adapterConfig);
-        if (spinnerDetailBitrateLand != null) spinnerDetailBitrateLand.setAdapter(new BitrateSpinnerAdapter(BITRATE_LABELS));
-        if (spinnerDetailBitratePort != null) spinnerDetailBitratePort.setAdapter(new BitrateSpinnerAdapter(BITRATE_LABELS));
-
-        int initIdx = getBitrateIndex(getSavedBitrate());
-        spinnerConfigBitrate.setSelection(initIdx);
-        if (spinnerDetailBitrateLand != null) spinnerDetailBitrateLand.setSelection(initIdx);
-        if (spinnerDetailBitratePort != null) spinnerDetailBitratePort.setSelection(initIdx);
-
-        AdapterView.OnItemSelectedListener listener = new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (isSpinnersInitializing) return;
-                String newBitrate = BITRATE_VALUES[position];
-                prefs.edit().putString("default_bitrate", newBitrate).commit();
-                Toast.makeText(MainActivity.this, "码率已设为: " + BITRATE_LABELS[position], Toast.LENGTH_SHORT).show();
-            }
-            @Override public void onNothingSelected(AdapterView<?> parent) {}
-        };
-        spinnerConfigBitrate.setOnItemSelectedListener(listener);
-
-        new Handler().postDelayed(new Runnable() {
-            @Override public void run() { isSpinnersInitializing = false; }
-        }, 500);
-    }
-
-    private void setupSearchTypeSpinner() {
-        BitrateSpinnerAdapter typeAdapter = new BitrateSpinnerAdapter(SEARCH_TYPES);
-        spinnerSearchType.setAdapter(typeAdapter);
-    }
-
-    private class BitrateSpinnerAdapter extends BaseAdapter {
-        private String[] items;
-        BitrateSpinnerAdapter(String[] items) { this.items = items; }
-        @Override public int getCount() { return items.length; }
-        @Override public Object getItem(int position) { return items[position]; }
-        @Override public long getItemId(int position) { return position; }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(MainActivity.this);
-            tv.setTextSize(12);
-            tv.setTextColor(isDarkTheme ? 0xFF00E5FF : 0xFF0091EA);
-            tv.setGravity(Gravity.CENTER);
-            tv.setPadding(6, 2, 6, 2);
-            tv.setText(items[position] + " ▾");
-            return tv;
-        }
-
-        @Override
-        public View getDropDownView(int position, View convertView, ViewGroup parent) {
-            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(MainActivity.this);
-            tv.setTextSize(13);
-            tv.setGravity(Gravity.CENTER_VERTICAL);
-            tv.setPadding(24, 18, 24, 18);
-            tv.setBackgroundColor(isDarkTheme ? 0xFF1E222B : 0xFFFFFFFF);
-            tv.setTextColor(isDarkTheme ? 0xFFE0E0E0 : 0xFF1F2937);
-            tv.setText(items[position]);
-            return tv;
-        }
-    }
-
-    private void loadFavSet() {
-        Set<String> set = prefs.getStringSet("fav_songs_set", new HashSet<String>());
-        favSongIds = new HashSet<String>(set);
-    }
-
-    private void saveFavSet() {
-        prefs.edit().putStringSet("fav_songs_set", favSongIds).commit();
-    }
-
-    private boolean isFav(String songId) {
-        return songId != null && favSongIds.contains(songId);
-    }
-
-    private void loadLocalPlaylists() {
-        featuredSongs.clear();
-        carSongs.clear();
-        try {
-            String fStr = prefs.getString("local_playlist_featured", "[]");
-            JSONArray fArr = new JSONArray(fStr);
-            for (int i = 0; i < fArr.length(); i++) {
-                JSONObject o = fArr.getJSONObject(i);
-                featuredSongs.add(new DisplayEntry(o.getString("id"), o.getString("title"), o.optString("artist", "未知歌手"), "", o.optString("coverArt", null), o.optString("quality", "标准音质"), true));
-            }
-
-            String cStr = prefs.getString("local_playlist_car", "[]");
-            JSONArray cArr = new JSONArray(cStr);
-            for (int i = 0; i < cArr.length(); i++) {
-                JSONObject o = cArr.getJSONObject(i);
-                carSongs.add(new DisplayEntry(o.getString("id"), o.getString("title"), o.optString("artist", "未知歌手"), "", o.optString("coverArt", null), o.optString("quality", "标准音质"), true));
-            }
-        } catch (Exception ignored) {}
     }
 
     private void syncServerFavoritesQuietly() {
@@ -1894,5 +1403,31 @@ public class MainActivity extends Activity {
                 } catch (Exception ignored) {}
             }
         }).start();
+    }
+
+    private void performAppExit() {
+        new AlertDialog.Builder(MainActivity.this)
+                .setTitle("关闭软件")
+                .setMessage("确定要退出并彻底关闭播放器吗？")
+                .setPositiveButton("退出", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        try {
+                            Intent stopIntent = new Intent(MainActivity.this, MusicService.class);
+                            stopIntent.setAction(MusicService.ACTION_STOP);
+                            startService(stopIntent);
+                        } catch (Exception ignored) {}
+                        finish();
+                        System.exit(0);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private String getModeString(int mode) {
+        if (mode == MusicService.MODE_SHUFFLE) return "随机播放";
+        if (mode == MusicService.MODE_SINGLE) return "单曲循环";
+        return "列表循环";
     }
 }
