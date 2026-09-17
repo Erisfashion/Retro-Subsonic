@@ -8,6 +8,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -25,7 +26,6 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
@@ -35,7 +35,6 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
@@ -47,9 +46,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -82,7 +79,6 @@ public class MainActivity extends Activity {
 
     private boolean isDarkTheme = true;
     private ArrayList<String> searchHistoryList = new ArrayList<String>();
-
     private String targetPlaylistIdToAdd = null;
     private String targetPlaylistNameToAdd = null;
 
@@ -90,8 +86,32 @@ public class MainActivity extends Activity {
     private LinearLayout layoutMainView, layoutConfigPanel, layoutQueuePanel, layoutBottomPlayer;
     private LinearLayout layoutSearchPage, layoutSearchHistoryBox, layoutHistoryTags;
     private LinearLayout layoutDetailOverlay;
-    private FrameLayout layoutDetailDynamicContainer;
+    private LinearLayout layoutDetailLandscape, layoutDetailPortrait;
 
+    // 详情页横屏控件
+    private FrameLayout flVinylDiscLand;
+    private ImageView ivVinylCircularCoverLand;
+    private TextView tvDetailTitleLand, tvDetailArtistLand, tvDetailQualityLand, tvDetailBufferLand, tvDetailTimeLand;
+    private Spinner spinnerDetailBitrateLand;
+    private Button btnDetailFavLand, btnLyricDecLand, btnLyricIncLand;
+    private ImageView btnDetailModeLand, btnDetailPrevLand, btnDetailPlayPauseLand, btnDetailNextLand, btnDetailEqLand;
+    private SeekBar detailSeekBarLand;
+    private ScrollView scrollLyricsLand;
+    private LinearLayout layoutLyricsContainerLand, layoutDetailLyricsViewLand, layoutDetailQueueViewLand, layoutDetailBottomBlankLand;
+    private ListView lvDetailQueueLand;
+
+    // 详情页竖屏控件
+    private FrameLayout flVinylDiscPort;
+    private ImageView ivVinylCircularCoverPort;
+    private TextView tvDetailTitlePort, tvDetailArtistPort, tvDetailQualityPort, tvDetailBufferPort, tvDetailTimePort;
+    private Spinner spinnerDetailBitratePort;
+    private Button btnDetailFavPort;
+    private ImageView btnDetailModePort, btnDetailPrevPort, btnDetailPlayPausePort, btnDetailNextPort, btnDetailEqPort;
+    private SeekBar detailSeekBarPort;
+    private ScrollView scrollLyricsPort;
+    private LinearLayout layoutLyricsContainerPort, layoutDetailBottomBlankPort;
+
+    // 主页控件
     private TextView tvAppTitle, tvAppVersion, tvListTitle, tvCurrentSong, tvTime;
     private ImageView btnThemeToggle, btnSettingsIcon, btnTopSearch, btnExitApp;
     private ImageView ivBottomCover;
@@ -105,36 +125,31 @@ public class MainActivity extends Activity {
     private Spinner spinnerConfigBitrate;
     private Button btnConnect, btnClearCache;
 
+    // 搜索页控件
     private Button btnSearchPageBack, btnSearchSubmit, btnFloatingAddPlaylist;
     private ImageView btnClearHistory;
     private Spinner spinnerSearchType;
     private EditText etSearchKeyword;
     private ListView lvSearchResults;
-
     private ArrayList<DisplayEntry> searchResultsList = new ArrayList<DisplayEntry>();
     private Set<String> checkedSongIds = new HashSet<String>();
     private SearchResultAdapter searchAdapter;
 
-    private FrameLayout layoutVinylContainer, flVinylDisc;
-    private ImageView ivVinylCircularCover;
-    private TonearmView viewTonearm;
-    private TextView tvDetailTitle, tvDetailArtist, tvDetailQuality, tvDetailBuffer, tvDetailTime;
-    private Spinner spinnerDetailBitrate;
-    private Button btnDetailFav, btnCloseDetail, btnDetailDownload, btnDetailKeepScreen, btnDetailQueue;
-    private ImageView btnDetailExitApp, btnDetailMode, btnDetailPrev, btnDetailPlayPause, btnDetailNext, btnDetailEq;
-    private SeekBar detailSeekBar;
-    private ScrollView scrollLyrics;
-    private LinearLayout layoutLyricsContainer;
+    // 详情页顶栏通用控件
+    private Button btnCloseDetail, btnDetailDownload, btnDetailKeepScreen, btnDetailQueue;
+    private ImageView btnDetailExitApp;
 
+    // 黑胶旋转 (60fps 定时平滑旋转)
     private Handler vinylHandler = new Handler();
     private float currentVinylDegree = 0f;
     private boolean isCurrentSongPlaying = false;
     private Runnable vinylRunnable = new Runnable() {
         @Override
         public void run() {
-            if (isCurrentSongPlaying && flVinylDisc != null && flVinylDisc.getVisibility() == View.VISIBLE) {
+            if (isCurrentSongPlaying) {
                 currentVinylDegree = (currentVinylDegree + 0.6f) % 360f;
-                flVinylDisc.setRotation(currentVinylDegree);
+                if (flVinylDiscLand != null) flVinylDiscLand.setRotation(currentVinylDegree);
+                if (flVinylDiscPort != null) flVinylDiscPort.setRotation(currentVinylDegree);
                 vinylHandler.postDelayed(this, 25);
             }
         }
@@ -147,7 +162,8 @@ public class MainActivity extends Activity {
     private static class LyricRow {
         long timeMs;
         String text;
-        TextView view;
+        TextView viewLand;
+        TextView viewPort;
         LyricRow(long timeMs, String text) { this.timeMs = timeMs; this.text = text; }
     }
     private ArrayList<LyricRow> lyricRows = new ArrayList<LyricRow>();
@@ -183,6 +199,7 @@ public class MainActivity extends Activity {
     private PlaylistsCustomAdapter adapter;
     private ArrayList<Map<String, String>> queueData = new ArrayList<Map<String, String>>();
     private SimpleAdapter queueAdapter;
+    private SimpleAdapter detailQueueAdapterLand;
 
     private boolean isUserSeeking = false;
     private String lastLoadedSongId = "";
@@ -219,22 +236,19 @@ public class MainActivity extends Activity {
 
                 if (title != null) {
                     tvCurrentSong.setText(title + " - " + artist);
-                    if (tvDetailTitle != null) tvDetailTitle.setText(title);
-                    if (tvDetailArtist != null) tvDetailArtist.setText(artist);
+                    setDetailTitle(title);
+                    setDetailArtist(artist);
 
                     String currentBitrate = getSavedBitrate();
-                    if (tvDetailQuality != null) tvDetailQuality.setText(getBitrateDisplay(currentBitrate, quality));
+                    setDetailQuality(getBitrateDisplay(currentBitrate, quality));
 
-                    if (tvDetailBuffer != null) {
-                        if (isBuffering && bufferPercent < 100) {
-                            tvDetailBuffer.setVisibility(View.VISIBLE);
-                            tvDetailBuffer.setText("(缓冲 " + bufferPercent + "%)");
-                        } else if (retryCount > 0) {
-                            tvDetailBuffer.setVisibility(View.VISIBLE);
-                            tvDetailBuffer.setText("(重试 " + retryCount + "/" + maxRetries + ")");
-                        } else {
-                            tvDetailBuffer.setVisibility(View.GONE);
-                        }
+                    // 缓冲显示在码率标签右侧
+                    if (isBuffering && bufferPercent < 100) {
+                        setDetailBuffer("(缓冲 " + bufferPercent + "%)", true);
+                    } else if (retryCount > 0) {
+                        setDetailBuffer("(重试 " + retryCount + "/" + maxRetries + ")", true);
+                    } else {
+                        setDetailBuffer("", false);
                     }
 
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
@@ -253,13 +267,18 @@ public class MainActivity extends Activity {
                 if (!isUserSeeking && duration > 0) {
                     seekBar.setMax(duration);
                     seekBar.setProgress(position);
-                    if (detailSeekBar != null) {
-                        detailSeekBar.setMax(duration);
-                        detailSeekBar.setProgress(position);
+                    if (detailSeekBarLand != null) {
+                        detailSeekBarLand.setMax(duration);
+                        detailSeekBarLand.setProgress(position);
+                    }
+                    if (detailSeekBarPort != null) {
+                        detailSeekBarPort.setMax(duration);
+                        detailSeekBarPort.setProgress(position);
                     }
                     String timeStr = formatTime(position) + " / " + formatTime(duration);
                     tvTime.setText(timeStr);
-                    if (tvDetailTime != null) tvDetailTime.setText(timeStr);
+                    if (tvDetailTimeLand != null) tvDetailTimeLand.setText(timeStr);
+                    if (tvDetailTimePort != null) tvDetailTimePort.setText(timeStr);
 
                     updateLyricPosition(position);
                 }
@@ -289,7 +308,7 @@ public class MainActivity extends Activity {
         setupBitrateSpinners();
         setupSearchTypeSpinner();
         setupThemeColors();
-        buildDetailResponsiveLayout();
+        updateDetailOrientationLayout();
         loadSavedConfig();
         setupListeners();
 
@@ -326,6 +345,48 @@ public class MainActivity extends Activity {
                 }
             }
         });
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        updateDetailOrientationLayout();
+    }
+
+    private void updateDetailOrientationLayout() {
+        boolean isLandscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        if (layoutDetailLandscape != null) {
+            layoutDetailLandscape.setVisibility(isLandscape ? View.VISIBLE : View.GONE);
+        }
+        if (layoutDetailPortrait != null) {
+            layoutDetailPortrait.setVisibility(isLandscape ? View.GONE : View.VISIBLE);
+        }
+    }
+
+    private void setDetailTitle(String t) {
+        if (tvDetailTitleLand != null) tvDetailTitleLand.setText(t);
+        if (tvDetailTitlePort != null) tvDetailTitlePort.setText(t);
+    }
+
+    private void setDetailArtist(String a) {
+        if (tvDetailArtistLand != null) tvDetailArtistLand.setText(a);
+        if (tvDetailArtistPort != null) tvDetailArtistPort.setText(a);
+    }
+
+    private void setDetailQuality(String q) {
+        if (tvDetailQualityLand != null) tvDetailQualityLand.setText(q);
+        if (tvDetailQualityPort != null) tvDetailQualityPort.setText(q);
+    }
+
+    private void setDetailBuffer(String b, boolean visible) {
+        if (tvDetailBufferLand != null) {
+            tvDetailBufferLand.setText(b);
+            tvDetailBufferLand.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+        if (tvDetailBufferPort != null) {
+            tvDetailBufferPort.setText(b);
+            tvDetailBufferPort.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void loadSearchHistory() {
@@ -390,7 +451,8 @@ public class MainActivity extends Activity {
         layoutSearchHistoryBox = (LinearLayout) findViewById(R.id.layout_search_history_box);
         layoutHistoryTags = (LinearLayout) findViewById(R.id.layout_history_tags);
         layoutDetailOverlay = (LinearLayout) findViewById(R.id.layout_detail_overlay);
-        layoutDetailDynamicContainer = (FrameLayout) findViewById(R.id.layout_detail_dynamic_container);
+        layoutDetailLandscape = (LinearLayout) findViewById(R.id.layout_detail_landscape);
+        layoutDetailPortrait = (LinearLayout) findViewById(R.id.layout_detail_portrait);
 
         tvAppTitle = (TextView) findViewById(R.id.tv_app_title);
         tvAppVersion = (TextView) findViewById(R.id.tv_app_version);
@@ -436,11 +498,57 @@ public class MainActivity extends Activity {
         etSearchKeyword = (EditText) findViewById(R.id.et_search_keyword);
         lvSearchResults = (ListView) findViewById(R.id.lv_search_results);
 
+        // 详情顶栏
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
         btnDetailDownload = (Button) findViewById(R.id.btn_detail_download);
         btnDetailExitApp = (ImageView) findViewById(R.id.btn_detail_exit_app);
         btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
+
+        // 详情横屏控件绑定
+        flVinylDiscLand = (FrameLayout) findViewById(R.id.fl_vinyl_disc_land);
+        ivVinylCircularCoverLand = (ImageView) findViewById(R.id.iv_vinyl_circular_cover_land);
+        tvDetailTitleLand = (TextView) findViewById(R.id.tv_detail_title_land);
+        tvDetailArtistLand = (TextView) findViewById(R.id.tv_detail_artist_land);
+        tvDetailQualityLand = (TextView) findViewById(R.id.tv_detail_quality_land);
+        tvDetailBufferLand = (TextView) findViewById(R.id.tv_detail_buffer_land);
+        tvDetailTimeLand = (TextView) findViewById(R.id.tv_detail_time_land);
+        spinnerDetailBitrateLand = (Spinner) findViewById(R.id.spinner_detail_bitrate_land);
+        btnDetailFavLand = (Button) findViewById(R.id.btn_detail_fav_land);
+        btnLyricDecLand = (Button) findViewById(R.id.btn_lyric_dec_land);
+        btnLyricIncLand = (Button) findViewById(R.id.btn_lyric_inc_land);
+        btnDetailModeLand = (ImageView) findViewById(R.id.btn_detail_mode_land);
+        btnDetailPrevLand = (ImageView) findViewById(R.id.btn_detail_prev_land);
+        btnDetailPlayPauseLand = (ImageView) findViewById(R.id.btn_detail_play_pause_land);
+        btnDetailNextLand = (ImageView) findViewById(R.id.btn_detail_next_land);
+        btnDetailEqLand = (ImageView) findViewById(R.id.btn_detail_eq_land);
+        detailSeekBarLand = (SeekBar) findViewById(R.id.detail_seek_bar_land);
+        scrollLyricsLand = (ScrollView) findViewById(R.id.scroll_lyrics_land);
+        layoutLyricsContainerLand = (LinearLayout) findViewById(R.id.layout_lyrics_container_land);
+        layoutDetailLyricsViewLand = (LinearLayout) findViewById(R.id.layout_detail_lyrics_view_land);
+        layoutDetailQueueViewLand = (LinearLayout) findViewById(R.id.layout_detail_queue_view_land);
+        layoutDetailBottomBlankLand = (LinearLayout) findViewById(R.id.layout_detail_bottom_blank_land);
+        lvDetailQueueLand = (ListView) findViewById(R.id.lv_detail_queue_land);
+
+        // 详情竖屏控件绑定
+        flVinylDiscPort = (FrameLayout) findViewById(R.id.fl_vinyl_disc_port);
+        ivVinylCircularCoverPort = (ImageView) findViewById(R.id.iv_vinyl_circular_cover_port);
+        tvDetailTitlePort = (TextView) findViewById(R.id.tv_detail_title_port);
+        tvDetailArtistPort = (TextView) findViewById(R.id.tv_detail_artist_port);
+        tvDetailQualityPort = (TextView) findViewById(R.id.tv_detail_quality_port);
+        tvDetailBufferPort = (TextView) findViewById(R.id.tv_detail_buffer_port);
+        tvDetailTimePort = (TextView) findViewById(R.id.tv_detail_time_port);
+        spinnerDetailBitratePort = (Spinner) findViewById(R.id.spinner_detail_bitrate_port);
+        btnDetailFavPort = (Button) findViewById(R.id.btn_detail_fav_port);
+        btnDetailModePort = (ImageView) findViewById(R.id.btn_detail_mode_port);
+        btnDetailPrevPort = (ImageView) findViewById(R.id.btn_detail_prev_port);
+        btnDetailPlayPausePort = (ImageView) findViewById(R.id.btn_detail_play_pause_port);
+        btnDetailNextPort = (ImageView) findViewById(R.id.btn_detail_next_port);
+        btnDetailEqPort = (ImageView) findViewById(R.id.btn_detail_eq_port);
+        detailSeekBarPort = (SeekBar) findViewById(R.id.detail_seek_bar_port);
+        scrollLyricsPort = (ScrollView) findViewById(R.id.scroll_lyrics_port);
+        layoutLyricsContainerPort = (LinearLayout) findViewById(R.id.layout_lyrics_container_port);
+        layoutDetailBottomBlankPort = (LinearLayout) findViewById(R.id.layout_detail_bottom_blank_port);
 
         adapter = new PlaylistsCustomAdapter();
         listView.setAdapter(adapter);
@@ -453,6 +561,12 @@ public class MainActivity extends Activity {
                 new String[]{"title", "subtitle"}, new int[]{android.R.id.text1, android.R.id.text2}
         );
         lvQueue.setAdapter(queueAdapter);
+
+        detailQueueAdapterLand = new SimpleAdapter(
+                this, queueData, android.R.layout.simple_list_item_2,
+                new String[]{"title", "subtitle"}, new int[]{android.R.id.text1, android.R.id.text2}
+        );
+        if (lvDetailQueueLand != null) lvDetailQueueLand.setAdapter(detailQueueAdapterLand);
     }
 
     private void setupThemeColors() {
@@ -462,13 +576,24 @@ public class MainActivity extends Activity {
             layoutDetailOverlay.setBackgroundResource(R.drawable.bg_theme_dark);
             tvAppTitle.setTextColor(0xFFFFFFFF);
             btnThemeToggle.setImageDrawable(MediaIconHelper.createThemeIcon(this, 18, 0xFF00E5FF, true));
+
+            // 搜索框深色字体
+            etSearchKeyword.setTextColor(0xFFFFFFFF);
+            etSearchKeyword.setHintTextColor(0xFF9CA3AF);
+            etSearchKeyword.setBackgroundResource(R.drawable.bg_btn_pill);
         } else {
             layoutRoot.setBackgroundResource(R.drawable.bg_theme_light);
             layoutSearchPage.setBackgroundResource(R.drawable.bg_theme_light);
             layoutDetailOverlay.setBackgroundResource(R.drawable.bg_theme_light);
             tvAppTitle.setTextColor(0xFF1F2937);
             btnThemeToggle.setImageDrawable(MediaIconHelper.createThemeIcon(this, 18, 0xFFFF9800, false));
+
+            // 搜索框浅色字体与边框高对比度
+            etSearchKeyword.setTextColor(0xFF111827);
+            etSearchKeyword.setHintTextColor(0xFF6B7280);
+            etSearchKeyword.setBackgroundResource(R.drawable.bg_card_frosted_light);
         }
+        renderSearchHistoryTags();
     }
 
     private void toggleTheme() {
@@ -477,189 +602,8 @@ public class MainActivity extends Activity {
         setupThemeColors();
         adapter.notifyDataSetChanged();
         searchAdapter.notifyDataSetChanged();
-        Toast.makeText(this, isDarkTheme ? "已切换至现代深色主题" : "已切换至通透浅色主题", Toast.LENGTH_SHORT).show();
-    }
-
-    private void buildDetailResponsiveLayout() {
-        layoutDetailDynamicContainer.removeAllViews();
-        buildPortraitDetailViews();
-    }
-
-    private void buildPortraitDetailViews() {
-        float density = getResources().getDisplayMetrics().density;
-        LinearLayout vContainer = new LinearLayout(this);
-        vContainer.setOrientation(LinearLayout.VERTICAL);
-        vContainer.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        vContainer.setGravity(Gravity.CENTER_HORIZONTAL);
-
-        layoutVinylContainer = new FrameLayout(this);
-        LinearLayout.LayoutParams discLp = new LinearLayout.LayoutParams((int) (260 * density), (int) (260 * density));
-        discLp.topMargin = (int) (6 * density);
-        layoutVinylContainer.setLayoutParams(discLp);
-
-        flVinylDisc = new FrameLayout(this);
-        FrameLayout.LayoutParams flLp = new FrameLayout.LayoutParams((int) (240 * density), (int) (240 * density), Gravity.CENTER);
-        flVinylDisc.setLayoutParams(flLp);
-        flVinylDisc.setBackgroundResource(R.drawable.bg_vinyl);
-
-        ivVinylCircularCover = new ImageView(this);
-        FrameLayout.LayoutParams cLp = new FrameLayout.LayoutParams((int) (140 * density), (int) (140 * density), Gravity.CENTER);
-        ivVinylCircularCover.setLayoutParams(cLp);
-        ivVinylCircularCover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        flVinylDisc.addView(ivVinylCircularCover);
-        layoutVinylContainer.addView(flVinylDisc);
-
-        viewTonearm = new TonearmView(this);
-        layoutVinylContainer.addView(viewTonearm);
-        vContainer.addView(layoutVinylContainer);
-
-        LinearLayout infoRow = new LinearLayout(this);
-        infoRow.setOrientation(LinearLayout.HORIZONTAL);
-        infoRow.setGravity(Gravity.CENTER);
-        infoRow.setPadding(0, (int) (6 * density), 0, 0);
-
-        btnDetailFav = new Button(this);
-        btnDetailFav.setText("♡");
-        btnDetailFav.setTextSize(18);
-        btnDetailFav.setTextColor(0xFFFF4081);
-        btnDetailFav.setBackgroundResource(R.drawable.bg_btn_fav);
-        infoRow.addView(btnDetailFav, new LinearLayout.LayoutParams((int) (36 * density), (int) (36 * density)));
-
-        tvDetailTitle = new TextView(this);
-        tvDetailTitle.setText("歌曲名称");
-        tvDetailTitle.setTextColor(0xFFFFFFFF);
-        tvDetailTitle.setTextSize(17);
-        tvDetailTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        tvDetailTitle.setSingleLine(true);
-        LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tLp.leftMargin = (int) (8 * density);
-        infoRow.addView(tvDetailTitle, tLp);
-        vContainer.addView(infoRow);
-
-        tvDetailArtist = new TextView(this);
-        tvDetailArtist.setText("歌手名称");
-        tvDetailArtist.setTextColor(0xFFA0A5B5);
-        tvDetailArtist.setTextSize(13);
-        tvDetailArtist.setGravity(Gravity.CENTER);
-        vContainer.addView(tvDetailArtist);
-
-        LinearLayout qualityRow = new LinearLayout(this);
-        qualityRow.setOrientation(LinearLayout.HORIZONTAL);
-        qualityRow.setGravity(Gravity.CENTER);
-        qualityRow.setPadding(0, (int) (4 * density), 0, 0);
-
-        spinnerDetailBitrate = new Spinner(this);
-        spinnerDetailBitrate.setBackgroundResource(R.drawable.bg_btn_pill);
-        qualityRow.addView(spinnerDetailBitrate, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (int) (28 * density)));
-
-        tvDetailQuality = new TextView(this);
-        tvDetailQuality.setText("标准音质");
-        tvDetailQuality.setTextColor(0xFF00E5FF);
-        tvDetailQuality.setTextSize(11);
-        tvDetailQuality.setTypeface(Typeface.DEFAULT_BOLD);
-        tvDetailQuality.setBackgroundColor(0xFF16181D);
-        tvDetailQuality.setPadding((int) (10 * density), (int) (4 * density), (int) (10 * density), (int) (4 * density));
-        LinearLayout.LayoutParams qLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        qLp.leftMargin = (int) (6 * density);
-        qualityRow.addView(tvDetailQuality, qLp);
-
-        tvDetailBuffer = new TextView(this);
-        tvDetailBuffer.setText("(缓冲 0%)");
-        tvDetailBuffer.setTextColor(0xFFFF9800);
-        tvDetailBuffer.setTextSize(11);
-        tvDetailBuffer.setVisibility(View.GONE);
-        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bLp.leftMargin = (int) (6 * density);
-        qualityRow.addView(tvDetailBuffer, bLp);
-
-        vContainer.addView(qualityRow);
-
-        scrollLyrics = new ScrollView(this);
-        scrollLyrics.setFillViewport(true);
-        scrollLyrics.setVerticalScrollBarEnabled(false);
-        LinearLayout.LayoutParams lyrLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (110 * density));
-        lyrLp.topMargin = (int) (6 * density);
-        scrollLyrics.setLayoutParams(lyrLp);
-
-        layoutLyricsContainer = new LinearLayout(this);
-        layoutLyricsContainer.setOrientation(LinearLayout.VERTICAL);
-        layoutLyricsContainer.setGravity(Gravity.CENTER_HORIZONTAL);
-        layoutLyricsContainer.setPadding(0, (int) (26 * density), 0, (int) (26 * density));
-        scrollLyrics.addView(layoutLyricsContainer);
-        vContainer.addView(scrollLyrics);
-
-        detailSeekBar = new SeekBar(this);
-        vContainer.addView(detailSeekBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        tvDetailTime = new TextView(this);
-        tvDetailTime.setText("00:00 / 00:00");
-        tvDetailTime.setTextColor(0xFF888C99);
-        tvDetailTime.setTextSize(11);
-        tvDetailTime.setGravity(Gravity.CENTER);
-        vContainer.addView(tvDetailTime);
-
-        LinearLayout ctrlDock = new LinearLayout(this);
-        ctrlDock.setOrientation(LinearLayout.HORIZONTAL);
-        ctrlDock.setGravity(Gravity.CENTER);
-        ctrlDock.setPadding(0, (int) (4 * density), 0, (int) (4 * density));
-
-        btnDetailMode = new ImageView(this);
-        btnDetailMode.setScaleType(ImageView.ScaleType.CENTER);
-        ctrlDock.addView(btnDetailMode, new LinearLayout.LayoutParams((int) (38 * density), (int) (38 * density)));
-
-        btnDetailPrev = new ImageView(this);
-        LinearLayout.LayoutParams prevLp = new LinearLayout.LayoutParams((int) (44 * density), (int) (44 * density));
-        prevLp.leftMargin = (int) (16 * density);
-        ctrlDock.addView(btnDetailPrev, prevLp);
-
-        btnDetailPlayPause = new ImageView(this);
-        btnDetailPlayPause.setBackgroundResource(R.drawable.bg_btn_circle_play);
-        LinearLayout.LayoutParams playLp = new LinearLayout.LayoutParams((int) (58 * density), (int) (58 * density));
-        playLp.leftMargin = (int) (18 * density);
-        playLp.rightMargin = (int) (18 * density);
-        ctrlDock.addView(btnDetailPlayPause, playLp);
-
-        btnDetailNext = new ImageView(this);
-        LinearLayout.LayoutParams nextLp = new LinearLayout.LayoutParams((int) (44 * density), (int) (44 * density));
-        nextLp.rightMargin = (int) (16 * density);
-        ctrlDock.addView(btnDetailNext, nextLp);
-
-        btnDetailEq = new ImageView(this);
-        ctrlDock.addView(btnDetailEq, new LinearLayout.LayoutParams((int) (38 * density), (int) (38 * density)));
-
-        vContainer.addView(ctrlDock);
-
-        LinearLayout blankArea = new LinearLayout(this);
-        blankArea.setOrientation(LinearLayout.VERTICAL);
-        blankArea.setGravity(Gravity.CENTER);
-        TextView hint = new TextView(this);
-        hint.setText("[轻触空白处在右侧唤出当前播放列表]");
-        hint.setTextColor(0xFF555D70);
-        hint.setTextSize(11);
-        blankArea.addView(hint);
-        blankArea.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (layoutQueuePanel.getVisibility() == View.VISIBLE) {
-                    layoutQueuePanel.setVisibility(View.GONE);
-                } else {
-                    refreshQueueList();
-                    layoutQueuePanel.setVisibility(View.VISIBLE);
-                }
-            }
-        });
-        vContainer.addView(blankArea, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (34 * density)));
-
-        layoutDetailDynamicContainer.addView(vContainer);
-        bindDetailCommonActions();
-    }
-
-    private void bindDetailCommonActions() {
         setupControlIcons();
-        setupBitrateSpinners();
-        if (lastLoadedSongId != null && lastLoadedSongId.length() > 0) {
-            loadCoverArt(lastLoadedSongId);
-        }
+        Toast.makeText(this, isDarkTheme ? "已切换至深色主题" : "已切换至浅色主题", Toast.LENGTH_SHORT).show();
     }
 
     private class PlaylistsCustomAdapter extends BaseAdapter {
@@ -684,7 +628,7 @@ public class MainActivity extends Activity {
                 TextView addTv = new TextView(MainActivity.this);
                 addTv.setText("+  新建歌单 (云同步)");
                 addTv.setTextSize(14);
-                addTv.setTextColor(0xFF00E5FF);
+                addTv.setTextColor(isDarkTheme ? 0xFF00E5FF : 0xFF0091EA);
                 addTv.setTypeface(Typeface.DEFAULT_BOLD);
                 row.addView(addTv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
                 return row;
@@ -845,6 +789,7 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("取消", null).show();
     }
 
+    // 搜索单页适配器：使用高对比度自定义 CheckBox 矢量，浅色模式 100% 鲜明可见
     private class SearchResultAdapter extends BaseAdapter {
         @Override public int getCount() { return searchResultsList.size(); }
         @Override public Object getItem(int position) { return searchResultsList.get(position); }
@@ -866,7 +811,7 @@ public class MainActivity extends Activity {
 
             TextView title = new TextView(MainActivity.this);
             title.setText(item.title);
-            title.setTextColor(isDarkTheme ? 0xFFFFFFFF : 0xFF1F2937);
+            title.setTextColor(isDarkTheme ? 0xFFFFFFFF : 0xFF111827);
             title.setTextSize(14);
             title.setTypeface(Typeface.DEFAULT_BOLD);
             textCol.addView(title);
@@ -889,7 +834,10 @@ public class MainActivity extends Activity {
 
             if (item.isSong) {
                 final CheckBox cb = new CheckBox(MainActivity.this);
-                cb.setChecked(checkedSongIds.contains(item.id));
+                final boolean isChecked = checkedSongIds.contains(item.id);
+                cb.setChecked(isChecked);
+                // 设置高对比度专属 CheckBox
+                cb.setButtonDrawable(MediaIconHelper.createCheckboxDrawable(MainActivity.this, isChecked, isDarkTheme));
                 cb.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -898,6 +846,7 @@ public class MainActivity extends Activity {
                         } else {
                             checkedSongIds.remove(item.id);
                         }
+                        cb.setButtonDrawable(MediaIconHelper.createCheckboxDrawable(MainActivity.this, cb.isChecked(), isDarkTheme));
                         updateFloatingAddButtonState();
                     }
                 });
@@ -997,9 +946,11 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) {
                 layoutDetailOverlay.setVisibility(View.VISIBLE);
+                updateDetailOrientationLayout();
             }
         });
 
+        // 核心修复：点击歌单或单曲事件彻底打通
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1007,9 +958,35 @@ public class MainActivity extends Activity {
                     showCreatePlaylistDialog(null);
                     return;
                 }
+                if (position < 0 || position >= currentItems.size()) return;
                 DisplayEntry entry = currentItems.get(position);
+
                 if (!entry.isSong) {
-                    fetchPlaylistSongs(entry.id, entry.title);
+                    if (entry.id.startsWith("album_")) {
+                        fetchAlbumSongs(entry.id.substring(6), entry.title);
+                    } else if (entry.id.startsWith("artist_")) {
+                        fetchArtistAlbums(entry.id.substring(7), entry.title);
+                    } else {
+                        fetchPlaylistSongs(entry.id, entry.title);
+                    }
+                } else {
+                    // 核心修复：点击歌曲播放！组装播放队列
+                    ArrayList<MusicService.SongItem> queue = new ArrayList<MusicService.SongItem>();
+                    int clickedIndex = 0;
+                    for (int i = 0; i < currentItems.size(); i++) {
+                        DisplayEntry item = currentItems.get(i);
+                        if (item.isSong) {
+                            if (item.id.equals(entry.id)) {
+                                clickedIndex = queue.size();
+                            }
+                            queue.add(new MusicService.SongItem(
+                                    item.id, item.title, item.artist,
+                                    buildStreamUrl(item.id), item.coverArt, item.quality
+                            ));
+                        }
+                    }
+                    MusicService.setQueue(queue, clickedIndex, MainActivity.this);
+                    refreshQueueList();
                 }
             }
         });
@@ -1042,7 +1019,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        btnToggleQueue.setOnClickListener(new View.OnClickListener() {
+        View.OnClickListener toggleQueueListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 if (layoutQueuePanel.getVisibility() == View.VISIBLE) {
@@ -1052,7 +1029,9 @@ public class MainActivity extends Activity {
                     layoutQueuePanel.setVisibility(View.VISIBLE);
                 }
             }
-        });
+        };
+        btnToggleQueue.setOnClickListener(toggleQueueListener);
+        btnDetailQueue.setOnClickListener(toggleQueueListener);
 
         btnCloseQueue.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1093,6 +1072,22 @@ public class MainActivity extends Activity {
             }
         });
 
+        btnDetailKeepScreen.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                isKeepScreenOn = !isKeepScreenOn;
+                if (isKeepScreenOn) {
+                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    btnDetailKeepScreen.setText("常亮: 开");
+                    Toast.makeText(MainActivity.this, "已开启屏幕常亮", Toast.LENGTH_SHORT).show();
+                } else {
+                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    btnDetailKeepScreen.setText("常亮: 关");
+                    Toast.makeText(MainActivity.this, "已关闭屏幕常亮", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
         View.OnClickListener eqListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1100,7 +1095,8 @@ public class MainActivity extends Activity {
             }
         };
         btnOpenEq.setOnClickListener(eqListener);
-        if (btnDetailEq != null) btnDetailEq.setOnClickListener(eqListener);
+        if (btnDetailEqLand != null) btnDetailEqLand.setOnClickListener(eqListener);
+        if (btnDetailEqPort != null) btnDetailEqPort.setOnClickListener(eqListener);
 
         View.OnClickListener togglePlayListener = new View.OnClickListener() {
             @Override
@@ -1109,7 +1105,8 @@ public class MainActivity extends Activity {
             }
         };
         btnPlayPause.setOnClickListener(togglePlayListener);
-        if (btnDetailPlayPause != null) btnDetailPlayPause.setOnClickListener(togglePlayListener);
+        if (btnDetailPlayPauseLand != null) btnDetailPlayPauseLand.setOnClickListener(togglePlayListener);
+        if (btnDetailPlayPausePort != null) btnDetailPlayPausePort.setOnClickListener(togglePlayListener);
 
         View.OnClickListener nextListener = new View.OnClickListener() {
             @Override
@@ -1118,7 +1115,8 @@ public class MainActivity extends Activity {
             }
         };
         btnNext.setOnClickListener(nextListener);
-        if (btnDetailNext != null) btnDetailNext.setOnClickListener(nextListener);
+        if (btnDetailNextLand != null) btnDetailNextLand.setOnClickListener(nextListener);
+        if (btnDetailNextPort != null) btnDetailNextPort.setOnClickListener(nextListener);
 
         View.OnClickListener prevListener = new View.OnClickListener() {
             @Override
@@ -1127,7 +1125,8 @@ public class MainActivity extends Activity {
             }
         };
         btnPrev.setOnClickListener(prevListener);
-        if (btnDetailPrev != null) btnDetailPrev.setOnClickListener(prevListener);
+        if (btnDetailPrevLand != null) btnDetailPrevLand.setOnClickListener(prevListener);
+        if (btnDetailPrevPort != null) btnDetailPrevPort.setOnClickListener(prevListener);
 
         View.OnClickListener modeListener = new View.OnClickListener() {
             @Override
@@ -1138,7 +1137,8 @@ public class MainActivity extends Activity {
             }
         };
         btnMode.setOnClickListener(modeListener);
-        if (btnDetailMode != null) btnDetailMode.setOnClickListener(modeListener);
+        if (btnDetailModeLand != null) btnDetailModeLand.setOnClickListener(modeListener);
+        if (btnDetailModePort != null) btnDetailModePort.setOnClickListener(modeListener);
 
         SeekBar.OnSeekBarChangeListener seekListener = new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -1146,7 +1146,8 @@ public class MainActivity extends Activity {
                 if (fromUser) {
                     String t = formatTime(progress) + " / " + formatTime(sb.getMax());
                     tvTime.setText(t);
-                    if (tvDetailTime != null) tvDetailTime.setText(t);
+                    if (tvDetailTimeLand != null) tvDetailTimeLand.setText(t);
+                    if (tvDetailTimePort != null) tvDetailTimePort.setText(t);
                 }
             }
             @Override public void onStartTrackingTouch(SeekBar sb) { isUserSeeking = true; }
@@ -1159,7 +1160,52 @@ public class MainActivity extends Activity {
             }
         };
         seekBar.setOnSeekBarChangeListener(seekListener);
-        if (detailSeekBar != null) detailSeekBar.setOnSeekBarChangeListener(seekListener);
+        if (detailSeekBarLand != null) detailSeekBarLand.setOnSeekBarChangeListener(seekListener);
+        if (detailSeekBarPort != null) detailSeekBarPort.setOnSeekBarChangeListener(seekListener);
+
+        // 横屏右侧空白处切换歌词/队列
+        if (layoutDetailBottomBlankLand != null) {
+            layoutDetailBottomBlankLand.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (layoutDetailQueueViewLand.getVisibility() == View.VISIBLE) {
+                        layoutDetailQueueViewLand.setVisibility(View.GONE);
+                        layoutDetailLyricsViewLand.setVisibility(View.VISIBLE);
+                    } else {
+                        refreshQueueList();
+                        layoutDetailLyricsViewLand.setVisibility(View.GONE);
+                        layoutDetailQueueViewLand.setVisibility(View.VISIBLE);
+                    }
+                }
+            });
+        }
+
+        // 竖屏底部空白处呼出播放队列抽屉
+        if (layoutDetailBottomBlankPort != null) {
+            layoutDetailBottomBlankPort.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (layoutQueuePanel.getVisibility() == View.VISIBLE) {
+                        layoutQueuePanel.setVisibility(View.GONE);
+                    } else {
+                        refreshQueueList();
+                        layoutQueuePanel.setVisibility(View.VISIBLE);
+                    }
+                }
+            });
+        }
+
+        // 字号增减
+        if (btnLyricDecLand != null) {
+            btnLyricDecLand.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { applyLyricFontSize(-2); }
+            });
+        }
+        if (btnLyricIncLand != null) {
+            btnLyricIncLand.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { applyLyricFontSize(2); }
+            });
+        }
     }
 
     private void showChoosePlaylistDialog(final ArrayList<String> songIds) {
@@ -1260,6 +1306,22 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private void applyLyricFontSize(int delta) {
+        lyricBaseFontSize += delta;
+        if (lyricBaseFontSize < 11) lyricBaseFontSize = 11;
+        if (lyricBaseFontSize > 26) lyricBaseFontSize = 26;
+
+        prefs.edit().putInt("lyric_font_size", lyricBaseFontSize).commit();
+
+        for (int i = 0; i < lyricRows.size(); i++) {
+            LyricRow row = lyricRows.get(i);
+            int size = (i == currentLyricIndex) ? (lyricBaseFontSize + 5) : lyricBaseFontSize;
+            if (row.viewLand != null) row.viewLand.setTextSize(size);
+            if (row.viewPort != null) row.viewPort.setTextSize(size);
+        }
+        Toast.makeText(this, "歌词字号: " + lyricBaseFontSize + "sp", Toast.LENGTH_SHORT).show();
+    }
+
     private void updateLyricPosition(int currentPosMs) {
         if (lyricRows.isEmpty()) return;
         int targetIndex = -1;
@@ -1268,27 +1330,50 @@ public class MainActivity extends Activity {
         }
 
         if (targetIndex != currentLyricIndex && targetIndex >= 0) {
+            // 恢复旧行
             if (currentLyricIndex >= 0 && currentLyricIndex < lyricRows.size()) {
                 LyricRow oldRow = lyricRows.get(currentLyricIndex);
-                if (oldRow.view != null) {
-                    oldRow.view.setTextColor(isDarkTheme ? 0xFF777777 : 0xFF9CA3AF);
-                    oldRow.view.setTextSize(lyricBaseFontSize);
-                    oldRow.view.setTypeface(Typeface.DEFAULT);
+                int oldColor = isDarkTheme ? 0xFF777777 : 0xFF9CA3AF;
+                if (oldRow.viewLand != null) {
+                    oldRow.viewLand.setTextColor(oldColor);
+                    oldRow.viewLand.setTextSize(lyricBaseFontSize);
+                    oldRow.viewLand.setTypeface(Typeface.DEFAULT);
+                }
+                if (oldRow.viewPort != null) {
+                    oldRow.viewPort.setTextColor(oldColor);
+                    oldRow.viewPort.setTextSize(lyricBaseFontSize);
+                    oldRow.viewPort.setTypeface(Typeface.DEFAULT);
                 }
             }
             currentLyricIndex = targetIndex;
             final LyricRow curRow = lyricRows.get(currentLyricIndex);
-            if (curRow.view != null) {
-                curRow.view.setTextColor(0xFF00E5FF);
-                curRow.view.setTextSize(lyricBaseFontSize + 5);
-                curRow.view.setTypeface(Typeface.DEFAULT_BOLD);
+            if (curRow != null) {
+                if (curRow.viewLand != null) {
+                    curRow.viewLand.setTextColor(0xFF00E5FF);
+                    curRow.viewLand.setTextSize(lyricBaseFontSize + 5);
+                    curRow.viewLand.setTypeface(Typeface.DEFAULT_BOLD);
+                }
+                if (curRow.viewPort != null) {
+                    curRow.viewPort.setTextColor(0xFF00E5FF);
+                    curRow.viewPort.setTextSize(lyricBaseFontSize + 5);
+                    curRow.viewPort.setTypeface(Typeface.DEFAULT_BOLD);
+                }
 
-                if (scrollLyrics != null) {
-                    scrollLyrics.post(new Runnable() {
+                if (scrollLyricsLand != null && curRow.viewLand != null) {
+                    scrollLyricsLand.post(new Runnable() {
                         @Override
                         public void run() {
-                            int scrollY = curRow.view.getTop() - (scrollLyrics.getHeight() / 2) + (curRow.view.getHeight() / 2);
-                            scrollLyrics.smoothScrollTo(0, Math.max(0, scrollY));
+                            int scrollY = curRow.viewLand.getTop() - (scrollLyricsLand.getHeight() / 2) + (curRow.viewLand.getHeight() / 2);
+                            scrollLyricsLand.smoothScrollTo(0, Math.max(0, scrollY));
+                        }
+                    });
+                }
+                if (scrollLyricsPort != null && curRow.viewPort != null) {
+                    scrollLyricsPort.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            int scrollY = curRow.viewPort.getTop() - (scrollLyricsPort.getHeight() / 2) + (curRow.viewPort.getHeight() / 2);
+                            scrollLyricsPort.smoothScrollTo(0, Math.max(0, scrollY));
                         }
                     });
                 }
@@ -1314,17 +1399,36 @@ public class MainActivity extends Activity {
                     conn.disconnect();
 
                     if (bitmap != null) {
+                        final Bitmap circular = getCircularBitmap(bitmap, 240);
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
                                 ivBottomCover.setImageBitmap(bitmap);
-                                if (ivVinylCircularCover != null) ivVinylCircularCover.setImageBitmap(bitmap);
+                                if (ivVinylCircularCoverLand != null) ivVinylCircularCoverLand.setImageBitmap(circular);
+                                if (ivVinylCircularCoverPort != null) ivVinylCircularCoverPort.setImageBitmap(circular);
                             }
                         });
                     }
                 } catch (Throwable ignored) {}
             }
         }).start();
+    }
+
+    private Bitmap getCircularBitmap(Bitmap bitmap, int targetSize) {
+        if (bitmap == null || bitmap.isRecycled()) return null;
+        Bitmap output = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(output);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        float r = targetSize / 2f;
+        canvas.drawCircle(r, r, r, paint);
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        int srcW = bitmap.getWidth();
+        int srcH = bitmap.getHeight();
+        int minEdge = Math.min(srcW, srcH);
+        Rect srcRect = new Rect((srcW - minEdge) / 2, (srcH - minEdge) / 2, (srcW + minEdge) / 2, (srcH + minEdge) / 2);
+        Rect dstRect = new Rect(0, 0, targetSize, targetSize);
+        canvas.drawBitmap(bitmap, srcRect, dstRect, paint);
+        return output;
     }
 
     private String getAuthParams() {
@@ -1433,13 +1537,17 @@ public class MainActivity extends Activity {
             queueData.add(m);
         }
         queueAdapter.notifyDataSetChanged();
+        if (detailQueueAdapterLand != null) detailQueueAdapterLand.notifyDataSetChanged();
     }
 
     private void updatePlayPauseIcons(boolean isPlaying) {
         int color = isDarkTheme ? 0xFF10141A : 0xFFFFFFFF;
         btnPlayPause.setImageDrawable(isPlaying ? MediaIconHelper.createPauseIcon(this, 20, color) : MediaIconHelper.createPlayIcon(this, 22, color));
-        if (btnDetailPlayPause != null) {
-            btnDetailPlayPause.setImageDrawable(isPlaying ? MediaIconHelper.createPauseIcon(this, 26, color) : MediaIconHelper.createPlayIcon(this, 28, color));
+        if (btnDetailPlayPauseLand != null) {
+            btnDetailPlayPauseLand.setImageDrawable(isPlaying ? MediaIconHelper.createPauseIcon(this, 26, color) : MediaIconHelper.createPlayIcon(this, 28, color));
+        }
+        if (btnDetailPlayPausePort != null) {
+            btnDetailPlayPausePort.setImageDrawable(isPlaying ? MediaIconHelper.createPauseIcon(this, 26, color) : MediaIconHelper.createPlayIcon(this, 28, color));
         }
     }
 
@@ -1449,7 +1557,8 @@ public class MainActivity extends Activity {
                 : (mode == MusicService.MODE_SINGLE) ? MediaIconHelper.createRepeatOneIcon(this, 18, color)
                 : MediaIconHelper.createRepeatIcon(this, 18, color);
         btnMode.setImageDrawable(d);
-        if (btnDetailMode != null) btnDetailMode.setImageDrawable(d);
+        if (btnDetailModeLand != null) btnDetailModeLand.setImageDrawable(d);
+        if (btnDetailModePort != null) btnDetailModePort.setImageDrawable(d);
     }
 
     private void setupControlIcons() {
@@ -1464,9 +1573,13 @@ public class MainActivity extends Activity {
         btnExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, 0xFFFF6B6B));
         btnTopSearch.setImageDrawable(MediaIconHelper.createSearchIcon(this, 20, accent));
 
-        if (btnDetailPrev != null) btnDetailPrev.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 22, navColor));
-        if (btnDetailNext != null) btnDetailNext.setImageDrawable(MediaIconHelper.createNextIcon(this, 22, navColor));
-        if (btnDetailEq != null) btnDetailEq.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 20, accent));
+        if (btnDetailPrevLand != null) btnDetailPrevLand.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 22, navColor));
+        if (btnDetailNextLand != null) btnDetailNextLand.setImageDrawable(MediaIconHelper.createNextIcon(this, 22, navColor));
+        if (btnDetailEqLand != null) btnDetailEqLand.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 20, accent));
+
+        if (btnDetailPrevPort != null) btnDetailPrevPort.setImageDrawable(MediaIconHelper.createPreviousIcon(this, 22, navColor));
+        if (btnDetailNextPort != null) btnDetailNextPort.setImageDrawable(MediaIconHelper.createNextIcon(this, 22, navColor));
+        if (btnDetailEqPort != null) btnDetailEqPort.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 20, accent));
     }
 
     private String formatTime(int ms) {
@@ -1476,7 +1589,25 @@ public class MainActivity extends Activity {
     }
 
     private String getSavedBitrate() { return prefs.getString("default_bitrate", "auto"); }
-    private String getBitrateDisplay(String v, String orig) { return (orig != null && orig.length() > 0) ? orig : "标准音质"; }
+
+    private String getBitrateDisplay(String val, String originalQuality) {
+        if ("auto".equalsIgnoreCase(val)) {
+            if (originalQuality != null && originalQuality.length() > 0) return originalQuality;
+            return "原曲音质";
+        }
+        if ("128".equalsIgnoreCase(val)) return "128K MP3";
+        if ("192".equalsIgnoreCase(val)) return "192K MP3";
+        if ("320".equalsIgnoreCase(val)) return "320K MP3";
+        if ("flac".equalsIgnoreCase(val)) return "FLAC 无损";
+        return (originalQuality != null && originalQuality.length() > 0) ? originalQuality : "原曲音质";
+    }
+
+    private int getBitrateIndex(String val) {
+        for (int i = 0; i < BITRATE_VALUES.length; i++) {
+            if (BITRATE_VALUES[i].equalsIgnoreCase(val)) return i;
+        }
+        return 0;
+    }
 
     private void loadSavedConfig() {
         etServer.setText(prefs.getString("server", "http://192.168.1.100:4533"));
@@ -1495,7 +1626,29 @@ public class MainActivity extends Activity {
     private void setupBitrateSpinners() {
         BitrateSpinnerAdapter adapterConfig = new BitrateSpinnerAdapter(BITRATE_LABELS);
         spinnerConfigBitrate.setAdapter(adapterConfig);
-        if (spinnerDetailBitrate != null) spinnerDetailBitrate.setAdapter(new BitrateSpinnerAdapter(BITRATE_LABELS));
+        if (spinnerDetailBitrateLand != null) spinnerDetailBitrateLand.setAdapter(new BitrateSpinnerAdapter(BITRATE_LABELS));
+        if (spinnerDetailBitratePort != null) spinnerDetailBitratePort.setAdapter(new BitrateSpinnerAdapter(BITRATE_LABELS));
+
+        int initIdx = getBitrateIndex(getSavedBitrate());
+        spinnerConfigBitrate.setSelection(initIdx);
+        if (spinnerDetailBitrateLand != null) spinnerDetailBitrateLand.setSelection(initIdx);
+        if (spinnerDetailBitratePort != null) spinnerDetailBitratePort.setSelection(initIdx);
+
+        AdapterView.OnItemSelectedListener listener = new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (isSpinnersInitializing) return;
+                String newBitrate = BITRATE_VALUES[position];
+                prefs.edit().putString("default_bitrate", newBitrate).commit();
+                Toast.makeText(MainActivity.this, "码率已设为: " + BITRATE_LABELS[position], Toast.LENGTH_SHORT).show();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        };
+        spinnerConfigBitrate.setOnItemSelectedListener(listener);
+
+        new Handler().postDelayed(new Runnable() {
+            @Override public void run() { isSpinnersInitializing = false; }
+        }, 500);
     }
 
     private void setupSearchTypeSpinner() {
@@ -1614,19 +1767,22 @@ public class MainActivity extends Activity {
         boolean fav = isFav(targetId);
         String symbol = fav ? "♥" : "♡";
         if (btnBottomFav != null) btnBottomFav.setText(symbol);
-        if (btnDetailFav != null) btnDetailFav.setText(symbol);
+        if (btnDetailFavLand != null) btnDetailFavLand.setText(symbol);
+        if (btnDetailFavPort != null) btnDetailFavPort.setText(symbol);
     }
 
     private void loadLyrics(final String songId, final String artist, final String title) {
-        if (layoutLyricsContainer == null) return;
+        if (layoutLyricsContainerLand == null && layoutLyricsContainerPort == null) return;
         lyricRows.clear();
         currentLyricIndex = -1;
-        layoutLyricsContainer.removeAllViews();
+        if (layoutLyricsContainerLand != null) layoutLyricsContainerLand.removeAllViews();
+        if (layoutLyricsContainerPort != null) layoutLyricsContainerPort.removeAllViews();
+
         TextView loadingTv = new TextView(this);
         loadingTv.setText("歌词加载中...");
         loadingTv.setTextColor(0xFF888888);
         loadingTv.setGravity(Gravity.CENTER);
-        layoutLyricsContainer.addView(loadingTv);
+        if (layoutLyricsContainerLand != null) layoutLyricsContainerLand.addView(loadingTv);
 
         new Thread(new Runnable() {
             @Override
@@ -1653,12 +1809,7 @@ public class MainActivity extends Activity {
                         if (finalLyrics != null && finalLyrics.trim().length() > 0) {
                             buildLyricsView(finalLyrics);
                         } else {
-                            layoutLyricsContainer.removeAllViews();
-                            TextView tv = new TextView(MainActivity.this);
-                            tv.setText("未找到匹配歌词");
-                            tv.setTextColor(0xFF888888);
-                            tv.setGravity(Gravity.CENTER);
-                            layoutLyricsContainer.addView(tv);
+                            showSimpleLyric("未找到匹配歌词");
                         }
                     }
                 });
@@ -1682,8 +1833,30 @@ public class MainActivity extends Activity {
         return null;
     }
 
+    private void showSimpleLyric(String msg) {
+        if (layoutLyricsContainerLand != null) {
+            layoutLyricsContainerLand.removeAllViews();
+            TextView tv = new TextView(this);
+            tv.setText(msg);
+            tv.setTextColor(0xFF888888);
+            tv.setTextSize(lyricBaseFontSize);
+            tv.setGravity(Gravity.CENTER);
+            layoutLyricsContainerLand.addView(tv);
+        }
+        if (layoutLyricsContainerPort != null) {
+            layoutLyricsContainerPort.removeAllViews();
+            TextView tv = new TextView(this);
+            tv.setText(msg);
+            tv.setTextColor(0xFF888888);
+            tv.setTextSize(lyricBaseFontSize);
+            tv.setGravity(Gravity.CENTER);
+            layoutLyricsContainerPort.addView(tv);
+        }
+    }
+
     private void buildLyricsView(String rawText) {
-        layoutLyricsContainer.removeAllViews();
+        if (layoutLyricsContainerLand != null) layoutLyricsContainerLand.removeAllViews();
+        if (layoutLyricsContainerPort != null) layoutLyricsContainerPort.removeAllViews();
         lyricRows.clear();
         currentLyricIndex = -1;
 
@@ -1706,13 +1879,24 @@ public class MainActivity extends Activity {
         if (lyricRows.isEmpty()) {
             for (String raw : lines) {
                 if (raw.trim().length() == 0) continue;
-                TextView tv = new TextView(this);
-                tv.setText(raw.trim());
-                tv.setTextColor(0xFFCCCCCC);
-                tv.setTextSize(lyricBaseFontSize);
-                tv.setGravity(Gravity.CENTER);
-                tv.setPadding(0, 10, 0, 10);
-                layoutLyricsContainer.addView(tv);
+                if (layoutLyricsContainerLand != null) {
+                    TextView tv = new TextView(this);
+                    tv.setText(raw.trim());
+                    tv.setTextColor(0xFFCCCCCC);
+                    tv.setTextSize(lyricBaseFontSize);
+                    tv.setGravity(Gravity.CENTER);
+                    tv.setPadding(0, 10, 0, 10);
+                    layoutLyricsContainerLand.addView(tv);
+                }
+                if (layoutLyricsContainerPort != null) {
+                    TextView tv = new TextView(this);
+                    tv.setText(raw.trim());
+                    tv.setTextColor(0xFFCCCCCC);
+                    tv.setTextSize(lyricBaseFontSize);
+                    tv.setGravity(Gravity.CENTER);
+                    tv.setPadding(0, 6, 0, 6);
+                    layoutLyricsContainerPort.addView(tv);
+                }
             }
             return;
         }
@@ -1725,14 +1909,26 @@ public class MainActivity extends Activity {
         });
 
         for (LyricRow row : lyricRows) {
-            TextView tv = new TextView(this);
-            tv.setText(row.text);
-            tv.setTextColor(0xFF777777);
-            tv.setTextSize(lyricBaseFontSize);
-            tv.setGravity(Gravity.CENTER);
-            tv.setPadding(0, 8, 0, 8);
-            row.view = tv;
-            layoutLyricsContainer.addView(tv);
+            if (layoutLyricsContainerLand != null) {
+                TextView tvLand = new TextView(this);
+                tvLand.setText(row.text);
+                tvLand.setTextColor(0xFF777777);
+                tvLand.setTextSize(lyricBaseFontSize);
+                tvLand.setGravity(Gravity.CENTER);
+                tvLand.setPadding(0, 10, 0, 10);
+                row.viewLand = tvLand;
+                layoutLyricsContainerLand.addView(tvLand);
+            }
+            if (layoutLyricsContainerPort != null) {
+                TextView tvPort = new TextView(this);
+                tvPort.setText(row.text);
+                tvPort.setTextColor(0xFF777777);
+                tvPort.setTextSize(lyricBaseFontSize);
+                tvPort.setGravity(Gravity.CENTER);
+                tvPort.setPadding(0, 6, 0, 6);
+                row.viewPort = tvPort;
+                layoutLyricsContainerPort.addView(tvPort);
+            }
         }
     }
 
@@ -1748,7 +1944,29 @@ public class MainActivity extends Activity {
         return -1;
     }
 
+    // 核心修复：加载歌单内容 (支持收藏、精选、车载及所有服务器歌单)
     private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
+        if ("fav_entry".equals(playlistId)) {
+            fetchServerFavoriteSongs();
+            return;
+        }
+        if ("local_featured".equals(playlistId)) {
+            btnBack.setVisibility(View.VISIBLE);
+            tvListTitle.setText("精选歌单");
+            currentItems.clear();
+            currentItems.addAll(featuredSongs);
+            adapter.notifyDataSetChanged();
+            return;
+        }
+        if ("local_car".equals(playlistId)) {
+            btnBack.setVisibility(View.VISIBLE);
+            tvListTitle.setText("车载歌单");
+            currentItems.clear();
+            currentItems.addAll(carSongs);
+            adapter.notifyDataSetChanged();
+            return;
+        }
+
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -1767,12 +1985,10 @@ public class MainActivity extends Activity {
                                 if (entryObj instanceof JSONArray) {
                                     JSONArray arr = (JSONArray) entryObj;
                                     for (int i = 0; i < arr.length(); i++) {
-                                        JSONObject s = arr.getJSONObject(i);
-                                        currentItems.add(new DisplayEntry(
-                                                s.getString("id"), s.getString("title"), s.optString("artist", "未知歌手"),
-                                                "", s.optString("coverArt", null), "标准音质", true
-                                        ));
+                                        addSongRow(arr.getJSONObject(i));
                                     }
+                                } else if (entryObj instanceof JSONObject) {
+                                    addSongRow((JSONObject) entryObj);
                                 }
                             }
                             btnBack.setVisibility(View.VISIBLE);
@@ -1785,15 +2001,172 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private void fetchAlbumSongs(final String albumId, final String albumName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getAlbum.view?id=" + albumId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject album = root.getJSONObject("album");
+                            currentItems.clear();
+
+                            if (album.has("song")) {
+                                Object songObj = album.get("song");
+                                if (songObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) songObj;
+                                    for (int i = 0; i < arr.length(); i++) addSongRow(arr.getJSONObject(i));
+                                } else if (songObj instanceof JSONObject) {
+                                    addSongRow((JSONObject) songObj);
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText("专辑: " + albumName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception ignored) {}
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void fetchArtistAlbums(final String artistId, final String artistName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getArtist.view?id=" + artistId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject artistObj = root.getJSONObject("artist");
+                            currentItems.clear();
+
+                            if (artistObj.has("album")) {
+                                Object albObj = artistObj.get("album");
+                                if (albObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) albObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        JSONObject a = arr.getJSONObject(i);
+                                        currentItems.add(new DisplayEntry("album_" + a.getString("id"), a.getString("name"), artistName, "专辑", a.optString("coverArt", null), "专辑", false));
+                                    }
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText("歌手: " + artistName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception ignored) {}
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void fetchServerFavoriteSongs() {
+        btnBack.setVisibility(View.VISIBLE);
+        tvListTitle.setText("我的收藏 (云端同步)");
+        currentItems.clear();
+        adapter.notifyDataSetChanged();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String jsonStr = requestApi("getStarred2.view?" + getAuthParams());
+                if (jsonStr == null || !jsonStr.contains("\"song\"")) {
+                    jsonStr = requestApi("getStarred.view?" + getAuthParams());
+                }
+                final String finalJson = jsonStr;
+
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (finalJson == null) return;
+                        try {
+                            JSONObject root = new JSONObject(finalJson).getJSONObject("subsonic-response");
+                            JSONObject starred = root.optJSONObject("starred2");
+                            if (starred == null) starred = root.optJSONObject("starred");
+                            currentItems.clear();
+                            favSongIds.clear();
+
+                            if (starred != null && starred.has("song")) {
+                                Object songObj = starred.get("song");
+                                if (songObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) songObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        JSONObject s = arr.getJSONObject(i);
+                                        addSongRow(s);
+                                        favSongIds.add(s.getString("id"));
+                                    }
+                                } else if (songObj instanceof JSONObject) {
+                                    JSONObject s = (JSONObject) songObj;
+                                    addSongRow(s);
+                                    favSongIds.add(s.getString("id"));
+                                }
+                            }
+                            saveFavSet();
+                            adapter.notifyDataSetChanged();
+                            updateFavButtonState(null);
+                        } catch (Exception ignored) {}
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void addSongRow(JSONObject s) throws Exception {
+        String title = s.getString("title");
+        String artist = s.optString("artist", "未知艺术家");
+        String coverArt = s.optString("coverArt", null);
+
+        int bitRate = s.optInt("bitRate", 0);
+        String suffix = s.optString("suffix", "").toUpperCase();
+        String quality;
+        if (suffix.contains("FLAC") || suffix.contains("WAV") || suffix.contains("APE")) {
+            quality = "FLAC 无损";
+        } else if (bitRate > 0) {
+            quality = bitRate + "K " + (suffix.length() > 0 ? suffix : "MP3");
+        } else if (suffix.length() > 0) {
+            quality = suffix;
+        } else {
+            quality = "320K MP3";
+        }
+
+        currentItems.add(new DisplayEntry(s.getString("id"), title, artist, artist + " [" + quality + "]", coverArt, quality, true));
+    }
+
+    // 核心修复：完整串流直链生成器 (支持转码与无损直推)
     private String buildStreamUrl(String songId) {
+        return buildStreamUrl(songId, getSavedBitrate());
+    }
+
+    private String buildStreamUrl(String songId, String bitrate) {
         String base = prefs.getString("server", "");
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         String u = prefs.getString("user", "");
         String p = prefs.getString("pass", "");
+
+        String bitrateParam = "";
+        if ("128".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=128";
+        } else if ("192".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=192";
+        } else if ("320".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=320";
+        } else if ("flac".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&format=flac";
+        }
+
         try {
-            return base + "/rest/stream.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&u=" + URLEncoder.encode(u, "UTF-8") + "&p=" + URLEncoder.encode(p, "UTF-8") + "&v=1.12.0&c=RetroSubsonic";
+            String encodedId = URLEncoder.encode(songId, "UTF-8");
+            return base + "/rest/stream.view?id=" + encodedId + "&u=" + URLEncoder.encode(u, "UTF-8") + "&p=" + URLEncoder.encode(p, "UTF-8") + "&v=1.12.0&c=RetroSubsonic" + bitrateParam;
         } catch (Exception e) {
-            return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic";
+            return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic" + bitrateParam;
         }
     }
 
