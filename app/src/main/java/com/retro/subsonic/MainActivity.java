@@ -15,6 +15,7 @@ import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Environment;
@@ -90,7 +91,8 @@ public class MainActivity extends Activity {
     private ImageView btnPrev, btnPlayPause, btnNext;
     private ImageView btnDetailPrev, btnDetailPlayPause, btnDetailNext;
     private ImageView btnExitApp, btnDetailExitApp, btnTopSearch;
-    private Button btnToggleQueue, btnCloseQueue, btnOpenDetail;
+    private ImageView ivBottomCover; // 底栏微圆角封面图（点击进详情页）
+    private Button btnToggleQueue, btnCloseQueue;
     private Button btnBottomFav, btnDetailFav, btnDetailDownload;
     private Button btnLyricDec, btnLyricInc;
     private LinearLayout layoutConfigPanel, layoutSearchBar, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
@@ -118,7 +120,7 @@ public class MainActivity extends Activity {
     private ImageView ivVinylCircularCover, ivSquareCover;
     private TonearmView viewTonearm;
     private LinearLayout layoutCoverContainer, layoutDetailSeekBox, layoutDetailControls, layoutDetailBottomBlank;
-    private TextView tvDetailTitle, tvDetailArtist, tvDetailQuality, tvDetailTime;
+    private TextView tvDetailTitle, tvDetailArtist, tvDetailQuality, tvDetailBuffer, tvDetailTime;
     private SeekBar detailSeekBar;
     private LinearLayout layoutDetailLyricsView, layoutDetailQueueView;
     private ListView lvDetailQueue;
@@ -126,6 +128,7 @@ public class MainActivity extends Activity {
     private boolean isVinylDisplayMode = true;
     private Bitmap currentRawCoverBitmap;
     private Bitmap currentCircularCoverBitmap;
+    private Bitmap currentBottomCoverBitmap;
 
     private RotateAnimation vinylRotateAnim;
     private boolean isCurrentSongPlaying = false;
@@ -212,26 +215,33 @@ public class MainActivity extends Activity {
                 String quality = intent.getStringExtra("quality");
 
                 if (title != null) {
+                    // 歌曲标题恢复纯净展示
+                    tvDetailTitle.setText(title);
+
+                    // 缓冲数值移到码率右侧显示
                     if (retryCount > 0) {
                         tvCurrentSong.setText("重试连接中 (" + retryCount + "/" + maxRetries + "): " + title);
-                        tvDetailTitle.setText("重试中 (" + retryCount + "/" + maxRetries + ")...");
+                        tvDetailBuffer.setText("(重试中 " + retryCount + "/" + maxRetries + ")");
+                        tvDetailBuffer.setVisibility(View.VISIBLE);
                     } else if (isPlaying) {
                         if (isBuffering && bufferPercent < 100) {
                             tvCurrentSong.setText(title + " - " + artist + " (缓冲 " + bufferPercent + "%)");
-                            tvDetailTitle.setText(title + " (缓冲 " + bufferPercent + "%)");
+                            tvDetailBuffer.setText("(缓冲 " + bufferPercent + "%)");
+                            tvDetailBuffer.setVisibility(View.VISIBLE);
                         } else {
                             tvCurrentSong.setText(title + " - " + artist);
-                            tvDetailTitle.setText(title);
+                            tvDetailBuffer.setVisibility(View.GONE);
                         }
                     } else if (isBuffering) {
                         tvCurrentSong.setText("正在解析缓冲 (" + bufferPercent + "%): " + title);
-                        tvDetailTitle.setText("正在起播 (" + bufferPercent + "%)...");
+                        tvDetailBuffer.setText("(起播中 " + bufferPercent + "%)");
+                        tvDetailBuffer.setVisibility(View.VISIBLE);
                     } else {
                         tvCurrentSong.setText(title + " - " + artist);
-                        tvDetailTitle.setText(title);
+                        tvDetailBuffer.setVisibility(View.GONE);
                     }
-                    tvDetailArtist.setText(artist);
 
+                    tvDetailArtist.setText(artist);
                     String currentBitrate = getSavedBitrate();
                     tvDetailQuality.setText(getBitrateDisplay(currentBitrate, quality));
 
@@ -955,6 +965,9 @@ public class MainActivity extends Activity {
         btnDetailExitApp = (ImageView) findViewById(R.id.btn_detail_exit_app);
         btnTopSearch = (ImageView) findViewById(R.id.btn_top_search);
 
+        // 核心更新：初始化底栏微圆角封面图
+        ivBottomCover = (ImageView) findViewById(R.id.iv_bottom_cover);
+
         btnOpenEq = (ImageView) findViewById(R.id.btn_open_eq);
         btnDetailEq = (ImageView) findViewById(R.id.btn_detail_eq);
         btnMode = (ImageView) findViewById(R.id.btn_mode);
@@ -969,7 +982,6 @@ public class MainActivity extends Activity {
 
         btnToggleQueue = (Button) findViewById(R.id.btn_toggle_queue);
         btnCloseQueue = (Button) findViewById(R.id.btn_close_queue);
-        btnOpenDetail = (Button) findViewById(R.id.btn_open_detail);
 
         layoutConfigPanel = (LinearLayout) findViewById(R.id.layout_config_panel);
         layoutSearchBar = (LinearLayout) findViewById(R.id.layout_search_bar);
@@ -1008,6 +1020,7 @@ public class MainActivity extends Activity {
         tvDetailTitle = (TextView) findViewById(R.id.tv_detail_title);
         tvDetailArtist = (TextView) findViewById(R.id.tv_detail_artist);
         tvDetailQuality = (TextView) findViewById(R.id.tv_detail_quality);
+        tvDetailBuffer = (TextView) findViewById(R.id.tv_detail_buffer); // 码率右侧缓冲提示
         tvDetailTime = (TextView) findViewById(R.id.tv_detail_time);
         detailSeekBar = (SeekBar) findViewById(R.id.detail_seek_bar);
 
@@ -1391,7 +1404,6 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    // 核心强化：支持将歌曲同步添加到服务器真实歌单
     private void showAddToPlaylistDialog(final DisplayEntry entry) {
         final ArrayList<String> names = new ArrayList<String>();
         final ArrayList<String> ids = new ArrayList<String>();
@@ -1405,7 +1417,6 @@ public class MainActivity extends Activity {
         names.add("🚗 车载歌单 (本地定制)");
         ids.add("LOCAL_CAR");
 
-        // 动态接入所有从服务器同步下来的自定义歌单
         for (DisplayEntry pl : rawServerUserPlaylists) {
             names.add("📁 " + pl.title + " (云端歌单)");
             ids.add(pl.id);
@@ -1424,7 +1435,6 @@ public class MainActivity extends Activity {
                         } else if ("LOCAL_CAR".equals(targetId)) {
                             addSongToLocalList(carSongs, entry, "车载歌单");
                         } else {
-                            // 真正同步向 Subsonic 服务器歌单添加歌曲
                             addSongToServerPlaylist(targetId, entry.id, names.get(which));
                         }
                     }
@@ -1432,7 +1442,6 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    // 调用 Subsonic API 真正向服务端歌单添加歌曲
     private void addSongToServerPlaylist(final String playlistId, final String songId, final String playlistDisplayName) {
         Toast.makeText(this, "正在同步添加至云端歌单...", Toast.LENGTH_SHORT).show();
         new Thread(new Runnable() {
@@ -1481,7 +1490,6 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "已加入【" + listName + "】", Toast.LENGTH_SHORT).show();
     }
 
-    // 核心强化：移出歌曲时同时同步从服务端歌单删除
     private void removeFromCurrentView(final int position, final DisplayEntry entry) {
         if (tvListTitle.getText().toString().contains("我的收藏")) {
             serverStarSong(entry.id, false);
@@ -1512,7 +1520,6 @@ public class MainActivity extends Activity {
             return;
         }
 
-        // 若当前在服务端歌单内，调用 updatePlaylist.view?songIndexToRemove=... 真正移出
         if (currentActivePlaylistId != null && !currentActivePlaylistId.startsWith("local_")) {
             final int songIndexToRemove = position;
             new Thread(new Runnable() {
@@ -1591,6 +1598,29 @@ public class MainActivity extends Activity {
 
         float r = targetSize / 2f;
         canvas.drawCircle(r, r, r, paint);
+
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        int srcW = bitmap.getWidth();
+        int srcH = bitmap.getHeight();
+        int minEdge = Math.min(srcW, srcH);
+        Rect srcRect = new Rect((srcW - minEdge) / 2, (srcH - minEdge) / 2, (srcW + minEdge) / 2, (srcH + minEdge) / 2);
+        Rect dstRect = new Rect(0, 0, targetSize, targetSize);
+        canvas.drawBitmap(bitmap, srcRect, dstRect, paint);
+
+        return output;
+    }
+
+    // 核心新增：抗锯齿微圆角矩形封面裁剪
+    private Bitmap getRoundedCornerBitmap(Bitmap bitmap, int targetSize, float cornerRadiusPx) {
+        if (bitmap == null || bitmap.isRecycled()) return null;
+        if (targetSize <= 0) targetSize = 96;
+
+        Bitmap output = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(output);
+
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        RectF rectF = new RectF(0, 0, targetSize, targetSize);
+        canvas.drawRoundRect(rectF, cornerRadiusPx, cornerRadiusPx, paint);
 
         paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
         int srcW = bitmap.getWidth();
@@ -1793,10 +1823,12 @@ public class MainActivity extends Activity {
             public void onClick(View v) { layoutQueuePanel.setVisibility(View.GONE); }
         });
 
-        btnOpenDetail.setOnClickListener(new View.OnClickListener() {
+        // 核心更新：点击底栏微圆角封面图展开播放详情页
+        View.OnClickListener openDetailListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) { layoutDetailOverlay.setVisibility(View.VISIBLE); }
-        });
+        };
+        ivBottomCover.setOnClickListener(openDetailListener);
 
         btnCloseDetail.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1919,6 +1951,7 @@ public class MainActivity extends Activity {
         btnDetailMode.setOnTouchListener(touchFeedbackListener);
         btnOpenEq.setOnTouchListener(touchFeedbackListener);
         btnDetailEq.setOnTouchListener(touchFeedbackListener);
+        ivBottomCover.setOnTouchListener(touchFeedbackListener);
         btnExitApp.setOnTouchListener(touchFeedbackListener);
         btnDetailExitApp.setOnTouchListener(touchFeedbackListener);
         btnTopSearch.setOnTouchListener(touchFeedbackListener);
@@ -2010,6 +2043,7 @@ public class MainActivity extends Activity {
         if (coverId == null || coverId.length() == 0) {
             ivVinylCircularCover.setImageResource(android.R.drawable.ic_menu_report_image);
             ivSquareCover.setImageResource(android.R.drawable.ic_menu_report_image);
+            ivBottomCover.setImageResource(R.drawable.ic_launcher);
             return;
         }
         new Thread(new Runnable() {
@@ -2052,6 +2086,8 @@ public class MainActivity extends Activity {
                         final Bitmap safeDecodedBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, opts);
                         if (safeDecodedBitmap != null) {
                             final Bitmap safeCircularBitmap = getCircularBitmap(safeDecodedBitmap, 240);
+                            float density = getResources().getDisplayMetrics().density;
+                            final Bitmap safeBottomRoundedBitmap = getRoundedCornerBitmap(safeDecodedBitmap, (int) (48 * density), 6 * density);
 
                             runOnUiThread(new Runnable() {
                                 @Override
@@ -2062,12 +2098,17 @@ public class MainActivity extends Activity {
                                     if (currentCircularCoverBitmap != null && !currentCircularCoverBitmap.isRecycled()) {
                                         currentCircularCoverBitmap.recycle();
                                     }
+                                    if (currentBottomCoverBitmap != null && !currentBottomCoverBitmap.isRecycled()) {
+                                        currentBottomCoverBitmap.recycle();
+                                    }
 
                                     currentRawCoverBitmap = safeDecodedBitmap;
                                     currentCircularCoverBitmap = safeCircularBitmap;
+                                    currentBottomCoverBitmap = safeBottomRoundedBitmap;
 
                                     ivVinylCircularCover.setImageBitmap(currentCircularCoverBitmap);
                                     ivSquareCover.setImageBitmap(currentRawCoverBitmap);
+                                    ivBottomCover.setImageBitmap(currentBottomCoverBitmap);
                                 }
                             });
                         }
@@ -2399,13 +2440,11 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 核心强化：剔除服务端的冗余“收藏”歌单，并区分常规与排行榜
     private void categorizePlaylistItem(JSONObject p) throws Exception {
         String name = p.getString("name");
         int count = p.optInt("songCount", 0);
         String id = p.getString("id");
 
-        // 若服务端返回了同名/类似收藏的虚拟歌单，全部过滤，确保只有唯一的官方标星歌单入口
         String nLower = name.trim().toLowerCase();
         if ("我的收藏".equals(name) || "starred".equals(nLower) || "favorites".equals(nLower) || "favourite".equals(nLower)) {
             return;
@@ -2436,7 +2475,6 @@ public class MainActivity extends Activity {
         currentItems.clear();
         listData.clear();
 
-        // 唯一的官方【我的收藏】入口
         currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步服务器标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
         Map<String, String> favRow = new HashMap<String, String>();
         favRow.put("title", "♥  我的收藏");
@@ -2867,6 +2905,10 @@ public class MainActivity extends Activity {
         if (currentCircularCoverBitmap != null && !currentCircularCoverBitmap.isRecycled()) {
             currentCircularCoverBitmap.recycle();
             currentCircularCoverBitmap = null;
+        }
+        if (currentBottomCoverBitmap != null && !currentBottomCoverBitmap.isRecycled()) {
+            currentBottomCoverBitmap.recycle();
+            currentBottomCoverBitmap = null;
         }
     }
 }
