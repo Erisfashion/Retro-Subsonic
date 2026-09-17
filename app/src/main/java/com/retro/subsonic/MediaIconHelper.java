@@ -194,7 +194,7 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 现代设置齿轮图标
+    // 现代设置齿轮图标 (100% 兼容 API 17)
     public static Drawable createSettingsIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -225,7 +225,7 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 主题切换图标（太阳 / 月亮）
+    // 主题切换图标（太阳 / 月亮）- 修复为纯 Path 贝塞尔几何算法，彻底杜绝 API 19+ Path.Op 报错
     public static Drawable createThemeIcon(Context context, int sizeDp, int color, boolean isDark) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -240,33 +240,34 @@ public class MediaIconHelper {
         float cy = sizePx / 2f;
 
         if (isDark) {
-            // 月牙图标 (表示切到浅色/亮色)
-            Path moon = new Path();
+            // 月牙图标：外圆弧 + 二次贝塞尔内弧闭合，100% 兼容 Android 4.2.2
             float r = sizePx * 0.32f;
-            moon.addCircle(cx, cy, r, Path.Direction.CW);
-            Path cutout = new Path();
-            cutout.addCircle(cx - 3.5f * density, cy - 3.5f * density, r, Path.Direction.CW);
-            moon.op(cutout, Path.Op.DIFFERENCE);
+            Path moon = new Path();
+            RectF outerBounds = new RectF(cx - r, cy - r, cx + r, cy + r);
+            moon.arcTo(outerBounds, -90, 180);
+            moon.quadTo(cx + r * 0.22f, cy, cx, cy - r);
+            moon.close();
             canvas.drawPath(moon, paint);
         } else {
-            // 太阳图标 (表示切到深色)
+            // 太阳图标：中心圆形 + 8条辐射光芒
             float r = sizePx * 0.20f;
             canvas.drawCircle(cx, cy, r, paint);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(1.8f * density);
+            paint.setStrokeCap(Paint.Cap.ROUND);
             for (int i = 0; i < 8; i++) {
                 double a = Math.toRadians(i * 45);
                 float x1 = cx + (float) ((r + 2.5f * density) * Math.cos(a));
                 float y1 = cy + (float) ((r + 2.5f * density) * Math.sin(a));
-                float x2 = cx + (float) ((r + 6.0f * density) * Math.cos(a));
-                float y2 = cy + (float) ((r + 6.0f * density) * Math.sin(a));
+                float x2 = cx + (float) ((r + 5.5f * density) * Math.cos(a));
+                float y2 = cy + (float) ((r + 5.5f * density) * Math.sin(a));
                 canvas.drawLine(x1, y1, x2, y2, paint);
             }
         }
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 垃圾桶清空图标
+    // 垃圾桶清空图标 (100% 兼容 API 17)
     public static Drawable createTrashIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -301,7 +302,7 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 歌单栏竖三点菜单图标
+    // 歌单栏竖三点菜单图标 (100% 兼容 API 17)
     public static Drawable createMoreVertIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
