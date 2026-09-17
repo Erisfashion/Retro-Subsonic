@@ -2223,4 +2223,97 @@ public class MainActivity extends Activity {
         if (btnDetailFavLand != null) btnDetailFavLand.setText(symbol);
         if (btnDetailFavPort != null) btnDetailFavPort.setText(symbol);
     }
+    // ================== 歌词解析与显示辅助方法 ==================
+
+    /**
+     * 解析服务器/第三方接口返回的歌词 JSON 文本
+     */
+    private String parseLyricsFromJson(String json) {
+        if (json == null || json.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            org.json.JSONObject obj = new org.json.JSONObject(json);
+            // 兼容标准网易云/通用格式: {"lrc": {"lyric": "[00:01.00]..."}}
+            if (obj.has("lrc")) {
+                org.json.JSONObject lrcObj = obj.optJSONObject("lrc");
+                if (lrcObj != null && lrcObj.has("lyric")) {
+                    return lrcObj.optString("lyric");
+                }
+                return obj.optString("lrc");
+            }
+            // 兼容格式: {"lyric": "..."}
+            if (obj.has("lyric")) {
+                return obj.optString("lyric");
+            }
+            // 兼容格式: {"lyrics": "..."} 或 {"lyrics": {"content": "..."}}
+            if (obj.has("lyrics")) {
+                Object lyricsObj = obj.get("lyrics");
+                if (lyricsObj instanceof org.json.JSONObject) {
+                    return ((org.json.JSONObject) lyricsObj).optString("content", lyricsObj.toString());
+                }
+                return lyricsObj.toString();
+            }
+            // 兼容 Subsonic 原生 REST 响应: {"subsonic-response": {"lyrics": {"content": "..."}}}
+            if (obj.has("subsonic-response")) {
+                org.json.JSONObject sub = obj.optJSONObject("subsonic-response");
+                if (sub != null && sub.has("lyrics")) {
+                    org.json.JSONObject lyr = sub.optJSONObject("lyrics");
+                    if (lyr != null && lyr.has("content")) {
+                        return lyr.optString("content");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 如果返回内容本身已经是纯文本/LRC，直接返回原字符串
+            if (json.contains("[") || json.contains("\n")) {
+                return json;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 渲染歌词文本至播放界面
+     */
+    private void buildLyricsView(final String lyrics) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (lyrics == null || lyrics.trim().isEmpty()) {
+                    showSimpleLyric("未找到匹配歌词");
+                    return;
+                }
+                showSimpleLyric(lyrics);
+            }
+        });
+    }
+
+    /**
+     * 显示状态提示或简易单行/多行歌词文本
+     */
+    private void showSimpleLyric(final String text) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                // 动态匹配界面中的歌词控件 ID，避免因控件 ID 不一致造成 NPE
+                int[] possibleIds = {
+                    getResources().getIdentifier("tv_lyrics", "id", getPackageName()),
+                    getResources().getIdentifier("tv_lyric", "id", getPackageName()),
+                    getResources().getIdentifier("lyrics_text", "id", getPackageName()),
+                    getResources().getIdentifier("lyric_view", "id", getPackageName()),
+                    getResources().getIdentifier("tv_subtitle", "id", getPackageName())
+                };
+                for (int id : possibleIds) {
+                    if (id != 0) {
+                        android.view.View view = findViewById(id);
+                        if (view instanceof android.widget.TextView) {
+                            ((android.widget.TextView) view).setText(text);
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
