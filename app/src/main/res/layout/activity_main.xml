@@ -42,7 +42,6 @@
                         android:textSize="17sp"
                         android:textStyle="bold" />
 
-                    <!-- 主题切换按钮 (Subsonic 右侧) -->
                     <ImageView
                         android:id="@+id/btn_theme_toggle"
                         android:layout_width="30dp"
@@ -54,7 +53,6 @@
                         android:focusable="true" />
                 </LinearLayout>
 
-                <!-- 版本号小字移动到 Subsonic 下方 -->
                 <TextView
                     android:id="@+id/tv_app_version"
                     android:layout_width="wrap_content"
@@ -65,7 +63,6 @@
                     android:layout_marginTop="1dp" />
             </LinearLayout>
 
-            <!-- 首页顶部居中：放大镜搜索图标 -->
             <ImageView
                 android:id="@+id/btn_top_search"
                 android:layout_width="38dp"
@@ -76,7 +73,6 @@
                 android:clickable="true"
                 android:focusable="true" />
 
-            <!-- 顶栏右侧：设置图标与关闭软件图标 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -106,7 +102,7 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- 可折叠服务器配置卡片 (点击设置图标展开/收起) -->
+        <!-- 可折叠服务器配置面板 -->
         <LinearLayout
             android:id="@+id/layout_config_panel"
             android:layout_width="match_parent"
@@ -203,7 +199,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 导航选项卡：我的歌单 与 排行榜 -->
+        <!-- 导航选项卡 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="38dp"
@@ -284,7 +280,6 @@
                     android:dividerHeight="1dp" />
             </LinearLayout>
 
-            <!-- 首页弹出的当前播放队列悬浮抽屉 -->
             <LinearLayout
                 android:id="@+id/layout_queue_panel"
                 android:layout_width="300dp"
@@ -336,7 +331,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 底部常驻迷你播放器条 (左侧 50dp 圆角封面) -->
+        <!-- 底部常驻迷你播放器条 -->
         <LinearLayout
             android:id="@+id/layout_bottom_player"
             android:layout_width="match_parent"
@@ -502,7 +497,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 第二层：全新独立全屏搜索单页 -->
+    <!-- 第二层：独立搜索单页 (输入框高对比度适配) -->
     <LinearLayout
         android:id="@+id/layout_search_page"
         android:layout_width="match_parent"
@@ -540,7 +535,6 @@
                 android:paddingRight="8dp"
                 android:layout_marginLeft="6dp" />
 
-            <!-- 搜索框背景设为圆角卡片，浅色模式动态改变文字颜色 -->
             <EditText
                 android:id="@+id/et_search_keyword"
                 android:layout_width="0dp"
@@ -652,7 +646,7 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 顶栏：收起、下载与关闭软件 -->
+        <!-- 详情顶栏 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
@@ -741,7 +735,7 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- ==================== 横屏模式：经典精致双栏排布 (维持原版排版完全不变) ==================== -->
+        <!-- ==================== 横屏模式：原版经典双栏排布 (排版不变) ==================== -->
         <LinearLayout
             android:id="@+id/layout_detail_landscape"
             android:layout_width="match_parent"
@@ -751,9 +745,7 @@
             android:layout_marginTop="8dp"
             android:visibility="visible">
 
-            <!-- 左栏：黑胶、歌曲信息与控制排 -->
             <LinearLayout
-                android:id="@+id/layout_cover_container_land"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
@@ -768,7 +760,6 @@
                     android:layout_weight="0.6" />
 
                 <FrameLayout
-                    android:id="@+id/layout_vinyl_container_land"
                     android:layout_width="260dp"
                     android:layout_height="280dp">
 
@@ -794,7 +785,6 @@
                         android:layout_height="match_parent" />
                 </FrameLayout>
 
-                <!-- 歌曲标题与红心收藏 -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -834,7 +824,7 @@
                     android:layout_marginTop="2dp"
                     android:singleLine="true" />
 
-                <!-- 码率调节 + 音质标签 + 缓冲显示 (缓冲数值放置在码率标签右侧) -->
+                <!-- 缓冲数值位于码率标签右侧 -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -903,7 +893,7 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 5 键对称控制排 -->
+                <!-- 5 键对称控制坞 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -1000,7 +990,6 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 右栏：全高歌词 / 播放队列 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
@@ -1106,7 +1095,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- ==================== 竖屏模式：从上到下全屏流式布局 (大黑胶 -> 信息 -> 3行歌词 -> 控制排) ==================== -->
+        <!-- ==================== 竖屏模式：全屏流式单列排布 ==================== -->
         <LinearLayout
             android:id="@+id/layout_detail_portrait"
             android:layout_width="match_parent"
@@ -1119,7 +1108,6 @@
 
             <!-- 1. 顶部放大尺寸黑胶 (270dp) -->
             <FrameLayout
-                android:id="@+id/layout_vinyl_container_port"
                 android:layout_width="270dp"
                 android:layout_height="270dp"
                 android:layout_marginTop="4dp">
@@ -1186,7 +1174,7 @@
                 android:layout_marginTop="2dp"
                 android:singleLine="true" />
 
-            <!-- 码率调节 + 音质标签 + 缓冲显示 (缓冲位于码率右侧) -->
+            <!-- 码率调节 + 音质标签 + 缓冲显示 (缓冲数值位于码率标签右侧) -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -1333,7 +1321,7 @@
                     android:focusable="true" />
             </LinearLayout>
 
-            <!-- 竖屏底部空白处：点击在屏幕右侧滑出播放列表抽屉 -->
+            <!-- 底部空白轻触滑出队列 -->
             <LinearLayout
                 android:id="@+id/layout_detail_bottom_blank_port"
                 android:layout_width="match_parent"
