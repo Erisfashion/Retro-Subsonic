@@ -122,7 +122,6 @@ public class MainActivity extends Activity {
     private ListView listView, lvQueue;
     private SeekBar seekBar;
 
-    // 设置配置项控件
     private EditText etServer, etUsername, etPassword, etTimeoutSec, etRetryCount, etCacheSize, etDownloadPath;
     private Spinner spinnerConfigBitrate;
     private Button btnConnect, btnClearCache;
@@ -141,7 +140,7 @@ public class MainActivity extends Activity {
     private Button btnCloseDetail, btnDetailDownload, btnDetailKeepScreen, btnDetailQueue;
     private ImageView btnDetailExitApp;
 
-    // 黑胶旋转 (60fps 定时平滑旋转调度)
+    // 黑胶旋转调度
     private Handler vinylHandler = new Handler();
     private float currentVinylDegree = 0f;
     private boolean isCurrentSongPlaying = false;
@@ -609,7 +608,6 @@ public class MainActivity extends Activity {
         Toast.makeText(this, isDarkTheme ? "已切换至深色主题" : "已切换至浅色主题", Toast.LENGTH_SHORT).show();
     }
 
-    // 适配器：支持点击播放、长按歌曲菜单、以及新建歌单项
     private class PlaylistsCustomAdapter extends BaseAdapter {
         @Override public int getCount() {
             return currentSelectedTab == TAB_PLAYLISTS ? (currentItems.size() + 1) : currentItems.size();
@@ -664,7 +662,6 @@ public class MainActivity extends Activity {
             textCol.addView(sub);
             row.addView(textCol, tLp);
 
-            // 点击整行点播或进入歌单
             row.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -697,7 +694,6 @@ public class MainActivity extends Activity {
                 }
             });
 
-            // 长按歌曲菜单支持（添加收藏 / 添加到歌单 / 移除等）
             if (item.isSong) {
                 row.setOnLongClickListener(new View.OnLongClickListener() {
                     @Override
@@ -728,7 +724,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 歌曲长按菜单
     private void showSongLongClickMenu(final DisplayEntry entry, final int position) {
         final boolean fav = isFav(entry.id);
         String[] options = new String[]{
@@ -895,6 +890,8 @@ public class MainActivity extends Activity {
                 .setTitle("重命名歌单")
                 .setView(et)
                 .setPositiveButton("保存", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void ncol(DialogInterface dialog, int which) {} // placeholder
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         final String newName = et.getText().toString().trim();
@@ -1143,7 +1140,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 核心修复：将横屏与竖屏的所有播放列表弹出按钮（btnToggleQueue, btnDetailQueue）统一绑定
         View.OnClickListener toggleQueueListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1152,7 +1148,7 @@ public class MainActivity extends Activity {
                 } else {
                     refreshQueueList();
                     layoutQueuePanel.setVisibility(View.VISIBLE);
-                    scrollQueueToCenter(lvQueue); // 弹出时自动滚动定位到当前播放歌曲
+                    scrollQueueToCenter(lvQueue);
                 }
             }
         };
