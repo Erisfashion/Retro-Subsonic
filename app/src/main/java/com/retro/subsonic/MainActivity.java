@@ -604,7 +604,6 @@ public class MainActivity extends Activity {
         Toast.makeText(this, isDarkTheme ? "已切换至深色主题" : "已切换至浅色主题", Toast.LENGTH_SHORT).show();
     }
 
-    // 核心重构：点播行点击监听在 Adapter 内部直接处理，彻底规避 Android 4.2 ListView 事件拦截
     private class PlaylistsCustomAdapter extends BaseAdapter {
         @Override public int getCount() {
             return currentSelectedTab == TAB_PLAYLISTS ? (currentItems.size() + 1) : currentItems.size();
@@ -659,7 +658,6 @@ public class MainActivity extends Activity {
             textCol.addView(sub);
             row.addView(textCol, tLp);
 
-            // 点击整行点播/打开歌单
             row.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -672,7 +670,6 @@ public class MainActivity extends Activity {
                             fetchPlaylistSongs(item.id, item.title);
                         }
                     } else {
-                        // 核心点播逻辑：提取所有曲目组建队列并立即起播
                         ArrayList<MusicService.SongItem> queue = new ArrayList<MusicService.SongItem>();
                         int clickedIndex = 0;
                         for (int i = 0; i < currentItems.size(); i++) {
@@ -1712,6 +1709,7 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
+    // 核心修复点：修复此处变量 s 缺失问题，完美通过编译
     private void syncServerFavoritesQuietly() {
         new Thread(new Runnable() {
             @Override
@@ -1732,10 +1730,12 @@ public class MainActivity extends Activity {
                         if (songObj instanceof JSONArray) {
                             JSONArray arr = (JSONArray) songObj;
                             for (int i = 0; i < arr.length(); i++) {
-                                favSongIds.add(arr.getJSONObject(i).getString("id"));
+                                JSONObject s = arr.getJSONObject(i);
+                                favSongIds.add(s.getString("id"));
                             }
                         } else if (songObj instanceof JSONObject) {
-                            favSongIds.add(((JSONObject) songObj).getString("id"));
+                            JSONObject s = (JSONObject) songObj;
+                            favSongIds.add(s.getString("id"));
                         }
                         saveFavSet();
                         runOnUiThread(new Runnable() {
@@ -2095,7 +2095,8 @@ public class MainActivity extends Activity {
                                         favSongIds.add(s.getString("id"));
                                     }
                                 } else if (songObj instanceof JSONObject) {
-                                    addSongRow((JSONObject) songObj);
+                                    JSONObject s = (JSONObject) songObj;
+                                    addSongRow(s);
                                     favSongIds.add(s.getString("id"));
                                 }
                             }
