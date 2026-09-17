@@ -85,7 +85,6 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <!-- 现代设置图标 (替代原文字按钮) -->
                 <ImageView
                     android:id="@+id/btn_settings_icon"
                     android:layout_width="36dp"
@@ -96,7 +95,6 @@
                     android:focusable="true"
                     android:layout_marginRight="10dp" />
 
-                <!-- 关闭软件图标 -->
                 <ImageView
                     android:id="@+id/btn_exit_app"
                     android:layout_width="36dp"
@@ -338,7 +336,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 底部常驻迷你播放器条 (左侧改为 50dp 微轻微圆角封面) -->
+        <!-- 底部常驻迷你播放器条 (左侧 50dp 圆角封面) -->
         <LinearLayout
             android:id="@+id/layout_bottom_player"
             android:layout_width="match_parent"
@@ -351,7 +349,6 @@
             android:clickable="true"
             android:focusable="true">
 
-            <!-- 歌曲微缩圆角封面：点击进入播放详情页 -->
             <ImageView
                 android:id="@+id/iv_bottom_cover"
                 android:layout_width="50dp"
@@ -361,7 +358,6 @@
                 android:clickable="true"
                 android:focusable="true" />
 
-            <!-- 中间播放信息与进度 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -403,7 +399,6 @@
                         android:paddingLeft="4dp" />
                 </LinearLayout>
 
-                <!-- 底栏对称控制坞 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -519,7 +514,6 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 搜索顶栏 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="44dp"
@@ -546,15 +540,19 @@
                 android:paddingRight="8dp"
                 android:layout_marginLeft="6dp" />
 
+            <!-- 搜索框背景设为圆角卡片，浅色模式动态改变文字颜色 -->
             <EditText
                 android:id="@+id/et_search_keyword"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="38dp"
                 android:layout_weight="1"
                 android:hint="输入关键词检索..."
                 android:textColor="#ffffff"
                 android:textColorHint="#777777"
                 android:singleLine="true"
+                android:paddingLeft="10dp"
+                android:paddingRight="10dp"
+                android:background="@drawable/bg_btn_pill"
                 android:layout_marginLeft="6dp" />
 
             <Button
@@ -568,7 +566,6 @@
                 android:layout_marginLeft="6dp" />
         </LinearLayout>
 
-        <!-- 历史搜索记录区 -->
         <LinearLayout
             android:id="@+id/layout_search_history_box"
             android:layout_width="match_parent"
@@ -589,7 +586,6 @@
                     android:textColor="#9ca3af"
                     android:textSize="12sp" />
 
-                <!-- 清空历史记录垃圾桶按钮 -->
                 <ImageView
                     android:id="@+id/btn_clear_history"
                     android:layout_width="28dp"
@@ -600,7 +596,6 @@
                     android:focusable="true" />
             </RelativeLayout>
 
-            <!-- 水平滚动的历史词标签流 -->
             <HorizontalScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -615,7 +610,6 @@
             </HorizontalScrollView>
         </LinearLayout>
 
-        <!-- 搜索结果列表容器 (带底部悬浮添加歌单按钮) -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -629,7 +623,6 @@
                 android:divider="#242730"
                 android:dividerHeight="1dp" />
 
-            <!-- 底部悬浮添加至歌单发光胶囊按钮 -->
             <Button
                 android:id="@+id/btn_floating_add_playlist"
                 android:layout_width="wrap_content"
@@ -647,7 +640,7 @@
         </FrameLayout>
     </LinearLayout>
 
-    <!-- 第三层：全屏播放详情页 (支持横竖屏自适应) -->
+    <!-- 第三层：全屏播放详情页 (内含横屏双栏与竖屏单列响应式视图) -->
     <LinearLayout
         android:id="@+id/layout_detail_overlay"
         android:layout_width="match_parent"
@@ -748,13 +741,616 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- 核心动态响应式内容区：通过 Java 根据屏幕长宽比动态自适应排列 -->
-        <FrameLayout
-            android:id="@+id/layout_detail_dynamic_container"
+        <!-- ==================== 横屏模式：经典精致双栏排布 (维持原版排版完全不变) ==================== -->
+        <LinearLayout
+            android:id="@+id/layout_detail_landscape"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="8dp" />
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="visible">
+
+            <!-- 左栏：黑胶、歌曲信息与控制排 -->
+            <LinearLayout
+                android:id="@+id/layout_cover_container_land"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:background="@drawable/bg_card_frosted_dark"
+                android:padding="12dp">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="0.6" />
+
+                <FrameLayout
+                    android:id="@+id/layout_vinyl_container_land"
+                    android:layout_width="260dp"
+                    android:layout_height="280dp">
+
+                    <FrameLayout
+                        android:id="@+id/fl_vinyl_disc_land"
+                        android:layout_width="240dp"
+                        android:layout_height="240dp"
+                        android:layout_gravity="bottom|center_horizontal"
+                        android:background="@drawable/bg_vinyl">
+
+                        <ImageView
+                            android:id="@+id/iv_vinyl_circular_cover_land"
+                            android:layout_width="140dp"
+                            android:layout_height="140dp"
+                            android:layout_gravity="center"
+                            android:scaleType="centerCrop"
+                            android:src="@android:drawable/ic_menu_report_image" />
+                    </FrameLayout>
+
+                    <com.retro.subsonic.TonearmView
+                        android:id="@+id/view_tonearm_land"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+                </FrameLayout>
+
+                <!-- 歌曲标题与红心收藏 -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
+
+                    <Button
+                        android:id="@+id/btn_detail_fav_land"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/bg_btn_fav"
+                        android:text="♡"
+                        android:textColor="#ff4081"
+                        android:textSize="18sp"
+                        android:layout_marginRight="8dp" />
+
+                    <TextView
+                        android:id="@+id/tv_detail_title_land"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:maxWidth="200dp"
+                        android:text="歌曲名称"
+                        android:textColor="#ffffff"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:singleLine="true" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tv_detail_artist_land"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="歌手名称"
+                    android:textColor="#a0a5b5"
+                    android:textSize="14sp"
+                    android:layout_marginTop="2dp"
+                    android:singleLine="true" />
+
+                <!-- 码率调节 + 音质标签 + 缓冲显示 (缓冲数值放置在码率标签右侧) -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
+
+                    <Spinner
+                        android:id="@+id/spinner_detail_bitrate_land"
+                        android:layout_width="wrap_content"
+                        android:layout_height="28dp"
+                        android:background="@drawable/bg_btn_pill"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                        android:layout_marginRight="6dp" />
+
+                    <TextView
+                        android:id="@+id/tv_detail_quality_land"
+                        android:layout_width="wrap_content"
+                        android:layout_height="28dp"
+                        android:gravity="center"
+                        android:text="标准音质"
+                        android:textColor="#00e5ff"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:background="#16181d"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp" />
+
+                    <TextView
+                        android:id="@+id/tv_detail_buffer_land"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="(缓冲 0%)"
+                        android:textColor="#ff9800"
+                        android:textSize="11sp"
+                        android:layout_marginLeft="6dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="0.8" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="6dp">
+
+                    <SeekBar
+                        android:id="@+id/detail_seek_bar_land"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100" />
+
+                    <TextView
+                        android:id="@+id/tv_detail_time_land"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="00:00 / 00:00"
+                        android:textColor="#888c99"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <!-- 5 键对称控制排 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="6dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="right|center_vertical"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:id="@+id/btn_detail_mode_land"
+                            android:layout_width="38dp"
+                            android:layout_height="38dp"
+                            android:background="@android:color/transparent"
+                            android:scaleType="center"
+                            android:clickable="true"
+                            android:focusable="true" />
+
+                        <ImageView
+                            android:id="@+id/btn_detail_prev_land"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:background="@android:color/transparent"
+                            android:scaleType="center"
+                            android:layout_marginLeft="16dp"
+                            android:layout_marginRight="14dp"
+                            android:clickable="true"
+                            android:focusable="true" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/btn_detail_play_pause_land"
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:background="@drawable/bg_btn_circle_play"
+                        android:scaleType="center"
+                        android:clickable="true"
+                        android:focusable="true" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="left|center_vertical"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:id="@+id/btn_detail_next_land"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:background="@android:color/transparent"
+                            android:scaleType="center"
+                            android:layout_marginLeft="14dp"
+                            android:layout_marginRight="16dp"
+                            android:clickable="true"
+                            android:focusable="true" />
+
+                        <ImageView
+                            android:id="@+id/btn_detail_eq_land"
+                            android:layout_width="38dp"
+                            android:layout_height="38dp"
+                            android:background="@android:color/transparent"
+                            android:scaleType="center"
+                            android:clickable="true"
+                            android:focusable="true" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="0.3" />
+
+                <LinearLayout
+                    android:id="@+id/layout_detail_bottom_blank_land"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="[点击空白处切换 歌词 / 播放列表]"
+                        android:textColor="#505566"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- 右栏：全高歌词 / 播放队列 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1.2"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card_frosted_dark"
+                android:padding="12dp"
+                android:layout_marginLeft="8dp">
+
+                <LinearLayout
+                    android:id="@+id/layout_detail_lyrics_view_land"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:visibility="visible">
+
+                    <RelativeLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentLeft="true"
+                            android:layout_centerVertical="true"
+                            android:text="歌词"
+                            android:textColor="#a0a5b5"
+                            android:textSize="13sp" />
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentRight="true"
+                            android:layout_centerVertical="true"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/btn_lyric_dec_land"
+                                android:layout_width="wrap_content"
+                                android:layout_height="30dp"
+                                android:background="@drawable/bg_btn_default"
+                                android:text="缩小 -"
+                                android:textColor="#e0e0e0"
+                                android:textSize="11sp"
+                                android:paddingLeft="8dp"
+                                android:paddingRight="8dp" />
+
+                            <Button
+                                android:id="@+id/btn_lyric_inc_land"
+                                android:layout_width="wrap_content"
+                                android:layout_height="30dp"
+                                android:background="@drawable/bg_btn_default"
+                                android:text="增大 +"
+                                android:textColor="#e0e0e0"
+                                android:textSize="11sp"
+                                android:paddingLeft="8dp"
+                                android:paddingRight="8dp"
+                                android:layout_marginLeft="6dp" />
+                        </LinearLayout>
+                    </RelativeLayout>
+
+                    <ScrollView
+                        android:id="@+id/scroll_lyrics_land"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:fillViewport="true"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:id="@+id/layout_lyrics_container_land"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:gravity="center_horizontal"
+                            android:paddingTop="150dp"
+                            android:paddingBottom="150dp" />
+                    </ScrollView>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/layout_detail_queue_view_land"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="当前播放列表"
+                        android:textColor="#a0a5b5"
+                        android:textSize="13sp"
+                        android:layout_marginBottom="6dp" />
+
+                    <ListView
+                        android:id="@+id/lv_detail_queue_land"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:divider="#333842"
+                        android:dividerHeight="1dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ==================== 竖屏模式：从上到下全屏流式布局 (大黑胶 -> 信息 -> 3行歌词 -> 控制排) ==================== -->
+        <LinearLayout
+            android:id="@+id/layout_detail_portrait"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:layout_marginTop="6dp"
+            android:visibility="gone">
+
+            <!-- 1. 顶部放大尺寸黑胶 (270dp) -->
+            <FrameLayout
+                android:id="@+id/layout_vinyl_container_port"
+                android:layout_width="270dp"
+                android:layout_height="270dp"
+                android:layout_marginTop="4dp">
+
+                <FrameLayout
+                    android:id="@+id/fl_vinyl_disc_port"
+                    android:layout_width="250dp"
+                    android:layout_height="250dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_vinyl">
+
+                    <ImageView
+                        android:id="@+id/iv_vinyl_circular_cover_port"
+                        android:layout_width="145dp"
+                        android:layout_height="145dp"
+                        android:layout_gravity="center"
+                        android:scaleType="centerCrop"
+                        android:src="@android:drawable/ic_menu_report_image" />
+                </FrameLayout>
+
+                <com.retro.subsonic.TonearmView
+                    android:id="@+id/view_tonearm_port"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+            </FrameLayout>
+
+            <!-- 2. 歌曲名与红心 -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="8dp">
+
+                <Button
+                    android:id="@+id/btn_detail_fav_port"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_btn_fav"
+                    android:text="♡"
+                    android:textColor="#ff4081"
+                    android:textSize="18sp"
+                    android:layout_marginRight="8dp" />
+
+                <TextView
+                    android:id="@+id/tv_detail_title_port"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxWidth="260dp"
+                    android:text="歌曲名称"
+                    android:textColor="#ffffff"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_detail_artist_port"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="歌手名称"
+                android:textColor="#a0a5b5"
+                android:textSize="14sp"
+                android:layout_marginTop="2dp"
+                android:singleLine="true" />
+
+            <!-- 码率调节 + 音质标签 + 缓冲显示 (缓冲位于码率右侧) -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="4dp">
+
+                <Spinner
+                    android:id="@+id/spinner_detail_bitrate_port"
+                    android:layout_width="wrap_content"
+                    android:layout_height="28dp"
+                    android:background="@drawable/bg_btn_pill"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:layout_marginRight="6dp" />
+
+                <TextView
+                    android:id="@+id/tv_detail_quality_port"
+                    android:layout_width="wrap_content"
+                    android:layout_height="28dp"
+                    android:gravity="center"
+                    android:text="标准音质"
+                    android:textColor="#00e5ff"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:background="#16181d"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp" />
+
+                <TextView
+                    android:id="@+id/tv_detail_buffer_port"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="(缓冲 0%)"
+                    android:textColor="#ff9800"
+                    android:textSize="11sp"
+                    android:layout_marginLeft="6dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- 3. 竖屏 3 行大字号居中滚动歌词 -->
+            <ScrollView
+                android:id="@+id/scroll_lyrics_port"
+                android:layout_width="match_parent"
+                android:layout_height="80dp"
+                android:fillViewport="true"
+                android:scrollbars="none"
+                android:layout_marginTop="8dp">
+
+                <LinearLayout
+                    android:id="@+id/layout_lyrics_container_port"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:paddingTop="15dp"
+                    android:paddingBottom="15dp" />
+            </ScrollView>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- 4. 进度条与播放控制坞 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp">
+
+                <SeekBar
+                    android:id="@+id/detail_seek_bar_port"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="100" />
+
+                <TextView
+                    android:id="@+id/tv_detail_time_port"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="00:00 / 00:00"
+                    android:textColor="#888c99"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginTop="6dp">
+
+                <ImageView
+                    android:id="@+id/btn_detail_mode_port"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@android:color/transparent"
+                    android:scaleType="center"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <ImageView
+                    android:id="@+id/btn_detail_prev_port"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@android:color/transparent"
+                    android:scaleType="center"
+                    android:layout_marginLeft="20dp"
+                    android:layout_marginRight="16dp"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <ImageView
+                    android:id="@+id/btn_detail_play_pause_port"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/bg_btn_circle_play"
+                    android:scaleType="center"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <ImageView
+                    android:id="@+id/btn_detail_next_port"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@android:color/transparent"
+                    android:scaleType="center"
+                    android:layout_marginLeft="16dp"
+                    android:layout_marginRight="20dp"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <ImageView
+                    android:id="@+id/btn_detail_eq_port"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@android:color/transparent"
+                    android:scaleType="center"
+                    android:clickable="true"
+                    android:focusable="true" />
+            </LinearLayout>
+
+            <!-- 竖屏底部空白处：点击在屏幕右侧滑出播放列表抽屉 -->
+            <LinearLayout
+                android:id="@+id/layout_detail_bottom_blank_port"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="[点击此处在右侧滑出当前播放列表]"
+                    android:textColor="#505566"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
 
 </FrameLayout>
