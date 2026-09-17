@@ -1235,7 +1235,6 @@ public class MainActivity extends Activity {
             }
         };
         btnNext.setOnClickListener(nextListener);
-        if (btnDetailNextLand != null) btnDetailNextLand.setOnClickListener(togglePlayListener); // Fixed below
         if (btnDetailNextLand != null) btnDetailNextLand.setOnClickListener(nextListener);
         if (btnDetailNextPort != null) btnDetailNextPort.setOnClickListener(nextListener);
 
@@ -1918,92 +1917,8 @@ public class MainActivity extends Activity {
     }
 
     private String getModeString(int mode) {
-        if (mode == MusicService.MODE_SHUREL || mode == MusicService.MODE_SHUFFLE) return "随机播放"; // 防御式兼容
+        if (mode == MusicService.MODE_SHUFFLE) return "随机播放";
         if (mode == MusicService.MODE_SINGLE) return "单曲循环";
         return "列表循环";
-    }
-
-    // 补齐缺失的方法以彻底消除编译报错
-    private void fetchPlaylists() {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                final String jsonStr = requestApi("getPlaylists.view?" + getAuthParams());
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        rawServerUserPlaylists.clear();
-                        rawServerRankingPlaylists.clear();
-                        if (jsonStr != null) {
-                            try {
-                                JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
-                                JSONObject plObj = root.optJSONObject("playlists");
-                                if (plObj != null && plObj.has("playlist")) {
-                                    Object p = plObj.get("playlist");
-                                    if (p instanceof JSONArray) {
-                                        JSONArray arr = (JSONArray) p;
-                                        for (int i = 0; i < arr.length(); i++) parsePlaylistItem(arr.getJSONObject(i));
-                                    } else if (p instanceof JSONObject) {
-                                        parsePlaylistItem((JSONObject) p);
-                                    }
-                                }
-                            } catch (Throwable ignored) {}
-                        }
-                        showCurrentTabContent();
-                    }
-                });
-            }
-        }).start();
-    }
-
-    private void showCurrentTabContent() {
-        currentItems.clear();
-        if (currentSelectedTab == TAB_PLAYLISTS) {
-            currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
-            currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "精选曲库 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
-            currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行常备 (" + carSongs.size() + "首)", null, "本地歌单", false));
-            currentItems.addAll(rawServerUserPlaylists);
-        } else {
-            currentItems.addAll(rawServerRankingPlaylists);
-        }
-        adapter.notifyDataSetChanged();
-    }
-
-    private void refreshQueueList() {
-        queueData.clear();
-        for (MusicService.SongItem item : MusicService.getPlaylist()) {
-            Map<String, String> m = new HashMap<String, String>();
-            m.put("title", item.title);
-            m.put("subtitle", item.artist);
-            queueData.add(m);
-        }
-        queueAdapter.notifyDataSetChanged();
-        if (detailQueueAdapterLand != null) detailQueueAdapterLand.notifyDataSetChanged();
-    }
-
-    private String getAuthParams() {
-        String u = prefs.getString("user", "");
-        String p = prefs.getString("pass", "");
-        return "u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic&f=json";
-    }
-
-    private void saveFavSet() {
-        prefs.edit().putStringSet("fav_songs_set", favSongIds).commit();
-    }
-
-    private void updateFavButtonState(String id) {
-        String targetId = id;
-        if (targetId == null || targetId.length() == 0) {
-            ArrayList<MusicService.SongItem> q = MusicService.getPlaylist();
-            int idx = MusicService.getCurrentIndex();
-            if (q != null && idx >= 0 && idx < q.size()) {
-                targetId = q.get(idx).id;
-            }
-        }
-        boolean fav = isFav(targetId);
-        String symbol = fav ? "♥" : "♡";
-        if (btnBottomFav != null) btnBottomFav.setText(symbol);
-        if (btnDetailFavLand != null) btnDetailFavLand.setText(symbol);
-        if (btnDetailFavPort != null) btnDetailFavPort.setText(symbol);
     }
 }
