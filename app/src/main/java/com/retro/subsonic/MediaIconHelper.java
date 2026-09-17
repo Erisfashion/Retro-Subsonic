@@ -348,7 +348,6 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 扁平风格：音效调节调音推子图标 (上下平行滑轨 + 错位圆环旋钮)
     public static Drawable createEqualizerIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -367,18 +366,145 @@ public class MediaIconHelper {
         float xRight = sizePx * 0.78f;
 
         float r = sizePx * 0.09f;
-        float cx1 = sizePx * 0.61f; // 上方旋钮偏右
-        float cx2 = sizePx * 0.39f; // 下方旋钮偏左
+        float cx1 = sizePx * 0.61f;
+        float cx2 = sizePx * 0.39f;
 
-        // 上方滑轨与旋钮
         canvas.drawLine(xLeft, y1, cx1 - r, y1, stroke);
         canvas.drawCircle(cx1, y1, r, stroke);
         canvas.drawLine(cx1 + r, y1, xRight, y1, stroke);
 
-        // 下方滑轨与旋钮
         canvas.drawLine(xLeft, y2, cx2 - r, y2, stroke);
         canvas.drawCircle(cx2, y2, r, stroke);
         canvas.drawLine(cx2 + r, y2, xRight, y2, stroke);
+
+        return new BitmapDrawable(context.getResources(), bitmap);
+    }
+
+    // 现代精工设置齿轮图标
+    public static Drawable createSettingsIcon(Context context, int sizeDp, int color) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int sizePx = (int) (sizeDp * density);
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(color);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(2.0f * density);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+
+        float half = sizePx / 2f;
+        float rInner = sizePx * 0.16f;
+        float rOuter = sizePx * 0.34f;
+        canvas.drawCircle(half, half, rInner, paint);
+
+        for (int i = 0; i < 8; i++) {
+            double angle = Math.toRadians(i * 45);
+            float startX = half + (float) (rInner * 1.3f * Math.cos(angle));
+            float startY = half + (float) (rInner * 1.3f * Math.sin(angle));
+            float endX = half + (float) (rOuter * Math.cos(angle));
+            float endY = half + (float) (rOuter * Math.sin(angle));
+            canvas.drawLine(startX, startY, endX, endY, paint);
+        }
+
+        return new BitmapDrawable(context.getResources(), bitmap);
+    }
+
+    // 主题切换图标（太阳/月牙二合一）
+    public static Drawable createThemeIcon(Context context, int sizeDp, int color, boolean isLightNow) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int sizePx = (int) (sizeDp * density);
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(color);
+
+        float half = sizePx / 2f;
+        if (isLightNow) {
+            // 当前为亮色模式，绘制弯月图标代表切换至暗色
+            paint.setStyle(Paint.Style.FILL);
+            Path moon = new Path();
+            moon.addCircle(half, half, sizePx * 0.30f, Path.Direction.CW);
+            Path cut = new Path();
+            cut.addCircle(half + sizePx * 0.13f, half - sizePx * 0.10f, sizePx * 0.28f, Path.Direction.CW);
+            moon.op(cut, Path.Op.DIFFERENCE);
+            canvas.drawPath(moon, paint);
+        } else {
+            // 当前为暗色模式，绘制发光太阳代表切换至浅色
+            paint.setStyle(Paint.Style.FILL);
+            canvas.drawCircle(half, half, sizePx * 0.16f, paint);
+
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(2.0f * density);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            for (int i = 0; i < 8; i++) {
+                double a = Math.toRadians(i * 45);
+                float x1 = half + (float) (sizePx * 0.24f * Math.cos(a));
+                float y1 = half + (float) (sizePx * 0.24f * Math.sin(a));
+                float x2 = half + (float) (sizePx * 0.35f * Math.cos(a));
+                float y2 = half + (float) (sizePx * 0.35f * Math.sin(a));
+                canvas.drawLine(x1, y1, x2, y2, paint);
+            }
+        }
+        return new BitmapDrawable(context.getResources(), bitmap);
+    }
+
+    // 垃圾桶清空图标
+    public static Drawable createTrashIcon(Context context, int sizeDp, int color) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int sizePx = (int) (sizeDp * density);
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(color);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(1.8f * density);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+
+        float l = sizePx * 0.30f;
+        float r = sizePx * 0.70f;
+        float t = sizePx * 0.34f;
+        float b = sizePx * 0.76f;
+
+        // 盖子
+        canvas.drawLine(sizePx * 0.24f, t, sizePx * 0.76f, t, paint);
+        canvas.drawLine(sizePx * 0.42f, t - 3.5f * density, sizePx * 0.58f, t - 3.5f * density, paint);
+
+        // 桶身
+        Path body = new Path();
+        body.moveTo(l + 2 * density, t);
+        body.lineTo(l + 4 * density, b);
+        body.lineTo(r - 4 * density, b);
+        body.lineTo(r - 2 * density, t);
+        canvas.drawPath(body, paint);
+
+        // 竖条肋线
+        canvas.drawLine(sizePx * 0.44f, t + 4 * density, sizePx * 0.44f, b - 4 * density, paint);
+        canvas.drawLine(sizePx * 0.56f, t + 4 * density, sizePx * 0.56f, b - 4 * density, paint);
+
+        return new BitmapDrawable(context.getResources(), bitmap);
+    }
+
+    // 竖三点更多操作图标
+    public static Drawable createMoreVertIcon(Context context, int sizeDp, int color) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int sizePx = (int) (sizeDp * density);
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(color);
+        paint.setStyle(Paint.Style.FILL);
+
+        float half = sizePx / 2f;
+        float dotR = 2.2f * density;
+        float gap = sizePx * 0.24f;
+
+        canvas.drawCircle(half, half - gap, dotR, paint);
+        canvas.drawCircle(half, half, dotR, paint);
+        canvas.drawCircle(half, half + gap, dotR, paint);
 
         return new BitmapDrawable(context.getResources(), bitmap);
     }
