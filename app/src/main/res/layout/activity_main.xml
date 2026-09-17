@@ -207,8 +207,7 @@
                     android:hint="/sdcard/Music"
                     android:textColor="#ffffff"
                     android:textColorHint="#777777"
-                    android:singleLine="true"
-                    android:layout_marginLeft="4dp" />
+                    android:singleLine="true" />
             </LinearLayout>
 
             <LinearLayout
@@ -321,49 +320,6 @@
                 android:text="排行榜"
                 android:textColor="#a0a5b5"
                 android:textSize="13sp"
-                android:layout_marginLeft="6dp" />
-        </LinearLayout>
-
-        <!-- 展开的搜索栏 -->
-        <LinearLayout
-            android:id="@+id/layout_search_bar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginTop="6dp"
-            android:visibility="gone">
-
-            <Spinner
-                android:id="@+id/spinner_search_type"
-                android:layout_width="wrap_content"
-                android:layout_height="34dp"
-                android:background="@drawable/bg_btn_pill"
-                android:paddingLeft="8dp"
-                android:paddingRight="8dp"
-                android:layout_marginRight="6dp"
-                android:spinnerMode="dropdown" />
-
-            <EditText
-                android:id="@+id/et_search_keyword"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="输入歌曲名检索..."
-                android:textColor="#ffffff"
-                android:textColorHint="#777777"
-                android:singleLine="true" />
-
-            <Button
-                android:id="@+id/btn_search_submit"
-                android:layout_width="wrap_content"
-                android:layout_height="38dp"
-                android:background="@drawable/bg_btn_accent"
-                android:text="搜索"
-                android:textColor="#00e5ff"
-                android:textSize="13sp"
-                android:paddingLeft="14dp"
-                android:paddingRight="14dp"
                 android:layout_marginLeft="6dp" />
         </LinearLayout>
 
@@ -485,29 +441,29 @@
 
         </LinearLayout>
 
-        <!-- 底部常驻播放器条 -->
+        <!-- 底部常驻播放器条：高度约 68dp，左侧封面扩大至 60dp 贴合高度 -->
         <LinearLayout
             android:id="@+id/layout_bottom_player"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:background="@drawable/bg_card"
-            android:padding="6dp"
+            android:padding="4dp"
             android:gravity="center_vertical"
             android:layout_marginTop="6dp"
             android:clickable="true"
             android:focusable="true">
 
-            <!-- 核心升级：左翼等宽基座 (126dp)，放置与底栏等高的微圆角专辑封面图 -->
+            <!-- 左翼等宽基座 (126dp)，放置 60dp x 60dp 大号微圆角专辑封面 -->
             <LinearLayout
                 android:layout_width="126dp"
-                android:layout_height="48dp"
+                android:layout_height="60dp"
                 android:gravity="left|center_vertical">
 
                 <ImageView
                     android:id="@+id/iv_bottom_cover"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
                     android:scaleType="centerCrop"
                     android:src="@drawable/ic_launcher"
                     android:clickable="true"
@@ -555,7 +511,6 @@
                         android:paddingLeft="4dp" />
                 </LinearLayout>
 
-                <!-- 底栏对称控制 Dock -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -674,7 +629,6 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 顶栏：下载与关闭按钮 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="40dp">
@@ -762,7 +716,6 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- 双栏展示区 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -770,7 +723,6 @@
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
 
-            <!-- 左栏：黑胶与信息 -->
             <LinearLayout
                 android:id="@+id/layout_cover_container"
                 android:layout_width="0dp"
@@ -832,7 +784,6 @@
                     android:focusable="true"
                     android:visibility="gone" />
 
-                <!-- 歌曲标题与红心收藏 -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -872,7 +823,7 @@
                     android:layout_marginTop="2dp"
                     android:singleLine="true" />
 
-                <!-- 核心升级：码率选择下拉框、码率数值展示与右侧缓冲提示 -->
+                <!-- 码率与右侧缓冲提示 -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -903,7 +854,6 @@
                         android:paddingLeft="10dp"
                         android:paddingRight="10dp" />
 
-                    <!-- 缓冲进度提示：从歌曲名右侧迁移至此 -->
                     <TextView
                         android:id="@+id/tv_detail_buffer"
                         android:layout_width="wrap_content"
@@ -944,7 +894,6 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 详情页对称控制排 -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
@@ -999,7 +948,7 @@
                         android:orientation="horizontal">
 
                         <ImageView
-                            android:id="@+id/btn_detail_next"
+                            android:id="@+id/btn_next"
                             android:layout_width="48dp"
                             android:layout_height="48dp"
                             android:background="@android:color/transparent"
@@ -1043,7 +992,6 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 右栏：歌词 / 队列 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
@@ -1151,6 +1099,148 @@
 
             </LinearLayout>
 
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- 第三层：全新独立全屏搜索单页 (包含顶栏操作区、搜索历史列表与结果列表) -->
+    <LinearLayout
+        android:id="@+id/layout_search_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="@drawable/bg_main_gradient"
+        android:padding="10dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <!-- 搜索页顶栏：返回按钮、分类下拉、搜索输入框、搜索执行按钮 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <Button
+                android:id="@+id/btn_search_page_back"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_btn_default"
+                android:text="← 返回"
+                android:textColor="#e0e0e0"
+                android:textSize="12sp"
+                android:paddingLeft="10dp"
+                android:paddingRight="10dp" />
+
+            <Spinner
+                android:id="@+id/spinner_search_type"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_btn_pill"
+                android:paddingLeft="8dp"
+                android:paddingRight="8dp"
+                android:layout_marginLeft="6dp"
+                android:spinnerMode="dropdown" />
+
+            <EditText
+                android:id="@+id/et_search_keyword"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:hint="输入歌曲名检索..."
+                android:textColor="#ffffff"
+                android:textColorHint="#777777"
+                android:background="@drawable/bg_card"
+                android:paddingLeft="10dp"
+                android:paddingRight="10dp"
+                android:singleLine="true"
+                android:layout_marginLeft="6dp" />
+
+            <Button
+                android:id="@+id/btn_search_submit"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:background="@drawable/bg_btn_accent"
+                android:text="搜索"
+                android:textColor="#00e5ff"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:layout_marginLeft="6dp" />
+        </LinearLayout>
+
+        <!-- 搜索历史区块 -->
+        <LinearLayout
+            android:id="@+id/layout_search_history_box"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="10dp">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="4dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentLeft="true"
+                    android:layout_centerVertical="true"
+                    android:text="搜索历史"
+                    android:textColor="#a0a5b5"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <!-- 清空历史记录：垃圾桶图标按键 -->
+                <ImageView
+                    android:id="@+id/btn_clear_search_history"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_alignParentRight="true"
+                    android:layout_centerVertical="true"
+                    android:background="@android:color/transparent"
+                    android:scaleType="center"
+                    android:clickable="true"
+                    android:focusable="true" />
+            </RelativeLayout>
+
+            <ListView
+                android:id="@+id/lv_search_history"
+                android:layout_width="match_parent"
+                android:layout_height="180dp"
+                android:divider="#242730"
+                android:dividerHeight="1dp" />
+        </LinearLayout>
+
+        <!-- 搜索结果列表区块 -->
+        <LinearLayout
+            android:id="@+id/layout_search_result_box"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:id="@+id/tv_search_result_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="搜索结果"
+                android:textColor="#00e5ff"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp" />
+
+            <ListView
+                android:id="@+id/lv_search_results"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:divider="#242730"
+                android:dividerHeight="1dp" />
         </LinearLayout>
 
     </LinearLayout>
