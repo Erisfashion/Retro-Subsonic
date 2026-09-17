@@ -85,7 +85,6 @@ public class MainActivity extends Activity {
     private boolean isSpinnersInitializing = true;
 
     private Button btnConnect, btnClearCache, btnToggleConfig, btnTabPlaylists, btnTabRanking, btnSearchSubmit, btnBack;
-    // 核心更新：底栏与详情页音效按钮均为 ImageView
     private ImageView btnOpenEq, btnDetailEq;
     private ImageView btnMode, btnDetailMode;
     private ImageView btnPrev, btnPlayPause, btnNext;
@@ -539,7 +538,6 @@ public class MainActivity extends Activity {
         btnExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
         btnDetailExitApp.setImageDrawable(MediaIconHelper.createPowerIcon(this, 18, redIconColor));
 
-        // 核心更新：底栏与详情页两处的音效按钮统一赋予发烧青蓝扁平推子图标
         btnOpenEq.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 18, cyanIconColor));
         btnDetailEq.setImageDrawable(MediaIconHelper.createEqualizerIcon(this, 20, cyanIconColor));
 
@@ -957,7 +955,6 @@ public class MainActivity extends Activity {
         btnDetailExitApp = (ImageView) findViewById(R.id.btn_detail_exit_app);
         btnTopSearch = (ImageView) findViewById(R.id.btn_top_search);
 
-        // 核心更新：初始化两处音效按键与模式按键
         btnOpenEq = (ImageView) findViewById(R.id.btn_open_eq);
         btnDetailEq = (ImageView) findViewById(R.id.btn_detail_eq);
         btnMode = (ImageView) findViewById(R.id.btn_mode);
@@ -1370,7 +1367,7 @@ public class MainActivity extends Activity {
 
         String[] options = new String[]{
                 fav ? "★ 已收藏（点此从云端取消）" : "☆ 收藏歌曲 (同步云端)",
-                "📁 添加到歌单 (精选/车载)",
+                "📁 添加到歌单 (云端/本地)",
                 "🗑 移出当前列表",
                 "⬇ 下载歌曲到本地"
         };
@@ -1394,23 +1391,82 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    // 核心强化：支持将歌曲同步添加到服务器真实歌单
     private void showAddToPlaylistDialog(final DisplayEntry entry) {
-        final String[] targets = new String[]{"♥ 我的收藏 (云端)", "⭐ 精选歌单 (本地)", "🚗 车载歌单 (本地)"};
+        final ArrayList<String> names = new ArrayList<String>();
+        final ArrayList<String> ids = new ArrayList<String>();
+
+        names.add("♥ 我的收藏 (云端同步)");
+        ids.add("ACTION_FAV");
+
+        names.add("⭐ 精选歌单 (本地定制)");
+        ids.add("LOCAL_FEATURED");
+
+        names.add("🚗 车载歌单 (本地定制)");
+        ids.add("LOCAL_CAR");
+
+        // 动态接入所有从服务器同步下来的自定义歌单
+        for (DisplayEntry pl : rawServerUserPlaylists) {
+            names.add("📁 " + pl.title + " (云端歌单)");
+            ids.add(pl.id);
+        }
+
         new AlertDialog.Builder(this)
                 .setTitle("选择要加入的歌单")
-                .setItems(targets, new DialogInterface.OnClickListener() {
+                .setItems(names.toArray(new String[0]), new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        if (which == 0) {
+                        String targetId = ids.get(which);
+                        if ("ACTION_FAV".equals(targetId)) {
                             if (!isFav(entry.id)) serverStarSong(entry.id, true);
-                        } else if (which == 1) {
+                        } else if ("LOCAL_FEATURED".equals(targetId)) {
                             addSongToLocalList(featuredSongs, entry, "精选歌单");
-                        } else if (which == 2) {
+                        } else if ("LOCAL_CAR".equals(targetId)) {
                             addSongToLocalList(carSongs, entry, "车载歌单");
+                        } else {
+                            // 真正同步向 Subsonic 服务器歌单添加歌曲
+                            addSongToServerPlaylist(targetId, entry.id, names.get(which));
                         }
                     }
                 })
                 .show();
+    }
+
+    // 调用 Subsonic API 真正向服务端歌单添加歌曲
+    private void addSongToServerPlaylist(final String playlistId, final String songId, final String playlistDisplayName) {
+        Toast.makeText(this, "正在同步添加至云端歌单...", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String param = "playlistId=" + URLEncoder.encode(playlistId, "UTF-8")
+                            + "&songIdToAdd=" + URLEncoder.encode(songId, "UTF-8");
+                    String res = requestApi("updatePlaylist.view?" + param + "&" + getAuthParams());
+                    if (res != null && !res.contains("\"status\":\"failed\"")) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "已成功添加至 " + playlistDisplayName, Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    } else {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "同步云端歌单失败，请检查服务器权限", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "网络连接异常，添加失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }
+        }).start();
     }
 
     private void addSongToLocalList(ArrayList<DisplayEntry> targetList, DisplayEntry song, String listName) {
@@ -1425,7 +1481,8 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "已加入【" + listName + "】", Toast.LENGTH_SHORT).show();
     }
 
-    private void removeFromCurrentView(int position, DisplayEntry entry) {
+    // 核心强化：移出歌曲时同时同步从服务端歌单删除
+    private void removeFromCurrentView(final int position, final DisplayEntry entry) {
         if (tvListTitle.getText().toString().contains("我的收藏")) {
             serverStarSong(entry.id, false);
             return;
@@ -1439,7 +1496,11 @@ public class MainActivity extends Activity {
                 }
             }
             saveLocalPlaylists();
-        } else if ("车载歌单".equals(tvListTitle.getText().toString())) {
+            removeRowFromUi(position);
+            return;
+        }
+
+        if ("车载歌单".equals(tvListTitle.getText().toString())) {
             for (int i = 0; i < carSongs.size(); i++) {
                 if (carSongs.get(i).id.equals(entry.id)) {
                     carSongs.remove(i);
@@ -1447,8 +1508,53 @@ public class MainActivity extends Activity {
                 }
             }
             saveLocalPlaylists();
+            removeRowFromUi(position);
+            return;
         }
 
+        // 若当前在服务端歌单内，调用 updatePlaylist.view?songIndexToRemove=... 真正移出
+        if (currentActivePlaylistId != null && !currentActivePlaylistId.startsWith("local_")) {
+            final int songIndexToRemove = position;
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        String param = "playlistId=" + URLEncoder.encode(currentActivePlaylistId, "UTF-8")
+                                + "&songIndexToRemove=" + songIndexToRemove;
+                        String res = requestApi("updatePlaylist.view?" + param + "&" + getAuthParams());
+                        if (res != null && !res.contains("\"status\":\"failed\"")) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    removeRowFromUi(position);
+                                    Toast.makeText(MainActivity.this, "已同步从云端歌单移除", Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                        } else {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    Toast.makeText(MainActivity.this, "云端移除失败，请确认服务器操作权限", Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                        }
+                    } catch (Exception e) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "网络异常，移除失败", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }
+                }
+            }).start();
+            return;
+        }
+
+        removeRowFromUi(position);
+    }
+
+    private void removeRowFromUi(int position) {
         if (position >= 0 && position < currentItems.size()) {
             currentItems.remove(position);
             listData.remove(position);
@@ -1467,7 +1573,6 @@ public class MainActivity extends Activity {
         for (int i = 0; i < lyricRows.size(); i++) {
             LyricRow row = lyricRows.get(i);
             if (row.view != null) {
-                // 当前正在唱的歌词比基础大 5sp，其它保持基准字号
                 row.view.setTextSize(i == currentLyricIndex ? (lyricBaseFontSize + 5) : lyricBaseFontSize);
             }
         }
@@ -1663,7 +1768,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 点击音效按钮弹窗 (底栏与详情页两处 ImageView 统一绑定)
         View.OnClickListener eqListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) { new EqualizerDialog(MainActivity.this).show(); }
@@ -2178,7 +2282,6 @@ public class MainActivity extends Activity {
         return -1;
     }
 
-    // 核心更新：正在唱的歌词不仅亮色，同时字号放大 +5sp 并加粗
     private void updateLyricPosition(int currentPosMs) {
         if (lyricRows.isEmpty() || isUserTouchingLyrics) return;
 
@@ -2192,7 +2295,6 @@ public class MainActivity extends Activity {
         }
 
         if (targetIndex != currentLyricIndex && targetIndex >= 0) {
-            // 将上一句已唱完的歌词恢复为标准字号与沉浸暗灰
             if (currentLyricIndex >= 0 && currentLyricIndex < lyricRows.size()) {
                 LyricRow oldRow = lyricRows.get(currentLyricIndex);
                 if (oldRow.view != null) {
@@ -2205,7 +2307,6 @@ public class MainActivity extends Activity {
             currentLyricIndex = targetIndex;
             final LyricRow curRow = lyricRows.get(currentLyricIndex);
             if (curRow.view != null) {
-                // 正在唱的当句：变亮电光青蓝 + 字号放大 5sp + 加粗
                 curRow.view.setTextColor(0xFF00E5FF);
                 curRow.view.setTextSize(lyricBaseFontSize + 5);
                 curRow.view.setTypeface(Typeface.DEFAULT_BOLD);
@@ -2298,10 +2399,17 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    // 核心强化：剔除服务端的冗余“收藏”歌单，并区分常规与排行榜
     private void categorizePlaylistItem(JSONObject p) throws Exception {
         String name = p.getString("name");
         int count = p.optInt("songCount", 0);
         String id = p.getString("id");
+
+        // 若服务端返回了同名/类似收藏的虚拟歌单，全部过滤，确保只有唯一的官方标星歌单入口
+        String nLower = name.trim().toLowerCase();
+        if ("我的收藏".equals(name) || "starred".equals(nLower) || "favorites".equals(nLower) || "favourite".equals(nLower)) {
+            return;
+        }
 
         boolean isRanking = name.contains("榜单") || name.startsWith("榜") || name.endsWith("榜");
         DisplayEntry entry = new DisplayEntry(id, name, "", isRanking ? "排行榜" : "歌单", null, isRanking ? "排行榜歌单" : "歌单: " + count, false);
@@ -2328,6 +2436,7 @@ public class MainActivity extends Activity {
         currentItems.clear();
         listData.clear();
 
+        // 唯一的官方【我的收藏】入口
         currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步服务器标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
         Map<String, String> favRow = new HashMap<String, String>();
         favRow.put("title", "♥  我的收藏");
