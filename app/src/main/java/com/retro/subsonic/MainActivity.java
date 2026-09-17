@@ -1325,6 +1325,24 @@ public class MainActivity extends Activity {
                 @Override public void onClick(View v) { applyLyricFontSize(2); }
             });
         }
+
+        // 核心修复：绑定详情页红心收藏按钮监听
+        View.OnClickListener favListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ArrayList<MusicService.SongItem> q = MusicService.getPlaylist();
+                int idx = MusicService.getCurrentIndex();
+                if (q != null && idx >= 0 && idx < q.size()) {
+                    String sid = q.get(idx).id;
+                    serverStarSong(sid, !isFav(sid));
+                } else {
+                    Toast.makeText(MainActivity.this, "当前无播放歌曲可收藏", Toast.LENGTH_SHORT).show();
+                }
+            }
+        };
+        if (btnBottomFav != null) btnBottomFav.setOnClickListener(favListener);
+        if (btnDetailFavLand != null) btnDetailFavLand.setOnClickListener(favListener);
+        if (btnDetailFavPort != null) btnDetailFavPort.setOnClickListener(favListener);
     }
 
     private void scrollQueueToCenter(final ListView lv) {
@@ -1920,5 +1938,289 @@ public class MainActivity extends Activity {
         if (mode == MusicService.MODE_SHUFFLE) return "随机播放";
         if (mode == MusicService.MODE_SINGLE) return "单曲循环";
         return "列表循环";
+    }
+
+    private void fetchAlbumSongs(final String albumId, final String albumName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getAlbum.view?id=" + albumId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject album = root.getJSONObject("album");
+                            currentItems.clear();
+
+                            if (album.has("song")) {
+                                Object songObj = album.get("song");
+                                if (songObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) songObj;
+                                    for (int i = 0; i < arr.length(); i++) addSongRow(arr.getJSONObject(i));
+                                } else if (songObj instanceof JSONObject) {
+                                    addSongRow((JSONObject) songObj);
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText("专辑: " + albumName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception ignored) {}
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void fetchArtistAlbums(final String artistId, final String artistName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getArtist.view?id=" + artistId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject artistObj = root.getJSONObject("artist");
+                            currentItems.clear();
+
+                            if (artistObj.has("album")) {
+                                Object albObj = artistObj.get("album");
+                                if (albObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) albObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        JSONObject a = arr.getJSONObject(i);
+                                        currentItems.add(new DisplayEntry("album_" + a.getString("id"), a.getString("name"), artistName, "专辑", a.optString("coverArt", null), "专辑", false));
+                                    }
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText("歌手: " + artistName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception ignored) {}
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
+        if ("fav_entry".equals(playlistId)) {
+            fetchServerFavoriteSongs();
+            return;
+        }
+        if ("local_featured".equals(playlistId)) {
+            btnBack.setVisibility(View.VISIBLE);
+            tvListTitle.setText("精选歌单");
+            currentItems.clear();
+            currentItems.addAll(featuredSongs);
+            adapter.notifyDataSetChanged();
+            return;
+        }
+        if ("local_car".equals(playlistId)) {
+            btnBack.setVisibility(View.VISIBLE);
+            tvListTitle.setText("车载歌单");
+            currentItems.clear();
+            currentItems.addAll(carSongs);
+            adapter.notifyDataSetChanged();
+            return;
+        }
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getPlaylist.view?id=" + playlistId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject playlist = root.getJSONObject("playlist");
+                            currentItems.clear();
+
+                            if (playlist.has("entry")) {
+                                Object entryObj = playlist.get("entry");
+                                if (entryObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) entryObj;
+                                    for (int i = 0; i < arr.length(); i++) addSongRow(arr.getJSONObject(i));
+                                } else if (entryObj instanceof JSONObject) {
+                                    addSongRow((JSONObject) entryObj);
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText(playlistName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception ignored) {}
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void fetchServerFavoriteSongs() {
+        btnBack.setVisibility(View.VISIBLE);
+        tvListTitle.setText("我的收藏 (云端同步)");
+        currentItems.clear();
+        adapter.notifyDataSetChanged();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String jsonStr = requestApi("getStarred2.view?" + getAuthParams());
+                if (jsonStr == null || !jsonStr.contains("\"song\"")) {
+                    jsonStr = requestApi("getStarred.view?" + getAuthParams());
+                }
+                final String finalJson = jsonStr;
+
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (finalJson == null) return;
+                        try {
+                            JSONObject root = new JSONObject(finalJson).getJSONObject("subsonic-response");
+                            JSONObject starred = root.optJSONObject("starred2");
+                            if (starred == null) starred = root.optJSONObject("starred");
+                            currentItems.clear();
+                            favSongIds.clear();
+
+                            if (starred != null && starred.has("song")) {
+                                Object songObj = starred.get("song");
+                                if (songObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) songObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        JSONObject s = arr.getJSONObject(i);
+                                        addSongRow(s);
+                                        favSongIds.add(s.getString("id"));
+                                    }
+                                } else if (songObj instanceof JSONObject) {
+                                    JSONObject s = (JSONObject) songObj;
+                                    addSongRow(s);
+                                    favSongIds.add(s.getString("id"));
+                                }
+                            }
+                            saveFavSet();
+                            adapter.notifyDataSetChanged();
+                            updateFavButtonState(null);
+                        } catch (Exception ignored) {}
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void addSongRow(JSONObject s) throws Exception {
+        String title = s.getString("title");
+        String artist = s.optString("artist", "未知艺术家");
+        String coverArt = s.optString("coverArt", null);
+
+        int bitRate = s.optInt("bitRate", 0);
+        String suffix = s.optString("suffix", "").toUpperCase();
+        String quality;
+        if (suffix.contains("FLAC") || suffix.contains("WAV") || suffix.contains("APE")) {
+            quality = "FLAC 无损";
+        } else if (bitRate > 0) {
+            quality = bitRate + "K " + (suffix.length() > 0 ? suffix : "MP3");
+        } else if (suffix.length() > 0) {
+            quality = suffix;
+        } else {
+            quality = "320K MP3";
+        }
+
+        currentItems.add(new DisplayEntry(s.getString("id"), title, artist, artist + " [" + quality + "]", coverArt, quality, true));
+    }
+
+    private String buildStreamUrl(String songId) {
+        return buildStreamUrl(songId, getSavedBitrate());
+    }
+
+    private String buildStreamUrl(String songId, String bitrate) {
+        String base = prefs.getString("server", "");
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String u = prefs.getString("user", "");
+        String p = prefs.getString("pass", "");
+
+        String bitrateParam = "";
+        if ("128".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=128";
+        } else if ("192".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=192";
+        } else if ("320".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&maxBitRate=320";
+        } else if ("flac".equalsIgnoreCase(bitrate)) {
+            bitrateParam = "&format=flac";
+        }
+
+        try {
+            String encodedId = URLEncoder.encode(songId, "UTF-8");
+            return base + "/rest/stream.view?id=" + encodedId + "&u=" + URLEncoder.encode(u, "UTF-8") + "&p=" + URLEncoder.encode(p, "UTF-8") + "&v=1.12.0&c=RetroSubsonic" + bitrateParam;
+        } catch (Exception e) {
+            return base + "/rest/stream.view?id=" + songId + "&u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic" + bitrateParam;
+        }
+    }
+
+    private void loadLyrics(final String songId, final String artist, final String title) {
+        if (layoutLyricsContainerLand == null && layoutLyricsContainerPort == null) return;
+        lyricRows.clear();
+        currentLyricIndex = -1;
+        if (layoutLyricsContainerLand != null) layoutLyricsContainerLand.removeAllViews();
+        if (layoutLyricsContainerPort != null) layoutLyricsContainerPort.removeAllViews();
+
+        TextView loadingTv = new TextView(this);
+        loadingTv.setText("歌词加载中...");
+        loadingTv.setTextColor(0xFF888888);
+        loadingTv.setGravity(Gravity.CENTER);
+        if (layoutLyricsContainerLand != null) layoutLyricsContainerLand.addView(loadingTv);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String lyricsText = null;
+                if (songId != null && songId.length() > 0) {
+                    try {
+                        String res = requestApi("getLyricsBySongId.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
+                        lyricsText = parseLyricsFromJson(res);
+                    } catch (Throwable ignored) {}
+                }
+                if (lyricsText == null && title != null && title.length() > 0) {
+                    try {
+                        String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8") + "&title=" + URLEncoder.encode(title, "UTF-8");
+                        String res = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
+                        lyricsText = parseLyricsFromJson(res);
+                    } catch (Throwable ignored) {}
+                }
+
+                final String finalLyrics = lyricsText;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (finalLyrics != null && finalLyrics.trim().length() > 0) {
+                            buildLyricsView(finalLyrics);
+                        } else {
+                            showSimpleLyric("未找到匹配歌词");
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void updateFavButtonState(String currentPlayingSongId) {
+        String targetId = currentPlayingSongId;
+        if (targetId == null || targetId.length() == 0) {
+            ArrayList<MusicService.SongItem> q = MusicService.getPlaylist();
+            int idx = MusicService.getCurrentIndex();
+            if (q != null && idx >= 0 && idx < q.size()) {
+                targetId = q.get(idx).id;
+            }
+        }
+        boolean fav = isFav(targetId);
+        String symbol = fav ? "♥" : "♡";
+        if (btnBottomFav != null) btnBottomFav.setText(symbol);
+        if (btnDetailFavLand != null) btnDetailFavLand.setText(symbol);
+        if (btnDetailFavPort != null) btnDetailFavPort.setText(symbol);
     }
 }
