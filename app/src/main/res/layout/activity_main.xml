@@ -207,7 +207,8 @@
                     android:hint="/sdcard/Music"
                     android:textColor="#ffffff"
                     android:textColorHint="#777777"
-                    android:singleLine="true" />
+                    android:singleLine="true"
+                    android:layout_marginLeft="4dp" />
             </LinearLayout>
 
             <LinearLayout
@@ -823,7 +824,6 @@
                     android:layout_marginTop="2dp"
                     android:singleLine="true" />
 
-                <!-- 码率与右侧缓冲提示 -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -894,6 +894,7 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
+                <!-- 详情页对称控制排：修正了 btn_detail_next ID -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
@@ -947,8 +948,9 @@
                         android:gravity="left|center_vertical"
                         android:orientation="horizontal">
 
+                        <!-- 此处修正为正确的 btn_detail_next -->
                         <ImageView
-                            android:id="@+id/btn_next"
+                            android:id="@+id/btn_detail_next"
                             android:layout_width="48dp"
                             android:layout_height="48dp"
                             android:background="@android:color/transparent"
@@ -1103,7 +1105,7 @@
 
     </LinearLayout>
 
-    <!-- 第三层：全新独立全屏搜索单页 (包含顶栏操作区、搜索历史列表与结果列表) -->
+    <!-- 第三层：全新独立全屏搜索单页 -->
     <LinearLayout
         android:id="@+id/layout_search_overlay"
         android:layout_width="match_parent"
@@ -1115,7 +1117,6 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <!-- 搜索页顶栏：返回按钮、分类下拉、搜索输入框、搜索执行按钮 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="44dp"
@@ -1171,7 +1172,6 @@
                 android:layout_marginLeft="6dp" />
         </LinearLayout>
 
-        <!-- 搜索历史区块 -->
         <LinearLayout
             android:id="@+id/layout_search_history_box"
             android:layout_width="match_parent"
@@ -1195,7 +1195,6 @@
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
-                <!-- 清空历史记录：垃圾桶图标按键 -->
                 <ImageView
                     android:id="@+id/btn_clear_search_history"
                     android:layout_width="32dp"
@@ -1216,7 +1215,6 @@
                 android:dividerHeight="1dp" />
         </LinearLayout>
 
-        <!-- 搜索结果列表区块 -->
         <LinearLayout
             android:id="@+id/layout_search_result_box"
             android:layout_width="match_parent"
