@@ -26,6 +26,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
@@ -139,7 +140,7 @@ public class MainActivity extends Activity {
     private Button btnCloseDetail, btnDetailDownload, btnDetailKeepScreen, btnDetailQueue;
     private ImageView btnDetailExitApp;
 
-    // 黑胶旋转 (60fps 定时平滑旋转)
+    // 黑胶旋转 (60fps 定时平滑步进调度)
     private Handler vinylHandler = new Handler();
     private float currentVinylDegree = 0f;
     private boolean isCurrentSongPlaying = false;
@@ -242,7 +243,6 @@ public class MainActivity extends Activity {
                     String currentBitrate = getSavedBitrate();
                     setDetailQuality(getBitrateDisplay(currentBitrate, quality));
 
-                    // 缓冲显示在码率标签右侧
                     if (isBuffering && bufferPercent < 100) {
                         setDetailBuffer("(缓冲 " + bufferPercent + "%)", true);
                     } else if (retryCount > 0) {
@@ -577,7 +577,6 @@ public class MainActivity extends Activity {
             tvAppTitle.setTextColor(0xFFFFFFFF);
             btnThemeToggle.setImageDrawable(MediaIconHelper.createThemeIcon(this, 18, 0xFF00E5FF, true));
 
-            // 搜索框深色字体
             etSearchKeyword.setTextColor(0xFFFFFFFF);
             etSearchKeyword.setHintTextColor(0xFF9CA3AF);
             etSearchKeyword.setBackgroundResource(R.drawable.bg_btn_pill);
@@ -588,7 +587,6 @@ public class MainActivity extends Activity {
             tvAppTitle.setTextColor(0xFF1F2937);
             btnThemeToggle.setImageDrawable(MediaIconHelper.createThemeIcon(this, 18, 0xFFFF9800, false));
 
-            // 搜索框浅色字体与边框高对比度
             etSearchKeyword.setTextColor(0xFF111827);
             etSearchKeyword.setHintTextColor(0xFF6B7280);
             etSearchKeyword.setBackgroundResource(R.drawable.bg_card_frosted_light);
@@ -606,6 +604,7 @@ public class MainActivity extends Activity {
         Toast.makeText(this, isDarkTheme ? "已切换至深色主题" : "已切换至浅色主题", Toast.LENGTH_SHORT).show();
     }
 
+    // 核心重构：点播行点击监听在 Adapter 内部直接处理，彻底规避 Android 4.2 ListView 事件拦截
     private class PlaylistsCustomAdapter extends BaseAdapter {
         @Override public int getCount() {
             return currentSelectedTab == TAB_PLAYLISTS ? (currentItems.size() + 1) : currentItems.size();
@@ -631,6 +630,12 @@ public class MainActivity extends Activity {
                 addTv.setTextColor(isDarkTheme ? 0xFF00E5FF : 0xFF0091EA);
                 addTv.setTypeface(Typeface.DEFAULT_BOLD);
                 row.addView(addTv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                row.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        showCreatePlaylistDialog(null);
+                    }
+                });
                 return row;
             }
 
@@ -653,6 +658,40 @@ public class MainActivity extends Activity {
             sub.setTextSize(11);
             textCol.addView(sub);
             row.addView(textCol, tLp);
+
+            // 点击整行点播/打开歌单
+            row.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (!item.isSong) {
+                        if (item.id.startsWith("album_")) {
+                            fetchAlbumSongs(item.id.substring(6), item.title);
+                        } else if (item.id.startsWith("artist_")) {
+                            fetchArtistAlbums(item.id.substring(7), item.title);
+                        } else {
+                            fetchPlaylistSongs(item.id, item.title);
+                        }
+                    } else {
+                        // 核心点播逻辑：提取所有曲目组建队列并立即起播
+                        ArrayList<MusicService.SongItem> queue = new ArrayList<MusicService.SongItem>();
+                        int clickedIndex = 0;
+                        for (int i = 0; i < currentItems.size(); i++) {
+                            DisplayEntry e = currentItems.get(i);
+                            if (e.isSong) {
+                                if (e.id.equals(item.id)) {
+                                    clickedIndex = queue.size();
+                                }
+                                queue.add(new MusicService.SongItem(
+                                        e.id, e.title, e.artist,
+                                        buildStreamUrl(e.id), e.coverArt, e.quality
+                                ));
+                            }
+                        }
+                        MusicService.setQueue(queue, clickedIndex, MainActivity.this);
+                        refreshQueueList();
+                    }
+                }
+            });
 
             boolean isProtected = item.id.equals("fav_entry") || item.id.equals("local_featured")
                     || item.id.equals("local_car") || item.title.contains("榜");
@@ -789,7 +828,6 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("取消", null).show();
     }
 
-    // 搜索单页适配器：使用高对比度自定义 CheckBox 矢量，浅色模式 100% 鲜明可见
     private class SearchResultAdapter extends BaseAdapter {
         @Override public int getCount() { return searchResultsList.size(); }
         @Override public Object getItem(int position) { return searchResultsList.get(position); }
@@ -836,7 +874,6 @@ public class MainActivity extends Activity {
                 final CheckBox cb = new CheckBox(MainActivity.this);
                 final boolean isChecked = checkedSongIds.contains(item.id);
                 cb.setChecked(isChecked);
-                // 设置高对比度专属 CheckBox
                 cb.setButtonDrawable(MediaIconHelper.createCheckboxDrawable(MainActivity.this, isChecked, isDarkTheme));
                 cb.setOnClickListener(new View.OnClickListener() {
                     @Override
@@ -947,47 +984,6 @@ public class MainActivity extends Activity {
             public void onClick(View v) {
                 layoutDetailOverlay.setVisibility(View.VISIBLE);
                 updateDetailOrientationLayout();
-            }
-        });
-
-        // 核心修复：点击歌单或单曲事件彻底打通
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                if (currentSelectedTab == TAB_PLAYLISTS && position == currentItems.size()) {
-                    showCreatePlaylistDialog(null);
-                    return;
-                }
-                if (position < 0 || position >= currentItems.size()) return;
-                DisplayEntry entry = currentItems.get(position);
-
-                if (!entry.isSong) {
-                    if (entry.id.startsWith("album_")) {
-                        fetchAlbumSongs(entry.id.substring(6), entry.title);
-                    } else if (entry.id.startsWith("artist_")) {
-                        fetchArtistAlbums(entry.id.substring(7), entry.title);
-                    } else {
-                        fetchPlaylistSongs(entry.id, entry.title);
-                    }
-                } else {
-                    // 核心修复：点击歌曲播放！组装播放队列
-                    ArrayList<MusicService.SongItem> queue = new ArrayList<MusicService.SongItem>();
-                    int clickedIndex = 0;
-                    for (int i = 0; i < currentItems.size(); i++) {
-                        DisplayEntry item = currentItems.get(i);
-                        if (item.isSong) {
-                            if (item.id.equals(entry.id)) {
-                                clickedIndex = queue.size();
-                            }
-                            queue.add(new MusicService.SongItem(
-                                    item.id, item.title, item.artist,
-                                    buildStreamUrl(item.id), item.coverArt, item.quality
-                            ));
-                        }
-                    }
-                    MusicService.setQueue(queue, clickedIndex, MainActivity.this);
-                    refreshQueueList();
-                }
             }
         });
 
@@ -1163,7 +1159,6 @@ public class MainActivity extends Activity {
         if (detailSeekBarLand != null) detailSeekBarLand.setOnSeekBarChangeListener(seekListener);
         if (detailSeekBarPort != null) detailSeekBarPort.setOnSeekBarChangeListener(seekListener);
 
-        // 横屏右侧空白处切换歌词/队列
         if (layoutDetailBottomBlankLand != null) {
             layoutDetailBottomBlankLand.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -1180,7 +1175,6 @@ public class MainActivity extends Activity {
             });
         }
 
-        // 竖屏底部空白处呼出播放队列抽屉
         if (layoutDetailBottomBlankPort != null) {
             layoutDetailBottomBlankPort.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -1195,7 +1189,6 @@ public class MainActivity extends Activity {
             });
         }
 
-        // 字号增减
         if (btnLyricDecLand != null) {
             btnLyricDecLand.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { applyLyricFontSize(-2); }
@@ -1330,7 +1323,6 @@ public class MainActivity extends Activity {
         }
 
         if (targetIndex != currentLyricIndex && targetIndex >= 0) {
-            // 恢复旧行
             if (currentLyricIndex >= 0 && currentLyricIndex < lyricRows.size()) {
                 LyricRow oldRow = lyricRows.get(currentLyricIndex);
                 int oldColor = isDarkTheme ? 0xFF777777 : 0xFF9CA3AF;
@@ -1944,7 +1936,6 @@ public class MainActivity extends Activity {
         return -1;
     }
 
-    // 核心修复：加载歌单内容 (支持收藏、精选、车载及所有服务器歌单)
     private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
         if ("fav_entry".equals(playlistId)) {
             fetchServerFavoriteSongs();
@@ -2104,8 +2095,7 @@ public class MainActivity extends Activity {
                                         favSongIds.add(s.getString("id"));
                                     }
                                 } else if (songObj instanceof JSONObject) {
-                                    JSONObject s = (JSONObject) songObj;
-                                    addSongRow(s);
+                                    addSongRow((JSONObject) songObj);
                                     favSongIds.add(s.getString("id"));
                                 }
                             }
@@ -2140,7 +2130,6 @@ public class MainActivity extends Activity {
         currentItems.add(new DisplayEntry(s.getString("id"), title, artist, artist + " [" + quality + "]", coverArt, quality, true));
     }
 
-    // 核心修复：完整串流直链生成器 (支持转码与无损直推)
     private String buildStreamUrl(String songId) {
         return buildStreamUrl(songId, getSavedBitrate());
     }
