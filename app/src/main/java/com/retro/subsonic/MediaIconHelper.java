@@ -194,7 +194,6 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 现代设置齿轮图标 (100% 兼容 API 17)
     public static Drawable createSettingsIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -225,7 +224,6 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 主题切换图标（太阳 / 月亮）- 修复为纯 Path 贝塞尔几何算法，彻底杜绝 API 19+ Path.Op 报错
     public static Drawable createThemeIcon(Context context, int sizeDp, int color, boolean isDark) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -240,7 +238,6 @@ public class MediaIconHelper {
         float cy = sizePx / 2f;
 
         if (isDark) {
-            // 月牙图标：外圆弧 + 二次贝塞尔内弧闭合，100% 兼容 Android 4.2.2
             float r = sizePx * 0.32f;
             Path moon = new Path();
             RectF outerBounds = new RectF(cx - r, cy - r, cx + r, cy + r);
@@ -249,7 +246,6 @@ public class MediaIconHelper {
             moon.close();
             canvas.drawPath(moon, paint);
         } else {
-            // 太阳图标：中心圆形 + 8条辐射光芒
             float r = sizePx * 0.20f;
             canvas.drawCircle(cx, cy, r, paint);
             paint.setStyle(Paint.Style.STROKE);
@@ -267,7 +263,6 @@ public class MediaIconHelper {
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 垃圾桶清空图标 (100% 兼容 API 17)
     public static Drawable createTrashIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -285,11 +280,9 @@ public class MediaIconHelper {
         float bottom = sizePx * 0.75f;
         float w = sizePx * 0.35f;
 
-        // 顶盖与把手
         canvas.drawLine(cx - w, top, cx + w, top, stroke);
         canvas.drawLine(cx - w * 0.4f, top - 3 * density, cx + w * 0.4f, top - 3 * density, stroke);
 
-        // 桶身
         Path body = new Path();
         body.moveTo(cx - w * 0.85f, top);
         body.lineTo(cx - w * 0.70f, bottom);
@@ -297,12 +290,10 @@ public class MediaIconHelper {
         body.lineTo(cx + w * 0.85f, top);
         canvas.drawPath(body, stroke);
 
-        // 桶内竖条纹
         canvas.drawLine(cx, top + 4 * density, cx, bottom - 3 * density, stroke);
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 
-    // 歌单栏竖三点菜单图标 (100% 兼容 API 17)
     public static Drawable createMoreVertIcon(Context context, int sizeDp, int color) {
         float density = context.getResources().getDisplayMetrics().density;
         int sizePx = (int) (sizeDp * density);
@@ -508,6 +499,50 @@ public class MediaIconHelper {
         canvas.drawCircle(cx2, y2, r, stroke);
         canvas.drawLine(cx2 + r, y2, xRight, y2, stroke);
 
+        return new BitmapDrawable(context.getResources(), bitmap);
+    }
+
+    // 核心新增：超高对比度 CheckBox 矢量绘制器 (深浅双模式 100% 鲜明可见)
+    public static Drawable createCheckboxDrawable(Context context, boolean checked, boolean isDark) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int sizePx = (int) (22 * density);
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        float pad = 2 * density;
+        RectF rect = new RectF(pad, pad, sizePx - pad, sizePx - pad);
+        float corner = 4 * density;
+
+        if (checked) {
+            // 勾选状态：亮青蓝/亮蓝填充 + 白色对勾
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(isDark ? 0xFF00E5FF : 0xFF0091EA);
+            canvas.drawRoundRect(rect, corner, corner, paint);
+
+            Paint checkPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            checkPaint.setStyle(Paint.Style.STROKE);
+            checkPaint.setColor(0xFFFFFFFF);
+            checkPaint.setStrokeWidth(2.2f * density);
+            checkPaint.setStrokeCap(Paint.Cap.ROUND);
+            checkPaint.setStrokeJoin(Paint.Join.ROUND);
+
+            Path checkPath = new Path();
+            checkPath.moveTo(sizePx * 0.26f, sizePx * 0.52f);
+            checkPath.lineTo(sizePx * 0.44f, sizePx * 0.70f);
+            checkPath.lineTo(sizePx * 0.74f, sizePx * 0.32f);
+            canvas.drawPath(checkPath, checkPaint);
+        } else {
+            // 未勾选状态：深色模式为醒目亮灰边框，浅色模式为炭灰边框 + 白底
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(isDark ? 0x22FFFFFF : 0xFFFFFFFF);
+            canvas.drawRoundRect(rect, corner, corner, paint);
+
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.8f * density);
+            paint.setColor(isDark ? 0xFF9CA3AF : 0xFF374151);
+            canvas.drawRoundRect(rect, corner, corner, paint);
+        }
         return new BitmapDrawable(context.getResources(), bitmap);
     }
 }
