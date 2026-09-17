@@ -13,7 +13,7 @@
         android:orientation="vertical"
         android:padding="8dp">
 
-        <!-- 顶栏：标题(带小号版本号)、主题切换按钮、居中搜索、设置图标与关闭按钮 -->
+        <!-- 顶栏：标题、版本号、主题切换、搜索、设置与高显眼电源按钮 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="48dp"
@@ -91,6 +91,7 @@
                     android:focusable="true"
                     android:layout_marginRight="10dp" />
 
+                <!-- 高显眼红色电源退出按钮 -->
                 <ImageView
                     android:id="@+id/btn_exit_app"
                     android:layout_width="36dp"
@@ -102,7 +103,7 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- 可折叠服务器配置面板 -->
+        <!-- 恢复完整的服务器配置面板（包含缓存、超时、重试、下载路径） -->
         <LinearLayout
             android:id="@+id/layout_config_panel"
             android:layout_width="match_parent"
@@ -160,6 +161,109 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:text="超时(秒):"
+                    android:textColor="#cccccc"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/et_timeout_sec"
+                    android:layout_width="50dp"
+                    android:layout_height="wrap_content"
+                    android:text="20"
+                    android:textColor="#ffffff"
+                    android:textColorHint="#777777"
+                    android:inputType="number"
+                    android:gravity="center"
+                    android:singleLine="true"
+                    android:layout_marginLeft="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="重试:"
+                    android:textColor="#cccccc"
+                    android:textSize="13sp"
+                    android:layout_marginLeft="8dp" />
+
+                <EditText
+                    android:id="@+id/et_retry_count"
+                    android:layout_width="45dp"
+                    android:layout_height="wrap_content"
+                    android:text="3"
+                    android:textColor="#ffffff"
+                    android:textColorHint="#777777"
+                    android:inputType="number"
+                    android:gravity="center"
+                    android:singleLine="true"
+                    android:layout_marginLeft="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="缓存(MB):"
+                    android:textColor="#cccccc"
+                    android:textSize="13sp"
+                    android:layout_marginLeft="8dp" />
+
+                <EditText
+                    android:id="@+id/et_cache_size"
+                    android:layout_width="60dp"
+                    android:layout_height="wrap_content"
+                    android:text="500"
+                    android:textColor="#ffffff"
+                    android:textColorHint="#777777"
+                    android:inputType="number"
+                    android:gravity="center"
+                    android:singleLine="true"
+                    android:layout_marginLeft="4dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="下载路径:"
+                    android:textColor="#cccccc"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/et_download_path"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="/sdcard/Music"
+                    android:textColor="#ffffff"
+                    android:textColorHint="#777777"
+                    android:singleLine="true"
+                    android:layout_marginLeft="4dp" />
+
+                <Button
+                    android:id="@+id/btn_clear_cache"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:background="@drawable/bg_btn_default"
+                    android:text="清缓存"
+                    android:textSize="11sp"
+                    android:textColor="#e0e0e0"
+                    android:layout_marginLeft="4dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:text="默认码率:"
                     android:textColor="#cccccc"
                     android:textSize="13sp" />
@@ -179,23 +283,13 @@
                     android:layout_weight="1" />
 
                 <Button
-                    android:id="@+id/btn_clear_cache"
-                    android:layout_width="wrap_content"
-                    android:layout_height="34dp"
-                    android:background="@drawable/bg_btn_default"
-                    android:text="清理缓存"
-                    android:textSize="11sp"
-                    android:textColor="#e0e0e0" />
-
-                <Button
                     android:id="@+id/btn_connect"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
                     android:background="@drawable/bg_btn_accent"
                     android:text="保存并连接"
                     android:textColor="#00e5ff"
-                    android:textSize="12sp"
-                    android:layout_marginLeft="8dp" />
+                    android:textSize="12sp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -228,7 +322,7 @@
                 android:layout_marginLeft="6dp" />
         </LinearLayout>
 
-        <!-- 歌单列表与侧边队列主栏 -->
+        <!-- 歌单列表与播放队列抽屉 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -497,7 +591,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 第二层：独立搜索单页 (输入框高对比度适配) -->
+    <!-- 第二层：搜索单页 -->
     <LinearLayout
         android:id="@+id/layout_search_page"
         android:layout_width="match_parent"
@@ -634,7 +728,7 @@
         </FrameLayout>
     </LinearLayout>
 
-    <!-- 第三层：全屏播放详情页 (内含横屏双栏与竖屏单列响应式视图) -->
+    <!-- 第三层：全屏播放详情页 -->
     <LinearLayout
         android:id="@+id/layout_detail_overlay"
         android:layout_width="match_parent"
@@ -735,7 +829,7 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- ==================== 横屏模式：原版经典双栏排布 (排版不变) ==================== -->
+        <!-- ==================== 横屏模式：经典双栏排版 ==================== -->
         <LinearLayout
             android:id="@+id/layout_detail_landscape"
             android:layout_width="match_parent"
@@ -824,7 +918,6 @@
                     android:layout_marginTop="2dp"
                     android:singleLine="true" />
 
-                <!-- 缓冲数值位于码率标签右侧 -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -893,7 +986,6 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 5 键对称控制坞 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -1095,7 +1187,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- ==================== 竖屏模式：全屏流式单列排布 ==================== -->
+        <!-- ==================== 竖屏模式：放大黑胶尺寸并完美居中 ==================== -->
         <LinearLayout
             android:id="@+id/layout_detail_portrait"
             android:layout_width="match_parent"
@@ -1103,26 +1195,26 @@
             android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="center_horizontal"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="2dp"
             android:visibility="gone">
 
-            <!-- 1. 顶部放大尺寸黑胶 (270dp) -->
+            <!-- 竖屏放大版黑胶唱片 (310dp 容器，唱片 290dp，封面 170dp) -->
             <FrameLayout
-                android:layout_width="270dp"
-                android:layout_height="270dp"
-                android:layout_marginTop="4dp">
+                android:layout_width="310dp"
+                android:layout_height="310dp"
+                android:layout_marginTop="2dp">
 
                 <FrameLayout
                     android:id="@+id/fl_vinyl_disc_port"
-                    android:layout_width="250dp"
-                    android:layout_height="250dp"
+                    android:layout_width="290dp"
+                    android:layout_height="290dp"
                     android:layout_gravity="center"
                     android:background="@drawable/bg_vinyl">
 
                     <ImageView
                         android:id="@+id/iv_vinyl_circular_cover_port"
-                        android:layout_width="145dp"
-                        android:layout_height="145dp"
+                        android:layout_width="170dp"
+                        android:layout_height="170dp"
                         android:layout_gravity="center"
                         android:scaleType="centerCrop"
                         android:src="@android:drawable/ic_menu_report_image" />
@@ -1134,13 +1226,12 @@
                     android:layout_height="match_parent" />
             </FrameLayout>
 
-            <!-- 2. 歌曲名与红心 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:layout_marginTop="8dp">
+                android:layout_marginTop="6dp">
 
                 <Button
                     android:id="@+id/btn_detail_fav_port"
@@ -1174,7 +1265,6 @@
                 android:layout_marginTop="2dp"
                 android:singleLine="true" />
 
-            <!-- 码率调节 + 音质标签 + 缓冲显示 (缓冲数值位于码率标签右侧) -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -1215,14 +1305,13 @@
                     android:visibility="gone" />
             </LinearLayout>
 
-            <!-- 3. 竖屏 3 行大字号居中滚动歌词 -->
             <ScrollView
                 android:id="@+id/scroll_lyrics_port"
                 android:layout_width="match_parent"
-                android:layout_height="80dp"
+                android:layout_height="75dp"
                 android:fillViewport="true"
                 android:scrollbars="none"
-                android:layout_marginTop="8dp">
+                android:layout_marginTop="6dp">
 
                 <LinearLayout
                     android:id="@+id/layout_lyrics_container_port"
@@ -1230,8 +1319,8 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:gravity="center_horizontal"
-                    android:paddingTop="15dp"
-                    android:paddingBottom="15dp" />
+                    android:paddingTop="10dp"
+                    android:paddingBottom="10dp" />
             </ScrollView>
 
             <View
@@ -1239,7 +1328,6 @@
                 android:layout_height="0dp"
                 android:layout_weight="1" />
 
-            <!-- 4. 进度条与播放控制坞 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -1269,7 +1357,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="4dp">
 
                 <ImageView
                     android:id="@+id/btn_detail_mode_port"
@@ -1321,11 +1409,10 @@
                     android:focusable="true" />
             </LinearLayout>
 
-            <!-- 底部空白轻触滑出队列 -->
             <LinearLayout
                 android:id="@+id/layout_detail_bottom_blank_port"
                 android:layout_width="match_parent"
-                android:layout_height="42dp"
+                android:layout_height="36dp"
                 android:orientation="vertical"
                 android:gravity="center"
                 android:clickable="true"
