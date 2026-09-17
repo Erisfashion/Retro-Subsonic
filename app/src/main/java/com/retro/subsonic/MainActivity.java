@@ -891,8 +891,6 @@ public class MainActivity extends Activity {
                 .setView(et)
                 .setPositiveButton("保存", new DialogInterface.OnClickListener() {
                     @Override
-                    public void ncol(DialogInterface dialog, int which) {} // placeholder
-                    @Override
                     public void onClick(DialogInterface dialog, int which) {
                         final String newName = et.getText().toString().trim();
                         if (newName.length() == 0) return;
@@ -1719,5 +1717,182 @@ public class MainActivity extends Activity {
         int s = (ms / 1000) % 60;
         int m = (ms / (1000 * 60)) % 60;
         return String.format(Locale.getDefault(), "%02d:%02d", m, s);
+    }
+
+    private String getSavedBitrate() { return prefs.getString("default_bitrate", "auto"); }
+
+    private String getBitrateDisplay(String val, String originalQuality) {
+        if ("auto".equalsIgnoreCase(val)) {
+            if (originalQuality != null && originalQuality.length() > 0) return originalQuality;
+            return "原曲音质";
+        }
+        if ("128".equalsIgnoreCase(val)) return "128K MP3";
+        if ("192".equalsIgnoreCase(val)) return "192K MP3";
+        if ("320".equalsIgnoreCase(val)) return "320K MP3";
+        if ("flac".equalsIgnoreCase(val)) return "FLAC 无损";
+        return (originalQuality != null && originalQuality.length() > 0) ? originalQuality : "原曲音质";
+    }
+
+    private int getBitrateIndex(String val) {
+        for (int i = 0; i < BITRATE_VALUES.length; i++) {
+            if (BITRATE_VALUES[i].equalsIgnoreCase(val)) return i;
+        }
+        return 0;
+    }
+
+    private void loadSavedConfig() {
+        etServer.setText(prefs.getString("server", "http://192.168.1.100:4533"));
+        etUsername.setText(prefs.getString("user", "admin"));
+        etPassword.setText(prefs.getString("pass", "admin"));
+        etTimeoutSec.setText(prefs.getString("play_timeout_sec", "20"));
+        etRetryCount.setText(prefs.getString("play_retry_count", "3"));
+        etCacheSize.setText(prefs.getString("cache_size_mb", "500"));
+        etDownloadPath.setText(prefs.getString("download_path", getDefaultDownloadPath()));
+    }
+
+    private void saveConfig() {
+        prefs.edit()
+                .putString("server", etServer.getText().toString().trim())
+                .putString("user", etUsername.getText().toString().trim())
+                .putString("pass", etPassword.getText().toString().trim())
+                .putString("play_timeout_sec", etTimeoutSec.getText().toString().trim())
+                .putString("play_retry_count", etRetryCount.getText().toString().trim())
+                .putString("cache_size_mb", etCacheSize.getText().toString().trim())
+                .putString("download_path", etDownloadPath.getText().toString().trim())
+                .commit();
+    }
+
+    private void setupBitrateSpinners() {
+        BitrateSpinnerAdapter adapterConfig = new BitrateSpinnerAdapter(BITRATE_LABELS);
+        spinnerConfigBitrate.setAdapter(adapterConfig);
+        if (spinnerDetailBitrateLand != null) spinnerDetailBitrateLand.setAdapter(new BitrateSpinnerAdapter(BITRATE_LABELS));
+        if (spinnerDetailBitratePort != null) spinnerDetailBitratePort.setAdapter(new BitrateSpinnerAdapter(BITRATE_LABELS));
+
+        int initIdx = getBitrateIndex(getSavedBitrate());
+        spinnerConfigBitrate.setSelection(initIdx);
+        if (spinnerDetailBitrateLand != null) spinnerDetailBitrateLand.setSelection(initIdx);
+        if (spinnerDetailBitratePort != null) spinnerDetailBitratePort.setSelection(initIdx);
+
+        AdapterView.OnItemSelectedListener listener = new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (isSpinnersInitializing) return;
+                String newBitrate = BITRATE_VALUES[position];
+                prefs.edit().putString("default_bitrate", newBitrate).commit();
+                Toast.makeText(MainActivity.this, "码率已设为: " + BITRATE_LABELS[position], Toast.LENGTH_SHORT).show();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        };
+        spinnerConfigBitrate.setOnItemSelectedListener(listener);
+
+        new Handler().postDelayed(new Runnable() {
+            @Override public void run() { isSpinnersInitializing = false; }
+        }, 500);
+    }
+
+    private void setupSearchTypeSpinner() {
+        BitrateSpinnerAdapter typeAdapter = new BitrateSpinnerAdapter(SEARCH_TYPES);
+        spinnerSearchType.setAdapter(typeAdapter);
+    }
+
+    private class BitrateSpinnerAdapter extends BaseAdapter {
+        private String[] items;
+        BitrateSpinnerAdapter(String[] items) { this.items = items; }
+        @Override public int getCount() { return items.length; }
+        @Override public Object getItem(int position) { return items[position]; }
+        @Override public long getItemId(int position) { return position; }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(MainActivity.this);
+            tv.setTextSize(12);
+            tv.setTextColor(isDarkTheme ? 0xFF00E5FF : 0xFF0091EA);
+            tv.setGravity(Gravity.CENTER);
+            tv.setPadding(6, 2, 6, 2);
+            tv.setText(items[position] + " ▾");
+            return tv;
+        }
+
+        @Override
+        public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            TextView tv = (convertView instanceof TextView) ? (TextView) convertView : new TextView(MainActivity.this);
+            tv.setTextSize(13);
+            tv.setGravity(Gravity.CENTER_VERTICAL);
+            tv.setPadding(24, 18, 24, 18);
+            tv.setBackgroundColor(isDarkTheme ? 0xFF1E222B : 0xFFFFFFFF);
+            tv.setTextColor(isDarkTheme ? 0xFFE0E0E0 : 0xFF1F2937);
+            tv.setText(items[position]);
+            return tv;
+        }
+    }
+
+    private void loadFavSet() {
+        Set<String> set = prefs.getStringSet("fav_songs_set", new HashSet<String>());
+        favSongIds = new HashSet<String>(set);
+    }
+
+    private void saveFavSet() {
+        prefs.edit().putStringSet("fav_songs_set", favSongIds).commit();
+    }
+
+    private boolean isFav(String songId) {
+        return songId != null && favSongIds.contains(songId);
+    }
+
+    private void loadLocalPlaylists() {
+        featuredSongs.clear();
+        carSongs.clear();
+        try {
+            String fStr = prefs.getString("local_playlist_featured", "[]");
+            JSONArray fArr = new JSONArray(fStr);
+            for (int i = 0; i < fArr.length(); i++) {
+                JSONObject o = fArr.getJSONObject(i);
+                featuredSongs.add(new DisplayEntry(o.getString("id"), o.getString("title"), o.optString("artist", "未知歌手"), "", o.optString("coverArt", null), o.optString("quality", "标准音质"), true));
+            }
+
+            String cStr = prefs.getString("local_playlist_car", "[]");
+            JSONArray cArr = new JSONArray(cStr);
+            for (int i = 0; i < cArr.length(); i++) {
+                JSONObject o = cArr.getJSONObject(i);
+                carSongs.add(new DisplayEntry(o.getString("id"), o.getString("title"), o.optString("artist", "未知歌手"), "", o.optString("coverArt", null), o.optString("quality", "标准音质"), true));
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void syncServerFavoritesQuietly() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String jsonStr = requestApi("getStarred2.view?" + getAuthParams());
+                if (jsonStr == null || !jsonStr.contains("\"song\"")) {
+                    jsonStr = requestApi("getStarred.view?" + getAuthParams());
+                }
+                if (jsonStr == null) return;
+
+                try {
+                    JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                    JSONObject starred = root.optJSONObject("starred2");
+                    if (starred == null) starred = root.optJSONObject("starred");
+                    if (starred != null && starred.has("song")) {
+                        favSongIds.clear();
+                        Object songObj = starred.get("song");
+                        if (songObj instanceof JSONArray) {
+                            JSONArray arr = (JSONArray) songObj;
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject s = arr.getJSONObject(i);
+                                favSongIds.add(s.getString("id"));
+                            }
+                        } else if (songObj instanceof JSONObject) {
+                            JSONObject s = (JSONObject) songObj;
+                            favSongIds.add(s.getString("id"));
+                        }
+                        saveFavSet();
+                        runOnUiThread(new Runnable() {
+                            @Override public void run() { updateFavButtonState(null); }
+                        });
+                    }
+                } catch (Exception ignored) {}
+            }
+        }).start();
     }
 }
