@@ -12,7 +12,7 @@
         android:orientation="vertical"
         android:padding="8dp">
 
-        <!-- 顶栏：标题与版本号、居中放大镜搜索图标、服务器设置与圆形关闭图标 -->
+        <!-- 顶栏：标题与版本号、居中放大镜搜索图标、设置与圆形关闭图标 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="44dp"
@@ -25,10 +25,11 @@
                 android:layout_centerVertical="true"
                 android:orientation="vertical">
 
+                <!-- 需求 2：Subsonic Player 更改为 Subsonic音乐 -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Subsonic Player"
+                    android:text="Subsonic音乐"
                     android:textColor="#ffffff"
                     android:textSize="17sp"
                     android:textStyle="bold"
@@ -63,16 +64,17 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
+                <!-- 需求 3：“服务器设置”更改为“设置” -->
                 <Button
                     android:id="@+id/btn_toggle_config"
                     android:layout_width="wrap_content"
                     android:layout_height="34dp"
                     android:background="@drawable/bg_btn_default"
-                    android:text="服务器设置"
+                    android:text="设置"
                     android:textColor="#e0e0e0"
                     android:textSize="12sp"
-                    android:paddingLeft="10dp"
-                    android:paddingRight="10dp"
+                    android:paddingLeft="14dp"
+                    android:paddingRight="14dp"
                     android:layout_marginRight="8dp" />
 
                 <ImageView
@@ -150,12 +152,13 @@
                     android:textColor="#cccccc"
                     android:textSize="13sp" />
 
+                <!-- 需求 5：默认超时时长从 20 秒改为 30 秒 -->
                 <EditText
                     android:id="@+id/et_timeout_sec"
                     android:layout_width="55dp"
                     android:layout_height="wrap_content"
-                    android:text="20"
-                    android:hint="20"
+                    android:text="30"
+                    android:hint="30"
                     android:textColor="#ffffff"
                     android:textColorHint="#777777"
                     android:inputType="number"
@@ -273,6 +276,16 @@
                     android:textColor="#e0e0e0"
                     android:paddingLeft="12dp"
                     android:paddingRight="12dp"
+                    android:layout_marginLeft="8dp" />
+
+                <!-- 需求 4：清理缓存按钮右侧显示已缓存数据大小数值 -->
+                <TextView
+                    android:id="@+id/tv_cache_used"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="(已缓存 0.0 MB)"
+                    android:textColor="#00e5ff"
+                    android:textSize="12sp"
                     android:layout_marginLeft="8dp" />
 
                 <View
@@ -442,7 +455,7 @@
 
         </LinearLayout>
 
-        <!-- 底部常驻播放器条：高度约 68dp，左侧封面扩大至 60dp 贴合高度 -->
+        <!-- 底部常驻播放器条：容纳 95dp 封面图 -->
         <LinearLayout
             android:id="@+id/layout_bottom_player"
             android:layout_width="match_parent"
@@ -455,16 +468,16 @@
             android:clickable="true"
             android:focusable="true">
 
-            <!-- 左翼等宽基座 (126dp)，放置 60dp x 60dp 大号微圆角专辑封面 -->
+            <!-- 需求 1：首页底部播放器封面图显示大小调整到 95dp -->
             <LinearLayout
-                android:layout_width="126dp"
-                android:layout_height="60dp"
-                android:gravity="left|center_vertical">
+                android:layout_width="95dp"
+                android:layout_height="95dp"
+                android:gravity="center">
 
                 <ImageView
                     android:id="@+id/iv_bottom_cover"
-                    android:layout_width="60dp"
-                    android:layout_height="60dp"
+                    android:layout_width="95dp"
+                    android:layout_height="95dp"
                     android:scaleType="centerCrop"
                     android:src="@drawable/ic_launcher"
                     android:clickable="true"
@@ -485,7 +498,7 @@
                     android:layout_height="wrap_content"
                     android:text="未在播放"
                     android:textColor="#ffffff"
-                    android:textSize="13sp"
+                    android:textSize="14sp"
                     android:textStyle="bold"
                     android:singleLine="true" />
 
@@ -493,7 +506,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="2dp">
 
                     <SeekBar
                         android:id="@+id/seek_bar"
@@ -517,7 +531,7 @@
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginTop="2dp">
+                    android:layout_marginTop="4dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -586,11 +600,12 @@
                 </LinearLayout>
             </LinearLayout>
 
+            <!-- 右翼功能基座：收藏与队列按钮，与左翼保持均衡 -->
             <LinearLayout
-                android:layout_width="126dp"
-                android:layout_height="48dp"
-                android:orientation="horizontal"
-                android:gravity="right|center_vertical">
+                android:layout_width="95dp"
+                android:layout_height="95dp"
+                android:orientation="vertical"
+                android:gravity="center">
 
                 <Button
                     android:id="@+id/btn_bottom_fav"
@@ -603,15 +618,13 @@
 
                 <Button
                     android:id="@+id/btn_toggle_queue"
-                    android:layout_width="wrap_content"
-                    android:layout_height="44dp"
+                    android:layout_width="72dp"
+                    android:layout_height="32dp"
                     android:background="@drawable/bg_btn_default"
                     android:text="播放列表"
                     android:textColor="#e0e0e0"
-                    android:textSize="12sp"
-                    android:paddingLeft="10dp"
-                    android:paddingRight="10dp"
-                    android:layout_marginLeft="6dp" />
+                    android:textSize="11sp"
+                    android:layout_marginTop="4dp" />
             </LinearLayout>
 
         </LinearLayout>
@@ -894,7 +907,6 @@
                         android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- 详情页对称控制排：修正了 btn_detail_next ID -->
                 <LinearLayout
                     android:id="@+id/layout_detail_controls"
                     android:layout_width="match_parent"
@@ -948,7 +960,6 @@
                         android:gravity="left|center_vertical"
                         android:orientation="horizontal">
 
-                        <!-- 此处修正为正确的 btn_detail_next -->
                         <ImageView
                             android:id="@+id/btn_detail_next"
                             android:layout_width="48dp"
