@@ -96,11 +96,10 @@ public class MainActivity extends Activity {
     private Button btnBottomFav, btnDetailFav, btnDetailDownload;
     private Button btnLyricDec, btnLyricInc;
     private LinearLayout layoutConfigPanel, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
-    private TextView tvListTitle, tvCurrentSong, tvTime;
+    private TextView tvListTitle, tvCurrentSong, tvTime, tvCacheUsed;
     private ListView listView, lvQueue;
     private SeekBar seekBar;
 
-    // 独立全屏搜索单页组件
     private LinearLayout layoutSearchOverlay;
     private Button btnSearchPageBack;
     private ImageView btnClearSearchHistory;
@@ -261,6 +260,7 @@ public class MainActivity extends Activity {
                         loadCoverArt(coverArtId != null ? coverArtId : songId);
                         loadLyrics(songId, artist, title);
                         refreshQueueList();
+                        updateCacheSizeDisplay();
                     }
 
                     updateFavButtonState(songId);
@@ -329,11 +329,19 @@ public class MainActivity extends Activity {
         loadSavedConfig();
         setupListeners();
         setupClickInterceptors();
+        updateCacheSizeDisplay();
 
         restoreLastSessionIfAvailable();
 
         fetchPlaylists();
         syncServerFavoritesQuietly();
+    }
+
+    private void updateCacheSizeDisplay() {
+        if (tvCacheUsed == null) return;
+        long bytes = CacheManager.getUsedCacheBytes(this);
+        double mb = bytes / (1024.0 * 1024.0);
+        tvCacheUsed.setText(String.format("(已缓存 %.1f MB)", mb));
     }
 
     private void loadSearchHistory() {
@@ -978,7 +986,6 @@ public class MainActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            // 优先收起独立搜索单页
             if (layoutSearchOverlay != null && layoutSearchOverlay.getVisibility() == View.VISIBLE) {
                 layoutSearchOverlay.setVisibility(View.GONE);
                 return true;
@@ -1022,6 +1029,7 @@ public class MainActivity extends Activity {
         btnSearchSubmit = (Button) findViewById(R.id.btn_search_submit);
         btnBack = (Button) findViewById(R.id.btn_back);
         btnBottomFav = (Button) findViewById(R.id.btn_bottom_fav);
+        tvCacheUsed = (TextView) findViewById(R.id.tv_cache_used);
 
         btnExitApp = (ImageView) findViewById(R.id.btn_exit_app);
         btnDetailExitApp = (ImageView) findViewById(R.id.btn_detail_exit_app);
@@ -1049,7 +1057,6 @@ public class MainActivity extends Activity {
         layoutDetailOverlay = (LinearLayout) findViewById(R.id.layout_detail_overlay);
         layoutBottomPlayer = (LinearLayout) findViewById(R.id.layout_bottom_player);
 
-        // 独立搜索页组件初始化
         layoutSearchOverlay = (LinearLayout) findViewById(R.id.layout_search_overlay);
         btnSearchPageBack = (Button) findViewById(R.id.btn_search_page_back);
         btnClearSearchHistory = (ImageView) findViewById(R.id.btn_clear_search_history);
@@ -1179,7 +1186,8 @@ public class MainActivity extends Activity {
         etUsername.setText(prefs.getString("user", "admin"));
         etPassword.setText(prefs.getString("pass", "admin"));
         etCacheSize.setText(prefs.getString("cache_size_mb", "500"));
-        etTimeoutSec.setText(prefs.getString("play_timeout_sec", "20"));
+        // 需求 5：默认超时时长从 20 秒改为 30 秒
+        etTimeoutSec.setText(prefs.getString("play_timeout_sec", "30"));
         etRetryCount.setText(prefs.getString("play_retry_count", "3"));
         etDownloadPath.setText(prefs.getString("download_path", getDefaultDownloadPath()));
     }
@@ -1702,9 +1710,10 @@ public class MainActivity extends Activity {
         return output;
     }
 
+    // 需求 1：大尺寸微圆角抗锯齿矩形裁剪 (95dp 对应 10dp radius)
     private Bitmap getRoundedCornerBitmap(Bitmap bitmap, int targetSize, float cornerRadiusPx) {
         if (bitmap == null || bitmap.isRecycled()) return null;
-        if (targetSize <= 0) targetSize = 120;
+        if (targetSize <= 0) targetSize = 190;
 
         Bitmap output = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(output);
@@ -1747,7 +1756,6 @@ public class MainActivity extends Activity {
         btnExitApp.setOnClickListener(exitListener);
         btnDetailExitApp.setOnClickListener(exitListener);
 
-        // 核心更新：点击顶栏放大镜展开全新独立搜索单页
         btnTopSearch.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1761,7 +1769,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 搜索单页返回按钮
         btnSearchPageBack.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1769,7 +1776,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 垃圾桶清空搜索历史
         btnClearSearchHistory.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1777,7 +1783,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 点击搜索历史项直接搜索
         lvSearchHistory.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -1895,6 +1900,7 @@ public class MainActivity extends Activity {
                 if (layoutConfigPanel.getVisibility() == View.VISIBLE) {
                     layoutConfigPanel.setVisibility(View.GONE);
                 } else {
+                    updateCacheSizeDisplay();
                     layoutConfigPanel.setVisibility(View.VISIBLE);
                 }
             }
@@ -1910,12 +1916,14 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 需求 4：清理缓存并刷新当前已用容量显示
         btnClearCache.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 long bytes = CacheManager.getUsedCacheBytes(MainActivity.this);
                 double mb = bytes / (1024.0 * 1024.0);
                 CacheManager.clearAllCache(MainActivity.this);
+                updateCacheSizeDisplay();
                 Toast.makeText(MainActivity.this, String.format("已清理缓存，释放 %.1f MB 空间", mb), Toast.LENGTH_SHORT).show();
             }
         });
@@ -2026,7 +2034,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 搜索单页列表点击播放
         lvSearchResults.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -2175,6 +2182,7 @@ public class MainActivity extends Activity {
         refreshQueueList();
     }
 
+    // 需求 6：将正在播放歌曲左侧的“>>”替换为清晰的发烧高亮动感标识“▶”
     private void refreshQueueList() {
         ArrayList<MusicService.SongItem> list = MusicService.getPlaylist();
         int currentPlaying = MusicService.getCurrentIndex();
@@ -2184,9 +2192,9 @@ public class MainActivity extends Activity {
             MusicService.SongItem item = list.get(i);
             Map<String, String> row = new HashMap<String, String>();
             if (i == currentPlaying) {
-                row.put("title", ">> " + (i + 1) + ". " + item.title);
+                row.put("title", "▶  " + (i + 1) + ". " + item.title);
             } else {
-                row.put("title", (i + 1) + ". " + item.title);
+                row.put("title", "    " + (i + 1) + ". " + item.title);
             }
             row.put("subtitle", item.artist);
             queueData.add(row);
@@ -2195,6 +2203,7 @@ public class MainActivity extends Activity {
         detailQueueAdapter.notifyDataSetChanged();
     }
 
+    // 需求 1：95dp 尺寸的高清微圆角底栏封面生成
     private void loadCoverArt(final String coverId) {
         if (coverId == null || coverId.length() == 0) {
             ivVinylCircularCover.setImageResource(android.R.drawable.ic_menu_report_image);
@@ -2243,8 +2252,8 @@ public class MainActivity extends Activity {
                         if (safeDecodedBitmap != null) {
                             final Bitmap safeCircularBitmap = getCircularBitmap(safeDecodedBitmap, 240);
                             float density = getResources().getDisplayMetrics().density;
-                            // 底栏 60dp 专属微圆角 (8dp radius)
-                            final Bitmap safeBottomRoundedBitmap = getRoundedCornerBitmap(safeDecodedBitmap, (int) (60 * density), 8 * density);
+                            // 针对 95dp 封面图裁切：95dp 大小，10dp 微圆角抗锯齿
+                            final Bitmap safeBottomRoundedBitmap = getRoundedCornerBitmap(safeDecodedBitmap, (int) (95 * density), 10 * density);
 
                             runOnUiThread(new Runnable() {
                                 @Override
@@ -2911,7 +2920,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 核心改造：独立搜索单页执行搜索
     private void searchSongs(final String query) {
         if (query == null || query.trim().length() == 0) return;
 
