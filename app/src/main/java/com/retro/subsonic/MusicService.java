@@ -187,10 +187,11 @@ public class MusicService extends Service {
     private int getTimeoutSeconds() {
         try {
             SharedPreferences sp = getSharedPreferences("subsonic_cfg", MODE_PRIVATE);
-            int sec = Integer.parseInt(sp.getString("play_timeout_sec", "20"));
+            // 默认超时从 20 改为 30 秒
+            int sec = Integer.parseInt(sp.getString("play_timeout_sec", "30"));
             return Math.max(5, Math.min(sec, 120));
         } catch (Exception e) {
-            return 20;
+            return 30;
         }
     }
 
