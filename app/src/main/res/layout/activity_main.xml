@@ -25,7 +25,6 @@
                 android:layout_centerVertical="true"
                 android:orientation="vertical">
 
-                <!-- 需求 2：Subsonic Player 更改为 Subsonic音乐 -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -64,7 +63,6 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <!-- 需求 3：“服务器设置”更改为“设置” -->
                 <Button
                     android:id="@+id/btn_toggle_config"
                     android:layout_width="wrap_content"
@@ -152,7 +150,6 @@
                     android:textColor="#cccccc"
                     android:textSize="13sp" />
 
-                <!-- 需求 5：默认超时时长从 20 秒改为 30 秒 -->
                 <EditText
                     android:id="@+id/et_timeout_sec"
                     android:layout_width="55dp"
@@ -278,7 +275,6 @@
                     android:paddingRight="12dp"
                     android:layout_marginLeft="8dp" />
 
-                <!-- 需求 4：清理缓存按钮右侧显示已缓存数据大小数值 -->
                 <TextView
                     android:id="@+id/tv_cache_used"
                     android:layout_width="wrap_content"
@@ -455,7 +451,7 @@
 
         </LinearLayout>
 
-        <!-- 底部常驻播放器条：容纳 95dp 封面图 -->
+        <!-- 底部常驻播放器条 -->
         <LinearLayout
             android:id="@+id/layout_bottom_player"
             android:layout_width="match_parent"
@@ -468,7 +464,6 @@
             android:clickable="true"
             android:focusable="true">
 
-            <!-- 需求 1：首页底部播放器封面图显示大小调整到 95dp -->
             <LinearLayout
                 android:layout_width="95dp"
                 android:layout_height="95dp"
@@ -600,7 +595,6 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 右翼功能基座：收藏与队列按钮，与左翼保持均衡 -->
             <LinearLayout
                 android:layout_width="95dp"
                 android:layout_height="95dp"
@@ -1226,6 +1220,7 @@
                 android:dividerHeight="1dp" />
         </LinearLayout>
 
+        <!-- 搜索结果列表区块：头部集成歌曲去重勾选框 -->
         <LinearLayout
             android:id="@+id/layout_search_result_box"
             android:layout_width="match_parent"
@@ -1234,15 +1229,35 @@
             android:orientation="vertical"
             android:layout_marginTop="8dp">
 
-            <TextView
-                android:id="@+id/tv_search_result_title"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="搜索结果"
-                android:textColor="#00e5ff"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="4dp" />
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="32dp"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="4dp">
+
+                <TextView
+                    android:id="@+id/tv_search_result_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentLeft="true"
+                    android:layout_centerVertical="true"
+                    android:text="搜索结果"
+                    android:textColor="#00e5ff"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <!-- 核心新增：歌曲去重勾选框 (保留相同歌曲名最高码率结果) -->
+                <CheckBox
+                    android:id="@+id/cb_dedup_songs"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentRight="true"
+                    android:layout_centerVertical="true"
+                    android:text="去重(保留最高码率)"
+                    android:textColor="#cbd5e1"
+                    android:textSize="12sp"
+                    android:checked="true" />
+            </RelativeLayout>
 
             <ListView
                 android:id="@+id/lv_search_results"
