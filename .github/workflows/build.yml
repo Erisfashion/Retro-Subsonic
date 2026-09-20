@@ -18,7 +18,6 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
 
       - name: Accept Android SDK Licenses
         run: |
@@ -31,17 +30,15 @@ jobs:
             keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=AndroidDebug,O=Android,C=US"
           fi
 
-      # 关键修复：通过指定兼容版本（如 7.5.1 或 8.0）生成 wrapper，规避 Gradle 9.x 破坏性 API 变更
-      - name: Ensure Compatible Gradle Wrapper
-        run: |
-          if [ ! -f "gradlew" ]; then
-            echo "gradlew not found, generating Gradle 7.5.1 wrapper..."
-            gradle wrapper --gradle-version 7.5.1 --distribution-type bin || gradle wrapper --gradle-version 8.0 --distribution-type bin
-          fi
-          chmod +x gradlew
+      # 核心修复：强制下载并使用与 AGP 完美兼容的 Gradle 7.5.1，彻底避开系统自带的 Gradle 9
+      - name: Setup Gradle 7.5.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '7.5.1'
 
-      - name: Build APK with Gradle Wrapper
-        run: ./gradlew assembleDebug --no-daemon
+      # 直接使用由 setup-gradle 安装好的 Gradle 7.5.1 执行编译
+      - name: Build APK with Gradle
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
