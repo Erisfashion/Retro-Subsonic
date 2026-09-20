@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 升级至 JDK 17，完美兼容最新命令行工具及 Gradle
+      # 设置 JDK 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -21,12 +21,12 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      # 自动接受预装 Android SDK 许可
+      # 自动接受 Android SDK 协议许可
       - name: Accept Android SDK Licenses
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      # 生成固定 debug 签名证书，确保输出证书一致，支持无缝覆盖安装
+      # 生成永久固定 debug 签名秘钥库，确保指纹一致，支持直接覆盖安装
       - name: Generate Constant Keystore
         run: |
           mkdir -p ~/.android
@@ -34,12 +34,20 @@ jobs:
             keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=AndroidDebug,O=Android,C=US"
           fi
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      # 关键修复：如果根目录缺失 gradlew，使用系统环境的 gradle 自动补齐 wrapper
+      - name: Ensure Gradle Wrapper Exists
+        run: |
+          if [ ! -f "gradlew" ]; then
+            echo "gradlew not found, generating wrapper using system gradle..."
+            gradle wrapper
+          fi
+          chmod +x gradlew
 
+      # 编译生成 Debug APK
       - name: Build APK with Gradle
         run: ./gradlew assembleDebug --no-daemon
 
+      # 产出并上传 APK 文件
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
