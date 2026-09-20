@@ -3,6 +3,9 @@ plugins {
 }
 
 android {
+    // 核心修复：指定命名空间，用于生成 R 和 BuildConfig
+    namespace 'com.retro.subsonic'
+
     compileSdk 33
 
     defaultConfig {
