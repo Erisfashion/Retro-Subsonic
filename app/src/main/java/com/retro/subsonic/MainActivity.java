@@ -33,6 +33,8 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -65,6 +67,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -105,6 +108,7 @@ public class MainActivity extends Activity {
     private ImageView btnClearSearchHistory;
     private LinearLayout layoutSearchHistoryBox, layoutSearchResultBox;
     private TextView tvSearchResultTitle;
+    private CheckBox cbDedupSongs; // 核心新增：去重勾选框
     private ListView lvSearchHistory, lvSearchResults;
     private ArrayList<String> searchHistoryList = new ArrayList<String>();
     private ArrayAdapter<String> searchHistoryAdapter;
@@ -112,6 +116,10 @@ public class MainActivity extends Activity {
     private ArrayList<DisplayEntry> searchResultsList = new ArrayList<DisplayEntry>();
     private ArrayList<Map<String, String>> searchResultsData = new ArrayList<Map<String, String>>();
     private SimpleAdapter searchResultsAdapter;
+
+    // 缓存未经去重的原始搜索曲目
+    private ArrayList<DisplayEntry> rawSearchSongResults = new ArrayList<DisplayEntry>();
+    private String lastSearchKeyword = "";
 
     private LinearLayout refreshHeaderView;
     private ProgressBar refreshProgressBar;
@@ -179,8 +187,13 @@ public class MainActivity extends Activity {
         String coverArt;
         String quality;
         boolean isSong;
+        int bitRateNumeric; // 纯数字码率分值，用于精准挑选最高音质
 
         DisplayEntry(String id, String title, String artist, String subtitle, String coverArt, String quality, boolean isSong) {
+            this(id, title, artist, subtitle, coverArt, quality, isSong, 0);
+        }
+
+        DisplayEntry(String id, String title, String artist, String subtitle, String coverArt, String quality, boolean isSong, int bitRateNumeric) {
             this.id = id;
             this.title = title;
             this.artist = artist;
@@ -188,6 +201,7 @@ public class MainActivity extends Activity {
             this.coverArt = coverArt;
             this.quality = quality;
             this.isSong = isSong;
+            this.bitRateNumeric = bitRateNumeric;
         }
     }
 
@@ -565,10 +579,13 @@ public class MainActivity extends Activity {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 if (position == 0) {
                     etSearchKeyword.setHint("输入歌曲名检索...");
+                    if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.VISIBLE);
                 } else if (position == 1) {
                     etSearchKeyword.setHint("输入歌手名检索...");
+                    if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.GONE);
                 } else if (position == 2) {
                     etSearchKeyword.setHint("输入专辑名检索...");
+                    if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.GONE);
                 }
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
@@ -1063,6 +1080,7 @@ public class MainActivity extends Activity {
         layoutSearchHistoryBox = (LinearLayout) findViewById(R.id.layout_search_history_box);
         layoutSearchResultBox = (LinearLayout) findViewById(R.id.layout_search_result_box);
         tvSearchResultTitle = (TextView) findViewById(R.id.tv_search_result_title);
+        cbDedupSongs = (CheckBox) findViewById(R.id.cb_dedup_songs);
         lvSearchHistory = (ListView) findViewById(R.id.lv_search_history);
         lvSearchResults = (ListView) findViewById(R.id.lv_search_results);
 
@@ -1186,7 +1204,6 @@ public class MainActivity extends Activity {
         etUsername.setText(prefs.getString("user", "admin"));
         etPassword.setText(prefs.getString("pass", "admin"));
         etCacheSize.setText(prefs.getString("cache_size_mb", "500"));
-        // 需求 5：默认超时时长从 20 秒改为 30 秒
         etTimeoutSec.setText(prefs.getString("play_timeout_sec", "30"));
         etRetryCount.setText(prefs.getString("play_retry_count", "3"));
         etDownloadPath.setText(prefs.getString("download_path", getDefaultDownloadPath()));
@@ -1710,7 +1727,6 @@ public class MainActivity extends Activity {
         return output;
     }
 
-    // 需求 1：大尺寸微圆角抗锯齿矩形裁剪 (95dp 对应 10dp radius)
     private Bitmap getRoundedCornerBitmap(Bitmap bitmap, int targetSize, float cornerRadiusPx) {
         if (bitmap == null || bitmap.isRecycled()) return null;
         if (targetSize <= 0) targetSize = 190;
@@ -1790,6 +1806,17 @@ public class MainActivity extends Activity {
                     String kw = searchHistoryList.get(position);
                     etSearchKeyword.setText(kw);
                     searchSongs(kw);
+                }
+            }
+        });
+
+        // 核心新增：去重勾选框状态变化时，立即重组并刷新搜索结果列表
+        cbDedupSongs.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                int searchTypePos = spinnerSearchType != null ? spinnerSearchType.getSelectedItemPosition() : 0;
+                if (searchTypePos == 0 && !rawSearchSongResults.isEmpty()) {
+                    applySongDeduplication(isChecked);
                 }
             }
         });
@@ -1916,7 +1943,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 需求 4：清理缓存并刷新当前已用容量显示
         btnClearCache.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2182,7 +2208,6 @@ public class MainActivity extends Activity {
         refreshQueueList();
     }
 
-    // 需求 6：将正在播放歌曲左侧的“>>”替换为清晰的发烧高亮动感标识“▶”
     private void refreshQueueList() {
         ArrayList<MusicService.SongItem> list = MusicService.getPlaylist();
         int currentPlaying = MusicService.getCurrentIndex();
@@ -2203,7 +2228,6 @@ public class MainActivity extends Activity {
         detailQueueAdapter.notifyDataSetChanged();
     }
 
-    // 需求 1：95dp 尺寸的高清微圆角底栏封面生成
     private void loadCoverArt(final String coverId) {
         if (coverId == null || coverId.length() == 0) {
             ivVinylCircularCover.setImageResource(android.R.drawable.ic_menu_report_image);
@@ -2252,7 +2276,6 @@ public class MainActivity extends Activity {
                         if (safeDecodedBitmap != null) {
                             final Bitmap safeCircularBitmap = getCircularBitmap(safeDecodedBitmap, 240);
                             float density = getResources().getDisplayMetrics().density;
-                            // 针对 95dp 封面图裁切：95dp 大小，10dp 微圆角抗锯齿
                             final Bitmap safeBottomRoundedBitmap = getRoundedCornerBitmap(safeDecodedBitmap, (int) (95 * density), 10 * density);
 
                             runOnUiThread(new Runnable() {
@@ -2922,6 +2945,7 @@ public class MainActivity extends Activity {
 
     private void searchSongs(final String query) {
         if (query == null || query.trim().length() == 0) return;
+        lastSearchKeyword = query.trim();
 
         final int searchTypePos = spinnerSearchType != null ? spinnerSearchType.getSelectedItemPosition() : 0;
 
@@ -2952,6 +2976,7 @@ public class MainActivity extends Activity {
                                 JSONObject result = root.optJSONObject("searchResult3");
                                 searchResultsList.clear();
                                 searchResultsData.clear();
+                                rawSearchSongResults.clear();
 
                                 if (result != null) {
                                     if (searchTypePos == 1 && result.has("artist")) {
@@ -2963,6 +2988,7 @@ public class MainActivity extends Activity {
                                             addArtistRow((JSONObject) artObj, searchResultsList, searchResultsData);
                                         }
                                         tvSearchResultTitle.setText("搜索歌手: " + query + " (" + searchResultsList.size() + " 位)");
+                                        if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.GONE);
                                     } else if (searchTypePos == 2 && result.has("album")) {
                                         Object albObj = result.get("album");
                                         if (albObj instanceof JSONArray) {
@@ -2972,28 +2998,83 @@ public class MainActivity extends Activity {
                                             addAlbumRow((JSONObject) albObj, searchResultsList, searchResultsData);
                                         }
                                         tvSearchResultTitle.setText("搜索专辑: " + query + " (" + searchResultsList.size() + " 张)");
+                                        if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.GONE);
                                     } else if (result.has("song")) {
+                                        if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.VISIBLE);
                                         Object sObj = result.get("song");
+                                        ArrayList<Map<String, String>> dummyData = new ArrayList<Map<String, String>>();
                                         if (sObj instanceof JSONArray) {
                                             JSONArray arr = (JSONArray) sObj;
-                                            for (int i = 0; i < arr.length(); i++) addSongRow(arr.getJSONObject(i), searchResultsList, searchResultsData);
+                                            for (int i = 0; i < arr.length(); i++) addSongRow(arr.getJSONObject(i), rawSearchSongResults, dummyData);
                                         } else if (sObj instanceof JSONObject) {
-                                            addSongRow((JSONObject) sObj, searchResultsList, searchResultsData);
+                                            addSongRow((JSONObject) sObj, rawSearchSongResults, dummyData);
                                         }
-                                        tvSearchResultTitle.setText("搜索歌曲: " + query + " (" + searchResultsList.size() + " 首)");
+
+                                        // 应用歌曲去重策略
+                                        boolean needDedup = cbDedupSongs != null && cbDedupSongs.isChecked();
+                                        applySongDeduplication(needDedup);
                                     }
                                 }
 
                                 layoutSearchHistoryBox.setVisibility(View.GONE);
                                 layoutSearchResultBox.setVisibility(View.VISIBLE);
                                 searchResultsAdapter.notifyDataSetChanged();
-                            } catch (Exception ignored) {
-                            }
+                            } catch (Exception ignored) {}
                         }
                     });
                 } catch (Exception ignored) {}
             }
         }).start();
+    }
+
+    // 核心新增：基于最高码率算法对搜索歌曲去重
+    private void applySongDeduplication(boolean dedup) {
+        searchResultsList.clear();
+        searchResultsData.clear();
+
+        if (!dedup) {
+            // 不去重，展示原始全量歌曲
+            for (DisplayEntry e : rawSearchSongResults) {
+                searchResultsList.add(e);
+                Map<String, String> row = new HashMap<String, String>();
+                row.put("title", e.title);
+                row.put("subtitle", e.artist + "  [" + e.quality + "]");
+                searchResultsData.add(row);
+            }
+            tvSearchResultTitle.setText("搜索歌曲: " + lastSearchKeyword + " (" + searchResultsList.size() + " 首)");
+        } else {
+            // 执行去重：相同歌曲名保留最高码率分值的版本
+            // 使用 LinkedHashMap 保证歌曲原有检索排序顺序
+            LinkedHashMap<String, DisplayEntry> bestSongsMap = new LinkedHashMap<String, DisplayEntry>();
+
+            for (DisplayEntry song : rawSearchSongResults) {
+                String key = song.title.trim().toLowerCase();
+                if (!bestSongsMap.containsKey(key)) {
+                    bestSongsMap.put(key, song);
+                } else {
+                    DisplayEntry exist = bestSongsMap.get(key);
+                    // 如果新版本码率分值更高，则替换为更高音质版本
+                    if (song.bitRateNumeric > exist.bitRateNumeric) {
+                        bestSongsMap.put(key, song);
+                    }
+                }
+            }
+
+            for (DisplayEntry bestSong : bestSongsMap.values()) {
+                searchResultsList.add(bestSong);
+                Map<String, String> row = new HashMap<String, String>();
+                row.put("title", bestSong.title);
+                row.put("subtitle", bestSong.artist + "  [" + bestSong.quality + "]");
+                searchResultsData.add(row);
+            }
+
+            if (rawSearchSongResults.size() != searchResultsList.size()) {
+                tvSearchResultTitle.setText("搜索歌曲: " + lastSearchKeyword + " (去重后 " + searchResultsList.size() + " 首 / 原始 " + rawSearchSongResults.size() + " 首)");
+            } else {
+                tvSearchResultTitle.setText("搜索歌曲: " + lastSearchKeyword + " (" + searchResultsList.size() + " 首)");
+            }
+        }
+        searchResultsAdapter.notifyDataSetChanged();
     }
 
     private void addArtistRow(JSONObject a, ArrayList<DisplayEntry> targetList, ArrayList<Map<String, String>> targetData) throws Exception {
@@ -3028,17 +3109,24 @@ public class MainActivity extends Activity {
         int bitRate = s.optInt("bitRate", 0);
         String suffix = s.optString("suffix", "").toUpperCase();
         String quality;
-        if (suffix.contains("FLAC") || suffix.contains("WAV") || suffix.contains("APE")) {
+        int bitRateScore = bitRate;
+
+        // 无损格式给予绝对优先的高权重 (10000+分)
+        if (suffix.contains("FLAC") || suffix.contains("WAV") || suffix.contains("APE") || suffix.contains("DSD")) {
             quality = "FLAC 无损";
+            bitRateScore = 10000 + bitRate;
         } else if (bitRate > 0) {
             quality = bitRate + "K " + (suffix.length() > 0 ? suffix : "MP3");
+            bitRateScore = bitRate;
         } else if (suffix.length() > 0) {
             quality = suffix;
+            bitRateScore = 256;
         } else {
             quality = "320K MP3";
+            bitRateScore = 320;
         }
 
-        targetList.add(new DisplayEntry(s.getString("id"), title, artist, subtitleText(artist, quality), coverArt, quality, true));
+        targetList.add(new DisplayEntry(s.getString("id"), title, artist, subtitleText(artist, quality), coverArt, quality, true, bitRateScore));
 
         Map<String, String> row = new HashMap<String, String>();
         row.put("title", title);
