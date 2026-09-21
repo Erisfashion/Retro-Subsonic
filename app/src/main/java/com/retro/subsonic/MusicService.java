@@ -39,6 +39,7 @@ public class MusicService extends Service {
     public static final String ACTION_SEEK = "com.retro.subsonic.SEEK";
     public static final String ACTION_CYCLE_MODE = "com.retro.subsonic.CYCLE_MODE";
     public static final String ACTION_STOP = "com.retro.subsonic.STOP";
+    public static final String ACTION_SET_MUTE = "com.retro.subsonic.SET_MUTE";
 
     public static final String BROADCAST_STATUS = "com.retro.subsonic.STATUS_CHANGE";
 
@@ -90,6 +91,9 @@ public class MusicService extends Service {
     private boolean isPlaybackStarted = false;
     private int retryCount = 0;
     private boolean isRetrying = false;
+
+    // DLNA 投播静音控制状态
+    private boolean isMuted = false;
 
     // 记忆播放点
     private static int pendingSeekPosition = 0;
@@ -187,7 +191,6 @@ public class MusicService extends Service {
     private int getTimeoutSeconds() {
         try {
             SharedPreferences sp = getSharedPreferences("subsonic_cfg", MODE_PRIVATE);
-            // 默认超时从 20 改为 30 秒
             int sec = Integer.parseInt(sp.getString("play_timeout_sec", "30"));
             return Math.max(5, Math.min(sec, 120));
         } catch (Exception e) {
@@ -243,8 +246,14 @@ public class MusicService extends Service {
                 retryCount = 0;
                 isRetrying = false;
 
-                // 核心修复：挂接系统辅助混响并开通通道
+                // 挂接系统辅助混响并开通通道
                 AudioEffectsManager.getInstance().attachMediaPlayer(mp, getApplicationContext());
+
+                // 投播时本地静音，但解码与进度完全照常运转
+                float vol = isMuted ? 0.0f : 1.0f;
+                try {
+                    mp.setVolume(vol, vol);
+                } catch (Throwable ignored) {}
 
                 if (pendingSeekPosition > 0) {
                     try {
@@ -325,6 +334,14 @@ public class MusicService extends Service {
             } else if (ACTION_CYCLE_MODE.equals(act)) {
                 currentMode = (currentMode + 1) % 3;
                 broadcastStatus();
+            } else if (ACTION_SET_MUTE.equals(act)) {
+                isMuted = intent.getBooleanExtra("is_muted", false);
+                if (mediaPlayer != null) {
+                    try {
+                        float vol = isMuted ? 0.0f : 1.0f;
+                        mediaPlayer.setVolume(vol, vol);
+                    } catch (Throwable ignored) {}
+                }
             }
         }
         return START_NOT_STICKY;
@@ -733,7 +750,7 @@ public class MusicService extends Service {
                 if (isPlaybackStarted && mediaPlayer != null) {
                     broadcastStatus();
                     saveProgressCounter++;
-                    if (saveProgressCounter >= 5) { // 每 5 秒静默存档一次进度
+                    if (saveProgressCounter >= 5) {
                         saveProgressCounter = 0;
                         savePlaybackState(getApplicationContext(), mediaPlayer, isPlaybackStarted);
                     }
@@ -774,6 +791,7 @@ public class MusicService extends Service {
             b.putExtra("title", song.title);
             b.putExtra("artist", song.artist);
             b.putExtra("quality", song.quality);
+            b.putExtra("streamUrl", song.streamUrl);
             b.putExtra("currentIndex", currentIndex);
         }
         sendBroadcast(b);
