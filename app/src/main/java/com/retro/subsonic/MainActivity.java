@@ -166,10 +166,9 @@ public class MainActivity extends Activity {
     private boolean isUserTouchingLyrics = false;
     private int currentLyricIndex = -1;
     private int lyricBaseFontSize = 15;
-    private long manualLyricOffsetMs = 0; // 手动歌词时间微调偏置毫秒
+    private long manualLyricOffsetMs = 0;
     private String currentLoadedRawLyrics = null;
 
-    // DLNA 远端真实播放进度校准计时器
     private Handler dlnaSyncHandler = new Handler();
     private Runnable dlnaSyncRunnable = new Runnable() {
         @Override
@@ -325,7 +324,6 @@ public class MainActivity extends Activity {
                 int position = intent.getIntExtra("position", 0);
                 int duration = intent.getIntExtra("duration", 0);
 
-                // 若处于 DLNA 投播状态，时间由 dlnaSyncRunnable 真实轮询直接覆盖校准；本地只作备选
                 if (!DlnaManager.isCasting() && !isUserSeeking && duration > 0) {
                     seekBar.setMax(duration);
                     seekBar.setProgress(position);
@@ -2204,7 +2202,6 @@ public class MainActivity extends Activity {
             public void onClick(View v) { applyLyricFontSize(2); }
         });
 
-        // 歌词偏置微调监听：-0.5s（歌词提早）与 +0.5s（歌词延后）
         btnLyricDelay.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) { adjustLyricOffset(-500); }
@@ -2293,7 +2290,8 @@ public class MainActivity extends Activity {
                                 .setNegativeButton("取消", null)
                                 .show();
 
-                        DlnaManager.searchDevices(new DlnaManager.DiscoveryCallback() {
+                        // 关联 MainActivity 上下文，激活 Wi-Fi MulticastLock
+                        DlnaManager.searchDevices(MainActivity.this, new DlnaManager.DiscoveryCallback() {
                             @Override
                             public void onDeviceFound(DlnaManager.Device device) {
                                 for (DlnaManager.Device d : foundDevices) {
@@ -2625,10 +2623,8 @@ public class MainActivity extends Activity {
             MusicService.SongItem current = queue.get(curIdx);
             int currentPos = seekBar != null ? seekBar.getProgress() : 0;
 
-            // 1. 发起远端 DLNA 播放指令
             DlnaManager.playUrl(targetDev, current.streamUrl, current.title, current.artist, currentPos);
 
-            // 2. 本地平板静音（黑胶唱片由于播放状态为 true 继续旋转，歌词与进度保持推进）
             Intent muteIntent = new Intent(MainActivity.this, MusicService.class);
             muteIntent.setAction(MusicService.ACTION_SET_MUTE);
             muteIntent.putExtra("is_muted", true);
@@ -2639,7 +2635,6 @@ public class MainActivity extends Activity {
                 btnDetailDlna.setTextColor(0xFFFF4081);
             }
 
-            // 3. 启动远端真实时间戳高频校准任务
             dlnaSyncHandler.removeCallbacks(dlnaSyncRunnable);
             dlnaSyncHandler.postDelayed(dlnaSyncRunnable, 1000);
 
@@ -2936,7 +2931,6 @@ public class MainActivity extends Activity {
         layoutLyricsContainer.addView(tv);
     }
 
-    // 核心改进：支持 LRC 标准 [offset:±毫秒] 自动提取 + 手动微调偏置毫秒叠加
     private void buildLyricsView(String rawText) {
         layoutLyricsContainer.removeAllViews();
         lyricRows.clear();
