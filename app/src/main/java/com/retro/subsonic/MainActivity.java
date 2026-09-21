@@ -294,15 +294,19 @@ public class MainActivity extends Activity {
                 int duration = intent.getIntExtra("duration", 0);
 
                 if (!isUserSeeking && duration > 0) {
-                    seekBar.setMax(duration);
-                    seekBar.setProgress(position);
-                    detailSeekBar.setMax(duration);
-                    detailSeekBar.setProgress(position);
-                    String timeStr = formatTime(position) + " / " + formatTime(duration);
-                    tvTime.setText(timeStr);
-                    tvDetailTime.setText(timeStr);
+                    // 关键校准：如果正在 DLNA 投播，界面进度条和歌词全部由远端音箱的 GetPositionInfo 回调接管驱动
+                    // 未投播时才由本地广播时间戳驱动，彻底避免本地和音箱两套时间轴冲突打架
+                    if (!DlnaManager.isCasting()) {
+                        seekBar.setMax(duration);
+                        seekBar.setProgress(position);
+                        detailSeekBar.setMax(duration);
+                        detailSeekBar.setProgress(position);
+                        String timeStr = formatTime(position) + " / " + formatTime(duration);
+                        tvTime.setText(timeStr);
+                        tvDetailTime.setText(timeStr);
 
-                    updateLyricPosition(position);
+                        updateLyricPosition(position);
+                    }
                 }
             }
         }
@@ -355,10 +359,34 @@ public class MainActivity extends Activity {
         setupClickInterceptors();
         updateCacheSizeDisplay();
 
+        // 核心支持：绑定远端 DLNA 音箱真实发声时钟，毫秒级绝对同步歌词与进度条
+        setupDlnaPositionSync();
+
         restoreLastSessionIfAvailable();
 
         fetchPlaylists();
         syncServerFavoritesQuietly();
+    }
+
+    private void setupDlnaPositionSync() {
+        DlnaManager.setPositionCallback(new DlnaManager.PositionCallback() {
+            @Override
+            public void onPositionSync(final int currentMs, final int durationMs) {
+                if (!isUserSeeking && DlnaManager.isCasting()) {
+                    if (durationMs > 0) {
+                        detailSeekBar.setMax(durationMs);
+                        seekBar.setMax(durationMs);
+                        String timeStr = formatTime(currentMs) + " / " + formatTime(durationMs);
+                        tvDetailTime.setText(timeStr);
+                        tvTime.setText(timeStr);
+                    }
+                    detailSeekBar.setProgress(currentMs);
+                    seekBar.setProgress(currentMs);
+                    // 毫秒级直接跟随音响真实时间推进歌词
+                    updateLyricPosition(currentMs);
+                }
+            }
+        });
     }
 
     private void updateCacheSizeDisplay() {
