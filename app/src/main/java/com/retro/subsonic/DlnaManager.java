@@ -45,7 +45,7 @@ public class DlnaManager {
     }
 
     private static Device currentActiveDevice = null;
-    private static boolean isDlnaCasting = false;
+    private static volatile boolean isDlnaCasting = false;
 
     public static boolean isCasting() {
         return isDlnaCasting && currentActiveDevice != null;
@@ -76,7 +76,6 @@ public class DlnaManager {
                 DatagramSocket socket = null;
                 WifiManager.MulticastLock multicastLock = null;
                 try {
-                    // 激活硬件 Wi-Fi 组播接收通道，确保真机能够接收 SSDP 响应
                     if (context != null) {
                         try {
                             WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
@@ -196,6 +195,12 @@ public class DlnaManager {
             @Override
             public void run() {
                 try {
+                    // 核心修复：切歌前先强制 Stop 停掉上一曲，避免音箱因状态冲突返回 705 错误导致死锁
+                    try {
+                        executeSoapAction(device.avTransportUrl, "Stop", "<InstanceID>0</InstanceID>");
+                        Thread.sleep(120);
+                    } catch (Throwable ignored) {}
+
                     String didl = "&lt;DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" " +
                             "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" " +
                             "xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\"&gt;" +
@@ -220,6 +225,7 @@ public class DlnaManager {
                         String timeStr = String.format("%02d:%02d:%02d", hr, min, sec);
                         String seekArgs = "<InstanceID>0</InstanceID><Unit>REL_TIME</Unit><Target>" + timeStr + "</Target>";
                         executeSoapAction(device.avTransportUrl, "Seek", seekArgs);
+                        Thread.sleep(100);
                     }
 
                     executeSoapAction(device.avTransportUrl, "Play", "<InstanceID>0</InstanceID><Speed>1</Speed>");
