@@ -12,7 +12,7 @@
         android:orientation="vertical"
         android:padding="8dp">
 
-        <!-- 内容区域：左右水平分割（左侧为主视图/搜索视图，右侧为全屏通用的播放列表抽屉） -->
+        <!-- 内容区域：左右水平分割 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -874,7 +874,7 @@
                     android:paddingRight="8dp"
                     android:layout_marginLeft="6dp" />
 
-                <!-- 关键新增：DLNA 投播入口按钮 -->
+                <!-- DLNA 投播入口按钮 -->
                 <Button
                     android:id="@+id/btn_detail_dlna"
                     android:layout_width="wrap_content"
@@ -1232,6 +1232,7 @@
                     android:orientation="vertical"
                     android:visibility="visible">
 
+                    <!-- 歌词顶栏：加入字号调整与偏置微调 -->
                     <RelativeLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -1242,8 +1243,8 @@
                             android:layout_height="wrap_content"
                             android:layout_alignParentLeft="true"
                             android:layout_centerVertical="true"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <TextView
                                 android:layout_width="wrap_content"
@@ -1252,30 +1253,39 @@
                                 android:textColor="#a0a5b5"
                                 android:textSize="13sp" />
 
-                            <!-- 动态微调歌词同步按钮 -->
+                            <!-- 歌词偏置微调控件 -->
                             <Button
-                                android:id="@+id/btn_lyric_faster"
+                                android:id="@+id/btn_lyric_delay"
                                 android:layout_width="wrap_content"
-                                android:layout_height="26dp"
+                                android:layout_height="28dp"
                                 android:background="@drawable/bg_btn_default"
-                                android:text="◀ 快0.5s"
-                                android:textColor="#00e5ff"
+                                android:text="-0.5s"
+                                android:textColor="#cbd5e1"
                                 android:textSize="10sp"
-                                android:paddingLeft="4dp"
-                                android:paddingRight="4dp"
+                                android:paddingLeft="6dp"
+                                android:paddingRight="6dp"
                                 android:layout_marginLeft="8dp" />
 
                             <Button
-                                android:id="@+id/btn_lyric_slower"
+                                android:id="@+id/btn_lyric_advance"
                                 android:layout_width="wrap_content"
-                                android:layout_height="26dp"
+                                android:layout_height="28dp"
                                 android:background="@drawable/bg_btn_default"
-                                android:text="慢0.5s ▶"
+                                android:text="+0.5s"
+                                android:textColor="#cbd5e1"
+                                android:textSize="10sp"
+                                android:paddingLeft="6dp"
+                                android:paddingRight="6dp"
+                                android:layout_marginLeft="4dp" />
+
+                            <TextView
+                                android:id="@+id/tv_lyric_offset_status"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0.0s"
                                 android:textColor="#00e5ff"
                                 android:textSize="10sp"
-                                android:paddingLeft="4dp"
-                                android:paddingRight="4dp"
-                                android:layout_marginLeft="4dp" />
+                                android:layout_marginLeft="6dp" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -1290,7 +1300,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="30dp"
                                 android:background="@drawable/bg_btn_default"
-                                android:text="缩小 -"
+                                android:text="字号 -"
                                 android:textColor="#e0e0e0"
                                 android:textSize="11sp"
                                 android:paddingLeft="8dp"
@@ -1301,7 +1311,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="30dp"
                                 android:background="@drawable/bg_btn_default"
-                                android:text="增大 +"
+                                android:text="字号 +"
                                 android:textColor="#e0e0e0"
                                 android:textSize="11sp"
                                 android:paddingLeft="8dp"
