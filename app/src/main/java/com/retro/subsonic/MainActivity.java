@@ -96,7 +96,7 @@ public class MainActivity extends Activity {
     private ImageView btnExitApp, btnDetailExitApp, btnTopSearch;
     private ImageView ivBottomCover;
     private Button btnToggleQueue, btnCloseQueue;
-    private Button btnBottomFav, btnDetailFav, btnDetailDownload;
+    private Button btnBottomFav, btnDetailFav, btnDetailDownload, btnDetailDlna;
     private Button btnLyricDec, btnLyricInc;
     private LinearLayout layoutConfigPanel, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime, tvCacheUsed;
@@ -243,6 +243,7 @@ public class MainActivity extends Activity {
                 String artist = intent.getStringExtra("artist");
                 String coverArtId = intent.getStringExtra("coverArtId");
                 String quality = intent.getStringExtra("quality");
+                String streamUrl = intent.getStringExtra("streamUrl");
 
                 if (title != null) {
                     tvDetailTitle.setText(title);
@@ -279,6 +280,11 @@ public class MainActivity extends Activity {
                         loadLyrics(songId, artist, title);
                         refreshQueueList();
                         updateCacheSizeDisplay();
+
+                        // 如果处于 DLNA 投播状态，切歌时自动将新曲目推送到远端音响
+                        if (DlnaManager.isCasting() && streamUrl != null && streamUrl.length() > 0) {
+                            DlnaManager.playUrl(DlnaManager.getCurrentDevice(), streamUrl, title, artist, 0);
+                        }
                     }
 
                     updateFavButtonState(songId);
@@ -600,7 +606,7 @@ public class MainActivity extends Activity {
         spinnerSearchType.setAdapter(typeAdapter);
         spinnerSearchType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            public void动作OnItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 if (position == 0) {
                     etSearchKeyword.setHint("输入歌曲名检索...");
                     if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.VISIBLE);
@@ -1143,6 +1149,7 @@ public class MainActivity extends Activity {
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
         btnDetailFav = (Button) findViewById(R.id.btn_detail_fav);
         btnDetailDownload = (Button) findViewById(R.id.btn_detail_download);
+        btnDetailDlna = (Button) findViewById(R.id.btn_detail_dlna);
         btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
 
@@ -2039,7 +2046,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 需求2：修复歌曲搜索历史收起/展开功能按钮
         btnToggleSearchHistory.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2174,6 +2180,69 @@ public class MainActivity extends Activity {
                 }
             }
         });
+
+        // 核心新增：DLNA 投播按钮逻辑处理
+        if (btnDetailDlna != null) {
+            btnDetailDlna.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (DlnaManager.isCasting()) {
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("DLNA 投播管理")
+                                .setMessage("当前正在投播至: " + DlnaManager.getCurrentDevice().name + "\n\n是否断开投播并恢复平板扬声器？")
+                                .setPositiveButton("断开投播", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog, int which) {
+                                        DlnaManager.disconnect();
+                                        btnDetailDlna.setText("⛶ 投播");
+                                        btnDetailDlna.setTextColor(0xFF00E5FF);
+
+                                        Intent muteIntent = new Intent(MainActivity.this, MusicService.class);
+                                        muteIntent.setAction(MusicService.ACTION_SET_MUTE);
+                                        muteIntent.putExtra("is_muted", false);
+                                        startService(muteIntent);
+
+                                        Toast.makeText(MainActivity.this, "已断开投播，恢复本地发声", Toast.LENGTH_SHORT).show();
+                                    }
+                                })
+                                .setNegativeButton("取消", null)
+                                .show();
+                    } else {
+                        Toast.makeText(MainActivity.this, "正在扫描局域网 DLNA 音响/电视设备...", Toast.LENGTH_SHORT).show();
+                        final ArrayList<DlnaManager.Device> foundDevices = new ArrayList<DlnaManager.Device>();
+                        final ArrayList<String> deviceNames = new ArrayList<String>();
+
+                        final ArrayAdapter<String> devAdapter = new ArrayAdapter<String>(MainActivity.this, android.R.layout.simple_list_item_1, deviceNames);
+
+                        final AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("选择投播设备 (局域网 DLNA)")
+                                .setAdapter(devAdapter, new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface d, int which) {
+                                        if (which >= 0 && which < foundDevices.size()) {
+                                            DlnaManager.Device targetDev = foundDevices.get(which);
+                                            startDlnaCast(targetDev);
+                                        }
+                                    }
+                                })
+                                .setNegativeButton("取消", null)
+                                .show();
+
+                        DlnaManager.searchDevices(new DlnaManager.DiscoveryCallback() {
+                            @Override
+                            public void onDeviceFound(DlnaManager.Device device) {
+                                for (DlnaManager.Device d : foundDevices) {
+                                    if (d.location.equals(device.location)) return;
+                                }
+                                foundDevices.add(device);
+                                deviceNames.add("🔊 " + device.name);
+                                devAdapter.notifyDataSetChanged();
+                            }
+                        });
+                    }
+                }
+            });
+        }
 
         View.OnClickListener coverToggleListener = new View.OnClickListener() {
             @Override
@@ -2414,6 +2483,13 @@ public class MainActivity extends Activity {
         View.OnClickListener toggleListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                if (DlnaManager.isCasting()) {
+                    if (isCurrentSongPlaying) {
+                        DlnaManager.pause();
+                    } else {
+                        DlnaManager.resume();
+                    }
+                }
                 startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_TOGGLE));
             }
         };
@@ -2464,6 +2540,9 @@ public class MainActivity extends Activity {
             @Override
             public void onStopTrackingTouch(SeekBar sb) {
                 isUserSeeking = false;
+                if (DlnaManager.isCasting()) {
+                    DlnaManager.seek(sb.getProgress());
+                }
                 Intent intent = new Intent(MainActivity.this, MusicService.class);
                 intent.setAction(MusicService.ACTION_SEEK);
                 intent.putExtra("position", sb.getProgress());
@@ -2472,6 +2551,30 @@ public class MainActivity extends Activity {
         };
         seekBar.setOnSeekBarChangeListener(seekListener);
         detailSeekBar.setOnSeekBarChangeListener(seekListener);
+    }
+
+    private void startDlnaCast(DlnaManager.Device targetDev) {
+        ArrayList<MusicService.SongItem> queue = MusicService.getPlaylist();
+        int curIdx = MusicService.getCurrentIndex();
+        if (queue != null && curIdx >= 0 && curIdx < queue.size()) {
+            MusicService.SongItem current = queue.get(curIdx);
+            int currentPos = seekBar != null ? seekBar.getProgress() : 0;
+
+            // 1. 发起远端 DLNA 播放指令
+            DlnaManager.playUrl(targetDev, current.streamUrl, current.title, current.artist, currentPos);
+
+            // 2. 本地平板静音（黑胶唱片由于播放状态为 true 继续旋转，歌词与进度保持推进）
+            Intent muteIntent = new Intent(MainActivity.this, MusicService.class);
+            muteIntent.setAction(MusicService.ACTION_SET_MUTE);
+            muteIntent.putExtra("is_muted", true);
+            startService(muteIntent);
+
+            if (btnDetailDlna != null) {
+                btnDetailDlna.setText("⛶ 投播中: " + (targetDev.name.length() > 5 ? targetDev.name.substring(0, 5) + ".." : targetDev.name));
+                btnDetailDlna.setTextColor(0xFFFF4081);
+            }
+            Toast.makeText(this, "已投播至 " + targetDev.name + "，平板已自动静音！", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void playSongInList(ArrayList<DisplayEntry> list, DisplayEntry entry) {
@@ -3337,7 +3440,6 @@ public class MainActivity extends Activity {
                                     }
                                 }
 
-                                // 关键修复：搜索完成后保持历史栏可见，但将历史列表置为折叠状态，用户可随时点击“展开 ▾”恢复
                                 if (!searchHistoryList.isEmpty()) {
                                     layoutSearchHistoryBox.setVisibility(View.VISIBLE);
                                     isSearchHistoryCollapsed = true;
