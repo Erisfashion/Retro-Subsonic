@@ -105,6 +105,7 @@ public class MainActivity extends Activity {
 
     private LinearLayout layoutSearchOverlay;
     private Button btnSearchPageBack;
+    private Button btnToggleSearchHistory; // 搜索历史收起/展开按钮
     private ImageView btnClearSearchHistory;
     private LinearLayout layoutSearchHistoryBox, layoutSearchResultBox;
     private TextView tvSearchResultTitle;
@@ -112,6 +113,11 @@ public class MainActivity extends Activity {
     private ListView lvSearchHistory, lvSearchResults;
     private ArrayList<String> searchHistoryList = new ArrayList<String>();
     private ArrayAdapter<String> searchHistoryAdapter;
+    private boolean isSearchHistoryCollapsed = false;
+
+    // 当从“歌单长按菜单 -> 添加歌曲”进入搜索页时，记录目标歌单，方便一键加入
+    private String targetPlaylistIdForAdd = null;
+    private String targetPlaylistNameForAdd = null;
 
     private ArrayList<DisplayEntry> searchResultsList = new ArrayList<DisplayEntry>();
     private ArrayList<Map<String, String>> searchResultsData = new ArrayList<Map<String, String>>();
@@ -390,6 +396,25 @@ public class MainActivity extends Activity {
         if (searchHistoryAdapter != null) searchHistoryAdapter.notifyDataSetChanged();
     }
 
+    private void removeSingleSearchHistory(final String kw) {
+        new AlertDialog.Builder(this)
+                .setTitle("删除搜索历史")
+                .setMessage("确定删除关键词 \"" + kw + "\" 吗？")
+                .setPositiveButton("删除", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        searchHistoryList.remove(kw);
+                        saveSearchHistory();
+                        if (searchHistoryAdapter != null) searchHistoryAdapter.notifyDataSetChanged();
+                        if (searchHistoryList.isEmpty()) {
+                            layoutSearchHistoryBox.setVisibility(View.GONE);
+                        }
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     private void promptClearSearchHistory() {
         new AlertDialog.Builder(this)
                 .setTitle("清空历史记录")
@@ -400,6 +425,7 @@ public class MainActivity extends Activity {
                         searchHistoryList.clear();
                         saveSearchHistory();
                         if (searchHistoryAdapter != null) searchHistoryAdapter.notifyDataSetChanged();
+                        layoutSearchHistoryBox.setVisibility(View.GONE);
                         Toast.makeText(MainActivity.this, "搜索历史已清空", Toast.LENGTH_SHORT).show();
                     }
                 })
@@ -1004,6 +1030,8 @@ public class MainActivity extends Activity {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (layoutSearchOverlay != null && layoutSearchOverlay.getVisibility() == View.VISIBLE) {
                 layoutSearchOverlay.setVisibility(View.GONE);
+                targetPlaylistIdForAdd = null;
+                targetPlaylistNameForAdd = null;
                 return true;
             }
             if (layoutDetailOverlay != null && layoutDetailOverlay.getVisibility() == View.VISIBLE) {
@@ -1075,6 +1103,7 @@ public class MainActivity extends Activity {
 
         layoutSearchOverlay = (LinearLayout) findViewById(R.id.layout_search_overlay);
         btnSearchPageBack = (Button) findViewById(R.id.btn_search_page_back);
+        btnToggleSearchHistory = (Button) findViewById(R.id.btn_toggle_search_history);
         btnClearSearchHistory = (ImageView) findViewById(R.id.btn_clear_search_history);
         layoutSearchHistoryBox = (LinearLayout) findViewById(R.id.layout_search_history_box);
         layoutSearchResultBox = (LinearLayout) findViewById(R.id.layout_search_result_box);
@@ -1494,25 +1523,32 @@ public class MainActivity extends Activity {
         if (!entry.isSong) return;
         final boolean fav = isFav(entry.id);
 
-        String[] options = new String[]{
-                fav ? "★ 已收藏（点此从云端取消）" : "☆ 收藏歌曲 (同步云端)",
-                "📁 添加到歌单 (云端/本地)",
-                "🗑 移出当前列表",
-                "⬇ 下载歌曲到本地"
-        };
+        ArrayList<String> optList = new ArrayList<String>();
+        if (targetPlaylistIdForAdd != null && targetPlaylistNameForAdd != null) {
+            optList.add("★ 加入指定歌单: " + targetPlaylistNameForAdd);
+        }
+        optList.add(fav ? "★ 已收藏（点此从云端取消）" : "☆ 收藏歌曲 (同步云端)");
+        optList.add("📁 添加到歌单 (云端/本地)");
+        optList.add("🗑 移出当前列表");
+        optList.add("⬇ 下载歌曲到本地");
+
+        final String[] options = optList.toArray(new String[0]);
 
         new AlertDialog.Builder(this)
                 .setTitle(entry.title + " - " + entry.artist)
                 .setItems(options, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        if (which == 0) {
+                        String opt = options[which];
+                        if (opt.startsWith("★ 加入指定歌单")) {
+                            addSongToServerPlaylist(targetPlaylistIdForAdd, entry.id, targetPlaylistNameForAdd);
+                        } else if (opt.contains("收藏歌曲") || opt.contains("已收藏")) {
                             serverStarSong(entry.id, !fav);
-                        } else if (which == 1) {
+                        } else if (opt.contains("添加到歌单")) {
                             showAddToPlaylistDialog(entry);
-                        } else if (which == 2) {
+                        } else if (opt.contains("移出当前列表")) {
                             removeFromCurrentView(position, entry);
-                        } else if (which == 3) {
+                        } else if (opt.contains("下载歌曲")) {
                             downloadSongItem(entry);
                         }
                     }
@@ -1587,6 +1623,215 @@ public class MainActivity extends Activity {
                         @Override
                         public void run() {
                             Toast.makeText(MainActivity.this, "网络连接异常，添加失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    // 核心新增：长按某个歌单弹出管理菜单（重命名/删除歌单/添加歌曲）
+    private void showPlaylistLongClickMenu(final DisplayEntry playlistEntry) {
+        // 保护特殊内置项
+        if ("fav_entry".equals(playlistEntry.id)
+                || "local_featured".equals(playlistEntry.id)
+                || "local_car".equals(playlistEntry.id)
+                || "action_create_playlist".equals(playlistEntry.id)) {
+            return;
+        }
+
+        String[] options = new String[]{"➕ 添加歌曲 (前往搜索并关联)", "✏ 重命名歌单", "🗑 删除歌单"};
+
+        new AlertDialog.Builder(this)
+                .setTitle("管理歌单: " + playlistEntry.title)
+                .setItems(options, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == 0) {
+                            // 添加歌曲：记录当前目标歌单并进入搜索页
+                            targetPlaylistIdForAdd = playlistEntry.id;
+                            targetPlaylistNameForAdd = playlistEntry.title;
+                            layoutSearchOverlay.setVisibility(View.VISIBLE);
+                            if (searchHistoryList.isEmpty() || isSearchHistoryCollapsed) {
+                                layoutSearchHistoryBox.setVisibility(View.GONE);
+                            } else {
+                                layoutSearchHistoryBox.setVisibility(View.VISIBLE);
+                            }
+                            etSearchKeyword.setHint("搜索歌曲以加入【" + playlistEntry.title + "】...");
+                            etSearchKeyword.requestFocus();
+                            Toast.makeText(MainActivity.this, "已锁定歌单【" + playlistEntry.title + "】，长按搜索结果即可直接加入！", Toast.LENGTH_LONG).show();
+                        } else if (which == 1) {
+                            promptRenamePlaylist(playlistEntry);
+                        } else if (which == 2) {
+                            promptDeletePlaylist(playlistEntry);
+                        }
+                    }
+                })
+                .show();
+    }
+
+    // 新建歌单对话框与服务端同步
+    private void promptCreatePlaylist() {
+        final EditText input = new EditText(this);
+        input.setHint("输入新歌单名称...");
+        input.setTextColor(0xFFFFFFFF);
+        input.setHintTextColor(0xFF777777);
+
+        new AlertDialog.Builder(this)
+                .setTitle("新建云端歌单")
+                .setView(input)
+                .setPositiveButton("创建", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        final String name = input.getText().toString().trim();
+                        if (name.length() == 0) {
+                            Toast.makeText(MainActivity.this, "歌单名称不能为空", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        createNewServerPlaylist(name);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void createNewServerPlaylist(final String playlistName) {
+        Toast.makeText(this, "正在同步创建云端歌单...", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String param = "name=" + URLEncoder.encode(playlistName, "UTF-8");
+                    String res = requestApi("createPlaylist.view?" + param + "&" + getAuthParams());
+                    if (res != null && !res.contains("\"status\":\"failed\"")) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "歌单【" + playlistName + "】创建成功！", Toast.LENGTH_SHORT).show();
+                                fetchPlaylists();
+                            }
+                        });
+                    } else {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "创建失败，请确认服务器操作权限", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "网络连接异常，创建失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    private void promptRenamePlaylist(final DisplayEntry playlistEntry) {
+        final EditText input = new EditText(this);
+        input.setText(playlistEntry.title);
+        input.setTextColor(0xFFFFFFFF);
+        input.setSelection(input.getText().length());
+
+        new AlertDialog.Builder(this)
+                .setTitle("重命名歌单")
+                .setView(input)
+                .setPositiveButton("保存", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        final String newName = input.getText().toString().trim();
+                        if (newName.length() == 0 || newName.equals(playlistEntry.title)) return;
+                        renameServerPlaylist(playlistEntry.id, newName);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void renameServerPlaylist(final String playlistId, final String newName) {
+        Toast.makeText(this, "正在同步更新歌单名...", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String param = "playlistId=" + URLEncoder.encode(playlistId, "UTF-8")
+                            + "&name=" + URLEncoder.encode(newName, "UTF-8");
+                    String res = requestApi("updatePlaylist.view?" + param + "&" + getAuthParams());
+                    if (res != null && !res.contains("\"status\":\"failed\"")) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "歌单名称已更新为【" + newName + "】", Toast.LENGTH_SHORT).show();
+                                fetchPlaylists();
+                            }
+                        });
+                    } else {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "重命名失败，请检查服务器权限", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "网络异常，重命名失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    private void promptDeletePlaylist(final DisplayEntry playlistEntry) {
+        new AlertDialog.Builder(this)
+                .setTitle("删除歌单")
+                .setMessage("确定要删除云端歌单【" + playlistEntry.title + "】吗？该操作不可恢复。")
+                .setPositiveButton("删除", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        deleteServerPlaylist(playlistEntry.id, playlistEntry.title);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void deleteServerPlaylist(final String playlistId, final String playlistName) {
+        Toast.makeText(this, "正在删除云端歌单...", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String param = "id=" + URLEncoder.encode(playlistId, "UTF-8");
+                    String res = requestApi("deletePlaylist.view?" + param + "&" + getAuthParams());
+                    if (res != null && !res.contains("\"status\":\"failed\"")) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "歌单【" + playlistName + "】已删除", Toast.LENGTH_SHORT).show();
+                                fetchPlaylists();
+                            }
+                        });
+                    } else {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(MainActivity.this, "删除失败，请检查服务器权限", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "网络异常，删除失败", Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
@@ -1774,8 +2019,11 @@ public class MainActivity extends Activity {
         btnTopSearch.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                targetPlaylistIdForAdd = null;
+                targetPlaylistNameForAdd = null;
+                etSearchKeyword.setHint("输入歌曲名检索...");
                 layoutSearchOverlay.setVisibility(View.VISIBLE);
-                if (searchHistoryList.isEmpty()) {
+                if (searchHistoryList.isEmpty() || isSearchHistoryCollapsed) {
                     layoutSearchHistoryBox.setVisibility(View.GONE);
                 } else {
                     layoutSearchHistoryBox.setVisibility(View.VISIBLE);
@@ -1788,6 +2036,23 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) {
                 layoutSearchOverlay.setVisibility(View.GONE);
+                targetPlaylistIdForAdd = null;
+                targetPlaylistNameForAdd = null;
+            }
+        });
+
+        // 搜索历史 收起 / 展开 功能
+        btnToggleSearchHistory.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                isSearchHistoryCollapsed = !isSearchHistoryCollapsed;
+                if (isSearchHistoryCollapsed) {
+                    lvSearchHistory.setVisibility(View.GONE);
+                    btnToggleSearchHistory.setText("展开 ▾");
+                } else {
+                    lvSearchHistory.setVisibility(View.VISIBLE);
+                    btnToggleSearchHistory.setText("收起 ▴");
+                }
             }
         });
 
@@ -1806,6 +2071,18 @@ public class MainActivity extends Activity {
                     etSearchKeyword.setText(kw);
                     searchSongs(kw);
                 }
+            }
+        });
+
+        // 新增：长按某个搜索历史关键词删除该词
+        lvSearchHistory.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= 0 && position < searchHistoryList.size()) {
+                    removeSingleSearchHistory(searchHistoryList.get(position));
+                    return true;
+                }
+                return false;
             }
         });
 
@@ -1959,6 +2236,7 @@ public class MainActivity extends Activity {
         btnOpenEq.setOnClickListener(eqListener);
         btnDetailEq.setOnClickListener(eqListener);
 
+        // 修复：在任何界面（包括搜索页）点击底栏播放列表均能展开公共抽屉
         btnToggleQueue.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2032,6 +2310,11 @@ public class MainActivity extends Activity {
                 if (pos < 0 || pos >= currentItems.size()) return;
 
                 DisplayEntry entry = currentItems.get(pos);
+                if ("action_create_playlist".equals(entry.id)) {
+                    promptCreatePlaylist();
+                    return;
+                }
+
                 if (!entry.isSong) {
                     if (entry.id.startsWith("album_")) {
                         fetchAlbumSongs(entry.id.substring(6), entry.title);
@@ -2046,12 +2329,18 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 核心支持：歌曲长按菜单 与 歌单长按管理菜单
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
                 int pos = position - listView.getHeaderViewsCount();
                 if (pos >= 0 && pos < currentItems.size()) {
-                    showSongLongClickMenu(currentItems.get(pos), pos);
+                    DisplayEntry entry = currentItems.get(pos);
+                    if (entry.isSong) {
+                        showSongLongClickMenu(entry, pos);
+                    } else {
+                        showPlaylistLongClickMenu(entry);
+                    }
                     return true;
                 }
                 return false;
@@ -2305,7 +2594,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 歌词有效性检验：杜绝服务端伪装成歌词的报错提示词
     private boolean isValidLyrics(String text) {
         if (text == null) return false;
         String trimmed = text.trim();
@@ -2340,7 +2628,6 @@ public class MainActivity extends Activity {
             public void run() {
                 String lyricsText = null;
 
-                // 1. 优先使用 OpenSubsonic 标准的 getLyricsBySongId 通过歌曲唯一 ID 检索
                 if (songId != null && songId.length() > 0) {
                     try {
                         String res = requestApi("getLyricsBySongId.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
@@ -2348,7 +2635,6 @@ public class MainActivity extends Activity {
                     } catch (Throwable ignored) {}
                 }
 
-                // 2. 若 ID 检索无果，使用标准 Subsonic 接口按 歌手 + 歌曲名 检索
                 if (lyricsText == null && title != null && title.length() > 0) {
                     try {
                         String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8")
@@ -2358,7 +2644,6 @@ public class MainActivity extends Activity {
                     } catch (Throwable ignored) {}
                 }
 
-                // 3. 剥离括号修饰语（如 Live、DJ版、伴奏等）后，再次尝试 歌手 + 纯净歌名 检索
                 if (lyricsText == null && title != null) {
                     String cleanTitle = title.replaceAll("\\([^)]*\\)", "")
                             .replaceAll("\\[[^\\]]*\\]", "")
@@ -2375,7 +2660,6 @@ public class MainActivity extends Activity {
                     }
                 }
 
-                // 4. 单用纯净歌名检索（解决合作艺人标签格式差异导致的不匹配）
                 if (lyricsText == null && title != null) {
                     String cleanTitle = title.replaceAll("\\([^)]*\\)", "")
                             .replaceAll("\\[[^\\]]*\\]", "")
@@ -2723,9 +3007,16 @@ public class MainActivity extends Activity {
             currentItems.add(e);
             Map<String, String> row = new HashMap<String, String>();
             row.put("title", "📁  " + e.title);
-            row.put("subtitle", e.quality);
+            row.put("subtitle", e.quality + " (长按管理)");
             listData.add(row);
         }
+
+        // 核心新增：在歌单列表最后添加“+新建歌单(云同步)”入口
+        currentItems.add(new DisplayEntry("action_create_playlist", "+ 新建歌单 (云端同步)", "", "点击创建全新的云端歌单并同步服务器", null, "操作", false));
+        Map<String, String> createRow = new HashMap<String, String>();
+        createRow.put("title", "➕  新建歌单 (云端同步)");
+        createRow.put("subtitle", "点击创建全新的云端歌单并同步服务器");
+        listData.add(createRow);
 
         adapter.notifyDataSetChanged();
     }
