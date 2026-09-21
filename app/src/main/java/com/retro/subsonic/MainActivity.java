@@ -108,7 +108,7 @@ public class MainActivity extends Activity {
     private ImageView btnClearSearchHistory;
     private LinearLayout layoutSearchHistoryBox, layoutSearchResultBox;
     private TextView tvSearchResultTitle;
-    private CheckBox cbDedupSongs; // 核心新增：去重勾选框
+    private CheckBox cbDedupSongs;
     private ListView lvSearchHistory, lvSearchResults;
     private ArrayList<String> searchHistoryList = new ArrayList<String>();
     private ArrayAdapter<String> searchHistoryAdapter;
@@ -117,7 +117,6 @@ public class MainActivity extends Activity {
     private ArrayList<Map<String, String>> searchResultsData = new ArrayList<Map<String, String>>();
     private SimpleAdapter searchResultsAdapter;
 
-    // 缓存未经去重的原始搜索曲目
     private ArrayList<DisplayEntry> rawSearchSongResults = new ArrayList<DisplayEntry>();
     private String lastSearchKeyword = "";
 
@@ -187,7 +186,7 @@ public class MainActivity extends Activity {
         String coverArt;
         String quality;
         boolean isSong;
-        int bitRateNumeric; // 纯数字码率分值，用于精准挑选最高音质
+        int bitRateNumeric;
 
         DisplayEntry(String id, String title, String artist, String subtitle, String coverArt, String quality, boolean isSong) {
             this(id, title, artist, subtitle, coverArt, quality, isSong, 0);
@@ -1810,7 +1809,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 核心新增：去重勾选框状态变化时，立即重组并刷新搜索结果列表
         cbDedupSongs.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
@@ -2307,6 +2305,26 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    // 歌词有效性检验：杜绝服务端伪装成歌词的报错提示词
+    private boolean isValidLyrics(String text) {
+        if (text == null) return false;
+        String trimmed = text.trim();
+        if (trimmed.length() == 0) return false;
+        String lower = trimmed.toLowerCase();
+        if (lower.contains("lyrics not found")
+                || lower.contains("not found in library")
+                || lower.contains("getlyricsbysongid")
+                || lower.contains("get lyricsbysongid")
+                || lower.contains("valid song id")
+                || lower.contains("no lyrics available")
+                || lower.contains("no lyrics found")
+                || lower.contains("error:")
+                || lower.contains("subsonic-response")) {
+            return false;
+        }
+        return true;
+    }
+
     private void loadLyrics(final String songId, final String artist, final String title) {
         lyricRows.clear();
         currentLyricIndex = -1;
@@ -2322,20 +2340,15 @@ public class MainActivity extends Activity {
             public void run() {
                 String lyricsText = null;
 
+                // 1. 优先使用 OpenSubsonic 标准的 getLyricsBySongId 通过歌曲唯一 ID 检索
                 if (songId != null && songId.length() > 0) {
                     try {
                         String res = requestApi("getLyricsBySongId.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
                         lyricsText = parseLyricsFromJson(res);
                     } catch (Throwable ignored) {}
-
-                    if (lyricsText == null) {
-                        try {
-                            String res = requestApi("getLyrics.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
-                            lyricsText = parseLyricsFromJson(res);
-                        } catch (Throwable ignored) {}
-                    }
                 }
 
+                // 2. 若 ID 检索无果，使用标准 Subsonic 接口按 歌手 + 歌曲名 检索
                 if (lyricsText == null && title != null && title.length() > 0) {
                     try {
                         String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8")
@@ -2345,6 +2358,7 @@ public class MainActivity extends Activity {
                     } catch (Throwable ignored) {}
                 }
 
+                // 3. 剥离括号修饰语（如 Live、DJ版、伴奏等）后，再次尝试 歌手 + 纯净歌名 检索
                 if (lyricsText == null && title != null) {
                     String cleanTitle = title.replaceAll("\\([^)]*\\)", "")
                             .replaceAll("\\[[^\\]]*\\]", "")
@@ -2355,6 +2369,22 @@ public class MainActivity extends Activity {
                         try {
                             String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8")
                                     + "&title=" + URLEncoder.encode(cleanTitle, "UTF-8");
+                            String res = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
+                            lyricsText = parseLyricsFromJson(res);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+
+                // 4. 单用纯净歌名检索（解决合作艺人标签格式差异导致的不匹配）
+                if (lyricsText == null && title != null) {
+                    String cleanTitle = title.replaceAll("\\([^)]*\\)", "")
+                            .replaceAll("\\[[^\\]]*\\]", "")
+                            .replaceAll("（[^）]*）", "")
+                            .trim();
+
+                    if (cleanTitle.length() > 0) {
+                        try {
+                            String p = "title=" + URLEncoder.encode(cleanTitle, "UTF-8");
                             String res = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
                             lyricsText = parseLyricsFromJson(res);
                         } catch (Throwable ignored) {}
@@ -2381,6 +2411,10 @@ public class MainActivity extends Activity {
         try {
             JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
 
+            if (root.has("status") && !"ok".equalsIgnoreCase(root.getString("status"))) {
+                return null;
+            }
+
             if (root.has("lyricsList")) {
                 JSONObject list = root.optJSONObject("lyricsList");
                 if (list != null && list.has("structuredLyrics")) {
@@ -2405,8 +2439,9 @@ public class MainActivity extends Activity {
                         } else if (lineObj instanceof JSONObject) {
                             appendStructuredLrcLine(lrcBuilder, (JSONObject) lineObj);
                         }
-                        if (lrcBuilder.length() > 0) {
-                            return lrcBuilder.toString();
+                        String candidate = lrcBuilder.toString();
+                        if (isValidLyrics(candidate)) {
+                            return candidate;
                         }
                     }
                 }
@@ -2414,13 +2449,15 @@ public class MainActivity extends Activity {
 
             if (root.has("lyrics")) {
                 Object lyricsObj = root.get("lyrics");
+                String candidate = null;
                 if (lyricsObj instanceof JSONObject) {
                     JSONObject l = (JSONObject) lyricsObj;
-                    String text = l.optString("content", l.optString("value", ""));
-                    if (text.length() > 0) return text;
+                    candidate = l.optString("content", l.optString("value", ""));
                 } else if (lyricsObj instanceof String) {
-                    String text = (String) lyricsObj;
-                    if (text.length() > 0) return text;
+                    candidate = (String) lyricsObj;
+                }
+                if (isValidLyrics(candidate)) {
+                    return candidate;
                 }
             }
         } catch (Throwable ignored) {}
@@ -3010,7 +3047,6 @@ public class MainActivity extends Activity {
                                             addSongRow((JSONObject) sObj, rawSearchSongResults, dummyData);
                                         }
 
-                                        // 应用歌曲去重策略
                                         boolean needDedup = cbDedupSongs != null && cbDedupSongs.isChecked();
                                         applySongDeduplication(needDedup);
                                     }
@@ -3027,13 +3063,11 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 核心新增：基于最高码率算法对搜索歌曲去重
     private void applySongDeduplication(boolean dedup) {
         searchResultsList.clear();
         searchResultsData.clear();
 
         if (!dedup) {
-            // 不去重，展示原始全量歌曲
             for (DisplayEntry e : rawSearchSongResults) {
                 searchResultsList.add(e);
                 Map<String, String> row = new HashMap<String, String>();
@@ -3043,8 +3077,6 @@ public class MainActivity extends Activity {
             }
             tvSearchResultTitle.setText("搜索歌曲: " + lastSearchKeyword + " (" + searchResultsList.size() + " 首)");
         } else {
-            // 执行去重：相同歌曲名保留最高码率分值的版本
-            // 使用 LinkedHashMap 保证歌曲原有检索排序顺序
             LinkedHashMap<String, DisplayEntry> bestSongsMap = new LinkedHashMap<String, DisplayEntry>();
 
             for (DisplayEntry song : rawSearchSongResults) {
@@ -3053,7 +3085,6 @@ public class MainActivity extends Activity {
                     bestSongsMap.put(key, song);
                 } else {
                     DisplayEntry exist = bestSongsMap.get(key);
-                    // 如果新版本码率分值更高，则替换为更高音质版本
                     if (song.bitRateNumeric > exist.bitRateNumeric) {
                         bestSongsMap.put(key, song);
                     }
@@ -3111,7 +3142,6 @@ public class MainActivity extends Activity {
         String quality;
         int bitRateScore = bitRate;
 
-        // 无损格式给予绝对优先的高权重 (10000+分)
         if (suffix.contains("FLAC") || suffix.contains("WAV") || suffix.contains("APE") || suffix.contains("DSD")) {
             quality = "FLAC 无损";
             bitRateScore = 10000 + bitRate;
