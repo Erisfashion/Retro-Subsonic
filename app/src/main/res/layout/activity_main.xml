@@ -32,7 +32,7 @@
                     android:layout_height="match_parent"
                     android:orientation="vertical">
 
-                    <!-- 顶栏：Subsonic音乐、居中放大镜搜索图标、设置与圆形关闭图标 -->
+                    <!-- 顶栏：关闭退出按钮移至Subsonic音乐左侧，居中为搜索，右侧为设置 -->
                     <RelativeLayout
                         android:layout_width="match_parent"
                         android:layout_height="44dp"
@@ -43,26 +43,44 @@
                             android:layout_height="wrap_content"
                             android:layout_alignParentLeft="true"
                             android:layout_centerVertical="true"
-                            android:orientation="vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
-                            <TextView
+                            <!-- 需求1：关闭播放器退出按钮移动到 Subsonic音乐 左侧 -->
+                            <ImageView
+                                android:id="@+id/btn_exit_app"
+                                android:layout_width="34dp"
+                                android:layout_height="34dp"
+                                android:background="@drawable/bg_btn_danger_circle"
+                                android:scaleType="center"
+                                android:layout_marginRight="8dp"
+                                android:clickable="true"
+                                android:focusable="true" />
+
+                            <LinearLayout
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Subsonic音乐"
-                                android:textColor="#ffffff"
-                                android:textSize="17sp"
-                                android:textStyle="bold"
-                                android:includeFontPadding="false" />
+                                android:orientation="vertical">
 
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="v1.0.3"
-                                android:textColor="#7e8597"
-                                android:textSize="10sp"
-                                android:textStyle="bold"
-                                android:includeFontPadding="false"
-                                android:layout_marginTop="1dp" />
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Subsonic音乐"
+                                    android:textColor="#ffffff"
+                                    android:textSize="17sp"
+                                    android:textStyle="bold"
+                                    android:includeFontPadding="false" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="v1.0.4"
+                                    android:textColor="#7e8597"
+                                    android:textSize="10sp"
+                                    android:textStyle="bold"
+                                    android:includeFontPadding="false"
+                                    android:layout_marginTop="1dp" />
+                            </LinearLayout>
                         </LinearLayout>
 
                         <ImageView
@@ -92,17 +110,7 @@
                                 android:textColor="#e0e0e0"
                                 android:textSize="12sp"
                                 android:paddingLeft="14dp"
-                                android:paddingRight="14dp"
-                                android:layout_marginRight="8dp" />
-
-                            <ImageView
-                                android:id="@+id/btn_exit_app"
-                                android:layout_width="34dp"
-                                android:layout_height="34dp"
-                                android:background="@drawable/bg_btn_danger_circle"
-                                android:scaleType="center"
-                                android:clickable="true"
-                                android:focusable="true" />
+                                android:paddingRight="14dp" />
                         </LinearLayout>
                     </RelativeLayout>
 
@@ -400,7 +408,7 @@
                     </LinearLayout>
                 </LinearLayout>
 
-                <!-- 2. 独立搜索单页（位于左侧主显示区，不遮挡侧边栏和底栏播放器） -->
+                <!-- 2. 独立搜索单页 -->
                 <LinearLayout
                     android:id="@+id/layout_search_overlay"
                     android:layout_width="match_parent"
@@ -466,7 +474,7 @@
                             android:layout_marginLeft="6dp" />
                     </LinearLayout>
 
-                    <!-- 搜索历史区块：增加 收起/展开 功能按钮 -->
+                    <!-- 搜索历史区块：支持收起/展开 -->
                     <LinearLayout
                         android:id="@+id/layout_search_history_box"
                         android:layout_width="match_parent"
@@ -498,7 +506,6 @@
                                 android:orientation="horizontal"
                                 android:gravity="center_vertical">
 
-                                <!-- 新增：收起/展开 历史按钮 -->
                                 <Button
                                     android:id="@+id/btn_toggle_search_history"
                                     android:layout_width="wrap_content"
@@ -525,7 +532,7 @@
                         <ListView
                             android:id="@+id/lv_search_history"
                             android:layout_width="match_parent"
-                            android:layout_height="160dp"
+                            android:layout_height="140dp"
                             android:divider="#242730"
                             android:dividerHeight="1dp" />
                     </LinearLayout>
@@ -537,7 +544,7 @@
                         android:layout_height="0dp"
                         android:layout_weight="1"
                         android:orientation="vertical"
-                        android:layout_marginTop="8dp">
+                        android:layout_marginTop="6dp">
 
                         <RelativeLayout
                             android:layout_width="match_parent"
@@ -580,7 +587,7 @@
 
             </FrameLayout>
 
-            <!-- 右侧公共播放列表抽屉：提升到与 FrameLayout 同级，主页与搜索页均可呼出 -->
+            <!-- 右侧公共播放列表抽屉 -->
             <LinearLayout
                 android:id="@+id/layout_queue_panel"
                 android:layout_width="300dp"
