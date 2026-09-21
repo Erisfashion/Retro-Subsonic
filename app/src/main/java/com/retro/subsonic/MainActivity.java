@@ -169,6 +169,9 @@ public class MainActivity extends Activity {
     private long manualLyricOffsetMs = 0;
     private String currentLoadedRawLyrics = null;
 
+    // 时间防抖：记录上次确认有效的合法播放秒数，拦截偶发突跳到结尾的假帧
+    private int lastValidProgressMs = 0;
+
     private Handler dlnaSyncHandler = new Handler();
     private Runnable dlnaSyncRunnable = new Runnable() {
         @Override
@@ -178,6 +181,20 @@ public class MainActivity extends Activity {
                     @Override
                     public void onPositionReceived(int positionMs, int durationMs) {
                         if (positionMs >= 0 && !isUserSeeking) {
+                            int totalDur = durationMs > 0 ? durationMs : (seekBar != null ? seekBar.getMax() : 0);
+
+                            // 防抖过滤：投播音箱在缓冲时偶尔返回等于总时长的假帧，拦截之
+                            if (totalDur > 0 && positionMs >= totalDur - 1000 && lastValidProgressMs < totalDur * 0.85) {
+                                return;
+                            }
+
+                            // 过滤无拖动时突跳向前超过 15 秒的异常尖刺
+                            if (lastValidProgressMs > 0 && (positionMs - lastValidProgressMs) > 15000) {
+                                return;
+                            }
+
+                            lastValidProgressMs = positionMs;
+
                             if (durationMs > 0) {
                                 seekBar.setMax(durationMs);
                                 detailSeekBar.setMax(durationMs);
@@ -306,6 +323,7 @@ public class MainActivity extends Activity {
 
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
                         lastLoadedSongId = songId;
+                        lastValidProgressMs = 0;
                         manualLyricOffsetMs = 0;
                         updateLyricOffsetStatusView();
                         loadCoverArt(coverArtId != null ? coverArtId : songId);
@@ -325,6 +343,16 @@ public class MainActivity extends Activity {
                 int duration = intent.getIntExtra("duration", 0);
 
                 if (!DlnaManager.isCasting() && !isUserSeeking && duration > 0) {
+                    // 本地播放时间防抖：若曲目还在中前段，过滤掉底层偶发返回的等于总时长的突跳帧
+                    if (position >= duration - 1000 && lastValidProgressMs < duration * 0.85) {
+                        return;
+                    }
+                    if (lastValidProgressMs > 0 && (position - lastValidProgressMs) > 15000) {
+                        return;
+                    }
+
+                    lastValidProgressMs = position;
+
                     seekBar.setMax(duration);
                     seekBar.setProgress(position);
                     detailSeekBar.setMax(duration);
@@ -1184,6 +1212,7 @@ public class MainActivity extends Activity {
         btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
 
+        // 完整绑定歌词字号与偏置微调控件
         btnLyricDec = (Button) findViewById(R.id.btn_lyric_dec);
         btnLyricInc = (Button) findViewById(R.id.btn_lyric_inc);
         btnLyricDelay = (Button) findViewById(R.id.btn_lyric_delay);
@@ -2290,7 +2319,6 @@ public class MainActivity extends Activity {
                                 .setNegativeButton("取消", null)
                                 .show();
 
-                        // 关联 MainActivity 上下文，激活 Wi-Fi MulticastLock
                         DlnaManager.searchDevices(MainActivity.this, new DlnaManager.DiscoveryCallback() {
                             @Override
                             public void onDeviceFound(DlnaManager.Device device) {
@@ -2603,6 +2631,7 @@ public class MainActivity extends Activity {
             @Override
             public void onStopTrackingTouch(SeekBar sb) {
                 isUserSeeking = false;
+                lastValidProgressMs = sb.getProgress();
                 if (DlnaManager.isCasting()) {
                     DlnaManager.seek(sb.getProgress());
                 }
