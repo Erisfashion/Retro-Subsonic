@@ -169,45 +169,44 @@ public class MainActivity extends Activity {
     private long manualLyricOffsetMs = 0;
     private String currentLoadedRawLyrics = null;
 
-    // 时间防抖：记录上次确认有效的合法播放秒数，拦截偶发突跳到结尾的假帧
+    // 时间防抖：记录上次确认有效的播放时间戳
     private int lastValidProgressMs = 0;
 
+    // 核心修复：重构 DLNA 轮询心跳线程，定时器永久续期，绝不因切歌瞬态而死锁退出
     private Handler dlnaSyncHandler = new Handler();
     private Runnable dlnaSyncRunnable = new Runnable() {
         @Override
         public void run() {
-            if (DlnaManager.isCasting() && isCurrentSongPlaying && !isUserSeeking) {
-                DlnaManager.getPositionInfo(new DlnaManager.PositionCallback() {
-                    @Override
-                    public void onPositionReceived(int positionMs, int durationMs) {
-                        if (positionMs >= 0 && !isUserSeeking) {
-                            int totalDur = durationMs > 0 ? durationMs : (seekBar != null ? seekBar.getMax() : 0);
+            if (DlnaManager.isCasting()) {
+                if (isCurrentSongPlaying && !isUserSeeking) {
+                    DlnaManager.getPositionInfo(new DlnaManager.PositionCallback() {
+                        @Override
+                        public void onPositionReceived(int positionMs, int durationMs) {
+                            if (positionMs >= 0 && !isUserSeeking) {
+                                int totalDur = durationMs > 0 ? durationMs : (seekBar != null ? seekBar.getMax() : 0);
 
-                            // 防抖过滤：投播音箱在缓冲时偶尔返回等于总时长的假帧，拦截之
-                            if (totalDur > 0 && positionMs >= totalDur - 1000 && lastValidProgressMs < totalDur * 0.85) {
-                                return;
+                                // 仅过滤刚开播时音箱偶发返回的等于歌曲总时长的虚假占位帧
+                                if (totalDur > 5000 && positionMs >= totalDur - 1000 && lastValidProgressMs < totalDur * 0.70) {
+                                    return;
+                                }
+
+                                lastValidProgressMs = positionMs;
+
+                                if (durationMs > 0) {
+                                    seekBar.setMax(durationMs);
+                                    detailSeekBar.setMax(durationMs);
+                                    String timeStr = formatTime(positionMs) + " / " + formatTime(durationMs);
+                                    tvTime.setText(timeStr);
+                                    tvDetailTime.setText(timeStr);
+                                }
+                                seekBar.setProgress(positionMs);
+                                detailSeekBar.setProgress(positionMs);
+                                updateLyricPosition(positionMs);
                             }
-
-                            // 过滤无拖动时突跳向前超过 15 秒的异常尖刺
-                            if (lastValidProgressMs > 0 && (positionMs - lastValidProgressMs) > 15000) {
-                                return;
-                            }
-
-                            lastValidProgressMs = positionMs;
-
-                            if (durationMs > 0) {
-                                seekBar.setMax(durationMs);
-                                detailSeekBar.setMax(durationMs);
-                                String timeStr = formatTime(positionMs) + " / " + formatTime(durationMs);
-                                tvTime.setText(timeStr);
-                                tvDetailTime.setText(timeStr);
-                            }
-                            seekBar.setProgress(positionMs);
-                            detailSeekBar.setProgress(positionMs);
-                            updateLyricPosition(positionMs);
                         }
-                    }
-                });
+                    });
+                }
+                // 关键点：定时器放在外部，无论当前曲目是否处于缓冲缝隙，轮询循环永远不中断
                 dlnaSyncHandler.postDelayed(this, 1000);
             }
         }
@@ -321,18 +320,32 @@ public class MainActivity extends Activity {
                     String currentBitrate = getSavedBitrate();
                     tvDetailQuality.setText(getBitrateDisplay(currentBitrate, quality));
 
+                    // 核心修复：当检测到曲目变更时，第一时间将所有进度指示复位归零！
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
                         lastLoadedSongId = songId;
                         lastValidProgressMs = 0;
                         manualLyricOffsetMs = 0;
                         updateLyricOffsetStatusView();
+
+                        // 立即强制将进度条和文本归零，杜绝停在上一曲末尾
+                        seekBar.setProgress(0);
+                        detailSeekBar.setProgress(0);
+                        tvTime.setText("00:00 / 00:00");
+                        tvDetailTime.setText("00:00 / 00:00");
+
                         loadCoverArt(coverArtId != null ? coverArtId : songId);
                         loadLyrics(songId, artist, title);
                         refreshQueueList();
                         updateCacheSizeDisplay();
 
-                        if (DlnaManager.isCasting() && streamUrl != null && streamUrl.length() > 0) {
-                            DlnaManager.playUrl(DlnaManager.getCurrentDevice(), streamUrl, title, artist, 0);
+                        // 若处于投播状态，通知音箱切歌并重设轮询
+                        if (DlnaManager.isCasting()) {
+                            dlnaSyncHandler.removeCallbacks(dlnaSyncRunnable);
+                            dlnaSyncHandler.postDelayed(dlnaSyncRunnable, 500);
+
+                            if (streamUrl != null && streamUrl.length() > 0) {
+                                DlnaManager.playUrl(DlnaManager.getCurrentDevice(), streamUrl, title, artist, 0);
+                            }
                         }
                     }
 
@@ -342,15 +355,11 @@ public class MainActivity extends Activity {
                 int position = intent.getIntExtra("position", 0);
                 int duration = intent.getIntExtra("duration", 0);
 
+                // 本地播放驱动进度（投播模式下由 dlnaSyncRunnable 轮询驱动）
                 if (!DlnaManager.isCasting() && !isUserSeeking && duration > 0) {
-                    // 本地播放时间防抖：若曲目还在中前段，过滤掉底层偶发返回的等于总时长的突跳帧
-                    if (position >= duration - 1000 && lastValidProgressMs < duration * 0.85) {
+                    if (position >= duration - 1000 && lastValidProgressMs < duration * 0.70) {
                         return;
                     }
-                    if (lastValidProgressMs > 0 && (position - lastValidProgressMs) > 15000) {
-                        return;
-                    }
-
                     lastValidProgressMs = position;
 
                     seekBar.setMax(duration);
@@ -1212,7 +1221,6 @@ public class MainActivity extends Activity {
         btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
 
-        // 完整绑定歌词字号与偏置微调控件
         btnLyricDec = (Button) findViewById(R.id.btn_lyric_dec);
         btnLyricInc = (Button) findViewById(R.id.btn_lyric_inc);
         btnLyricDelay = (Button) findViewById(R.id.btn_lyric_delay);
@@ -2664,6 +2672,7 @@ public class MainActivity extends Activity {
                 btnDetailDlna.setTextColor(0xFFFF4081);
             }
 
+            // 启动定时轮询线程
             dlnaSyncHandler.removeCallbacks(dlnaSyncRunnable);
             dlnaSyncHandler.postDelayed(dlnaSyncRunnable, 1000);
 
