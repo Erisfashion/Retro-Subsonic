@@ -39,13 +39,11 @@ public class DlnaManager {
     }
 
     public interface PositionCallback {
-        void onPositionInfo(int positionMs, int durationMs);
+        void onPositionReceived(int positionMs, int durationMs);
     }
 
     private static Device currentActiveDevice = null;
     private static boolean isDlnaCasting = false;
-    private static Handler pollHandler = new Handler(Looper.getMainLooper());
-    private static Runnable pollRunnable;
 
     public static boolean isCasting() {
         return isDlnaCasting && currentActiveDevice != null;
@@ -56,7 +54,6 @@ public class DlnaManager {
     }
 
     public static void disconnect() {
-        stopPositionPolling();
         if (currentActiveDevice != null) {
             final Device dev = currentActiveDevice;
             new Thread(new Runnable() {
@@ -68,59 +65,6 @@ public class DlnaManager {
         }
         currentActiveDevice = null;
         isDlnaCasting = false;
-    }
-
-    private static void startPositionPolling(final String controlUrl, final PositionCallback callback) {
-        stopPositionPolling();
-        pollRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (!isCasting() || currentActiveDevice == null) return;
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        String res = executeSoapAction(controlUrl, "GetPositionInfo", "<InstanceID>0</InstanceID>");
-                        if (res != null) {
-                            String relTime = extractTag(res, "RelTime");
-                            String trackDur = extractTag(res, "TrackDuration");
-                            final int posMs = parseTimeToMs(relTime);
-                            final int durMs = parseTimeToMs(trackDur);
-                            if (posMs >= 0 && callback != null) {
-                                pollHandler.post(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        callback.onPositionInfo(posMs, durMs);
-                                    }
-                                });
-                            }
-                        }
-                    }
-                }).start();
-                pollHandler.postDelayed(this, 1000);
-            }
-        };
-        pollHandler.postDelayed(pollRunnable, 1000);
-    }
-
-    private static void stopPositionPolling() {
-        if (pollRunnable != null) {
-            pollHandler.removeCallbacks(pollRunnable);
-            pollRunnable = null;
-        }
-    }
-
-    private static int parseTimeToMs(String timeStr) {
-        if (timeStr == null || timeStr.length() < 8) return -1;
-        try {
-            String[] parts = timeStr.split(":");
-            if (parts.length >= 3) {
-                int hr = Integer.parseInt(parts[0]);
-                int min = Integer.parseInt(parts[1]);
-                float sec = Float.parseFloat(parts[2]);
-                return (int) ((hr * 3600 + min * 60 + sec) * 1000);
-            }
-        } catch (Exception ignored) {}
-        return -1;
     }
 
     public static void searchDevices(final DiscoveryCallback callback) {
@@ -225,7 +169,7 @@ public class DlnaManager {
         }).start();
     }
 
-    public static void playUrl(final Device device, final String mediaUrl, final String title, final String artist, final int positionMs, final PositionCallback callback) {
+    public static void playUrl(final Device device, final String mediaUrl, final String title, final String artist, final int positionMs) {
         currentActiveDevice = device;
         isDlnaCasting = true;
 
@@ -260,9 +204,37 @@ public class DlnaManager {
                     }
 
                     executeSoapAction(device.avTransportUrl, "Play", "<InstanceID>0</InstanceID><Speed>1</Speed>");
+                } catch (Exception ignored) {}
+            }
+        }).start();
+    }
 
-                    // 启动位置轮询以实时同步进度与歌词
-                    startPositionPolling(device.avTransportUrl, callback);
+    // 核心新增：向远端设备轮询获取真实的播放进度（秒）
+    public static void getPositionInfo(final PositionCallback callback) {
+        if (!isCasting() || currentActiveDevice == null) return;
+        final Device dev = currentActiveDevice;
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String res = executeSoapAction(dev.avTransportUrl, "GetPositionInfo", "<InstanceID>0</InstanceID>");
+                    if (res != null) {
+                        String relTimeStr = extractTag(res, "RelTime");
+                        String trackDurationStr = extractTag(res, "TrackDuration");
+
+                        final int posMs = parseTimeToMs(relTimeStr);
+                        final int durMs = parseTimeToMs(trackDurationStr);
+
+                        if (posMs >= 0) {
+                            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    callback.onPositionReceived(posMs, durMs);
+                                }
+                            });
+                        }
+                    }
                 } catch (Exception ignored) {}
             }
         }).start();
@@ -311,8 +283,8 @@ public class DlnaManager {
             URL url = new URL(controlUrl);
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
-            conn.setConnectTimeout(4000);
-            conn.setReadTimeout(4000);
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3000);
             conn.setDoOutput(true);
 
             String soapBody = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
@@ -335,13 +307,13 @@ public class DlnaManager {
             os.close();
 
             int code = conn.getResponseCode();
-            InputStream is = (code == 200 || code == 206) ? conn.getInputStream() : conn.getErrorStream();
-            if (is != null) {
+            if (code == 200) {
+                InputStream is = conn.getInputStream();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
                 StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line).append("\n");
+                String l;
+                while ((l = reader.readLine()) != null) {
+                    sb.append(l).append("\n");
                 }
                 reader.close();
                 return sb.toString();
@@ -351,6 +323,26 @@ public class DlnaManager {
             if (conn != null) conn.disconnect();
         }
         return null;
+    }
+
+    private static int parseTimeToMs(String timeStr) {
+        if (timeStr == null || timeStr.length() == 0 || "NOT_IMPLEMENTED".equalsIgnoreCase(timeStr)) {
+            return -1;
+        }
+        try {
+            String[] p = timeStr.split(":");
+            if (p.length == 3) {
+                int hr = Integer.parseInt(p[0]);
+                int min = Integer.parseInt(p[1]);
+                float sec = Float.parseFloat(p[2]);
+                return (int) (hr * 3600000L + min * 60000L + (long) (sec * 1000));
+            } else if (p.length == 2) {
+                int min = Integer.parseInt(p[0]);
+                float sec = Float.parseFloat(p[1]);
+                return (int) (min * 60000L + (long) (sec * 1000));
+            }
+        } catch (Exception ignored) {}
+        return -1;
     }
 
     private static String parseHeader(String text, String headerName) {
@@ -368,7 +360,6 @@ public class DlnaManager {
     }
 
     private static String extractTag(String xml, String tag) {
-        if (xml == null) return null;
         String open = "<" + tag + ">";
         String close = "</" + tag + ">";
         int s = xml.indexOf(open);
