@@ -1,5 +1,7 @@
 package com.retro.subsonic;
 
+import android.content.Context;
+import android.net.wifi.WifiManager;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -67,12 +69,24 @@ public class DlnaManager {
         isDlnaCasting = false;
     }
 
-    public static void searchDevices(final DiscoveryCallback callback) {
+    public static void searchDevices(final Context context, final DiscoveryCallback callback) {
         new Thread(new Runnable() {
             @Override
             public void run() {
                 DatagramSocket socket = null;
+                WifiManager.MulticastLock multicastLock = null;
                 try {
+                    // 激活硬件 Wi-Fi 组播接收通道，确保真机能够接收 SSDP 响应
+                    if (context != null) {
+                        try {
+                            WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                            if (wm != null) {
+                                multicastLock = wm.createMulticastLock("retro_subsonic_ssdp");
+                                multicastLock.acquire();
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+
                     String ssdpQuery = "M-SEARCH * HTTP/1.1\r\n" +
                             "HOST: 239.255.255.250:1900\r\n" +
                             "MAN: \"ssdp:discover\"\r\n" +
@@ -112,6 +126,11 @@ public class DlnaManager {
                 } finally {
                     if (socket != null) {
                         socket.close();
+                    }
+                    if (multicastLock != null && multicastLock.isHeld()) {
+                        try {
+                            multicastLock.release();
+                        } catch (Throwable ignored) {}
                     }
                 }
             }
@@ -209,7 +228,6 @@ public class DlnaManager {
         }).start();
     }
 
-    // 核心新增：向远端设备轮询获取真实的播放进度（秒）
     public static void getPositionInfo(final PositionCallback callback) {
         if (!isCasting() || currentActiveDevice == null) return;
         final Device dev = currentActiveDevice;
