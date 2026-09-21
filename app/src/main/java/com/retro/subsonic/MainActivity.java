@@ -97,7 +97,7 @@ public class MainActivity extends Activity {
     private ImageView ivBottomCover;
     private Button btnToggleQueue, btnCloseQueue;
     private Button btnBottomFav, btnDetailFav, btnDetailDownload, btnDetailDlna;
-    private Button btnLyricDec, btnLyricInc;
+    private Button btnLyricDec, btnLyricInc, btnLyricFaster, btnLyricSlower;
     private LinearLayout layoutConfigPanel, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime, tvCacheUsed;
     private ListView listView, lvQueue;
@@ -165,6 +165,7 @@ public class MainActivity extends Activity {
     private boolean isUserTouchingLyrics = false;
     private int currentLyricIndex = -1;
     private int lyricBaseFontSize = 15;
+    private int lyricTimeOffsetMs = -2500; // DLNA 投播默认补偿 -2.5秒，消除硬件音频缓冲差
 
     private static class LyricRow {
         long timeMs;
@@ -281,7 +282,6 @@ public class MainActivity extends Activity {
                         refreshQueueList();
                         updateCacheSizeDisplay();
 
-                        // 如果处于 DLNA 投播状态，切歌时自动将新曲目推送到远端音响
                         if (DlnaManager.isCasting() && streamUrl != null && streamUrl.length() > 0) {
                             DlnaManager.playUrl(DlnaManager.getCurrentDevice(), streamUrl, title, artist, 0);
                         }
@@ -293,10 +293,32 @@ public class MainActivity extends Activity {
                 int position = intent.getIntExtra("position", 0);
                 int duration = intent.getIntExtra("duration", 0);
 
-                if (!isUserSeeking && duration > 0) {
-                    // 关键校准：如果正在 DLNA 投播，界面进度条和歌词全部由远端音箱的 GetPositionInfo 回调接管驱动
-                    // 未投播时才由本地广播时间戳驱动，彻底避免本地和音箱两套时间轴冲突打架
-                    if (!DlnaManager.isCasting()) {
+                // 如果处于 DLNA 投播状态，后台主动轮询远端音箱的真实播放进度进行强力同步对齐
+                if (DlnaManager.isCasting()) {
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            int remotePos = DlnaManager.getRemotePositionMs();
+                            if (remotePos >= 0) {
+                                final int calibratedPos = Math.max(0, remotePos + lyricTimeOffsetMs);
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        if (!isUserSeeking && duration > 0) {
+                                            seekBar.setProgress(calibratedPos);
+                                            detailSeekBar.setProgress(calibratedPos);
+                                            String timeStr = formatTime(calibratedPos) + " / " + formatTime(duration);
+                                            tvTime.setText(timeStr);
+                                            tvDetailTime.setText(timeStr);
+                                            updateLyricPosition(calibratedPos);
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }).start();
+                } else {
+                    if (!isUserSeeking && duration > 0) {
                         seekBar.setMax(duration);
                         seekBar.setProgress(position);
                         detailSeekBar.setMax(duration);
@@ -359,34 +381,10 @@ public class MainActivity extends Activity {
         setupClickInterceptors();
         updateCacheSizeDisplay();
 
-        // 核心支持：绑定远端 DLNA 音箱真实发声时钟，毫秒级绝对同步歌词与进度条
-        setupDlnaPositionSync();
-
         restoreLastSessionIfAvailable();
 
         fetchPlaylists();
         syncServerFavoritesQuietly();
-    }
-
-    private void setupDlnaPositionSync() {
-        DlnaManager.setPositionCallback(new DlnaManager.PositionCallback() {
-            @Override
-            public void onPositionSync(final int currentMs, final int durationMs) {
-                if (!isUserSeeking && DlnaManager.isCasting()) {
-                    if (durationMs > 0) {
-                        detailSeekBar.setMax(durationMs);
-                        seekBar.setMax(durationMs);
-                        String timeStr = formatTime(currentMs) + " / " + formatTime(durationMs);
-                        tvDetailTime.setText(timeStr);
-                        tvTime.setText(timeStr);
-                    }
-                    detailSeekBar.setProgress(currentMs);
-                    seekBar.setProgress(currentMs);
-                    // 毫秒级直接跟随音响真实时间推进歌词
-                    updateLyricPosition(currentMs);
-                }
-            }
-        });
     }
 
     private void updateCacheSizeDisplay() {
@@ -1183,6 +1181,8 @@ public class MainActivity extends Activity {
 
         btnLyricDec = (Button) findViewById(R.id.btn_lyric_dec);
         btnLyricInc = (Button) findViewById(R.id.btn_lyric_inc);
+        btnLyricFaster = (Button) findViewById(R.id.btn_lyric_faster);
+        btnLyricSlower = (Button) findViewById(R.id.btn_lyric_slower);
 
         layoutVinylContainer = (FrameLayout) findViewById(R.id.layout_vinyl_container);
         flVinylDisc = (FrameLayout) findViewById(R.id.fl_vinyl_disc);
@@ -2117,6 +2117,26 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 歌词手动微调对齐按钮事件
+        if (btnLyricFaster != null) {
+            btnLyricFaster.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    lyricTimeOffsetMs += 500; // 歌词提前 0.5 秒
+                    Toast.makeText(MainActivity.this, "歌词延迟调整: " + (lyricTimeOffsetMs / 1000.0) + "s", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+        if (btnLyricSlower != null) {
+            btnLyricSlower.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    lyricTimeOffsetMs -= 500; // 歌词延后 0.5 秒
+                    Toast.makeText(MainActivity.this, "歌词延迟调整: " + (lyricTimeOffsetMs / 1000.0) + "s", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
         cbDedupSongs.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
@@ -2209,7 +2229,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 核心支持：DLNA 投播按钮逻辑处理
         if (btnDetailDlna != null) {
             btnDetailDlna.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -2588,10 +2607,8 @@ public class MainActivity extends Activity {
             MusicService.SongItem current = queue.get(curIdx);
             int currentPos = seekBar != null ? seekBar.getProgress() : 0;
 
-            // 1. 发起远端 DLNA 播放指令
             DlnaManager.playUrl(targetDev, current.streamUrl, current.title, current.artist, currentPos);
 
-            // 2. 本地平板静音（黑胶唱片由于播放状态为 true 继续旋转，歌词与进度保持推进）
             Intent muteIntent = new Intent(MainActivity.this, MusicService.class);
             muteIntent.setAction(MusicService.ACTION_SET_MUTE);
             muteIntent.putExtra("is_muted", true);
