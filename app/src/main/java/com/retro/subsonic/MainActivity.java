@@ -97,7 +97,7 @@ public class MainActivity extends Activity {
     private ImageView ivBottomCover;
     private Button btnToggleQueue, btnCloseQueue;
     private Button btnBottomFav, btnDetailFav, btnDetailDownload, btnDetailDlna;
-    private Button btnLyricDec, btnLyricInc, btnLyricSyncAhead, btnLyricSyncDelay;
+    private Button btnLyricDec, btnLyricInc;
     private LinearLayout layoutConfigPanel, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime, tvCacheUsed;
     private ListView listView, lvQueue;
@@ -165,7 +165,7 @@ public class MainActivity extends Activity {
     private boolean isUserTouchingLyrics = false;
     private int currentLyricIndex = -1;
     private int lyricBaseFontSize = 15;
-    private int lyricTimeOffsetMs = 0; // 歌词微调偏移量（毫秒）
+    private int lyricTimeOffsetMs = 0;
 
     private static class LyricRow {
         long timeMs;
@@ -302,7 +302,6 @@ public class MainActivity extends Activity {
                     tvTime.setText(timeStr);
                     tvDetailTime.setText(timeStr);
 
-                    // 核心：加入投播延迟补偿（默认 -2500ms 消除硬件缓冲时差）
                     int effectivePos = position + lyricTimeOffsetMs;
                     if (DlnaManager.isCasting()) {
                         effectivePos -= 2500;
@@ -2026,7 +2025,7 @@ public class MainActivity extends Activity {
                 @Override
                 public void onPositionInfo(int positionMs, int durationMs) {
                     if (DlnaManager.isCasting() && durationMs > 0) {
-                        int effectivePos = positionMs - 2500; // 消除音响硬件硬件缓冲时差
+                        int effectivePos = positionMs - 2500;
                         if (effectivePos < 0) effectivePos = 0;
                         updateLyricPosition(effectivePos);
                     }
