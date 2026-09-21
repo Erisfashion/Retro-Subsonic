@@ -32,7 +32,7 @@
                     android:layout_height="match_parent"
                     android:orientation="vertical">
 
-                    <!-- 顶栏：关闭退出按钮移至Subsonic音乐左侧，居中为搜索，右侧为设置 -->
+                    <!-- 顶栏：关闭退出按钮在Subsonic音乐左侧，居中为搜索，右侧为设置 -->
                     <RelativeLayout
                         android:layout_width="match_parent"
                         android:layout_height="44dp"
@@ -46,7 +46,6 @@
                             android:gravity="center_vertical"
                             android:orientation="horizontal">
 
-                            <!-- 需求1：关闭播放器退出按钮移动到 Subsonic音乐 左侧 -->
                             <ImageView
                                 android:id="@+id/btn_exit_app"
                                 android:layout_width="34dp"
@@ -869,6 +868,19 @@
                     android:layout_height="34dp"
                     android:background="@drawable/bg_btn_accent"
                     android:text="⬇ 下载"
+                    android:textColor="#00e5ff"
+                    android:textSize="12sp"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:layout_marginLeft="6dp" />
+
+                <!-- 关键新增：DLNA 投播入口按钮 -->
+                <Button
+                    android:id="@+id/btn_detail_dlna"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:background="@drawable/bg_btn_default"
+                    android:text="⛶ 投播"
                     android:textColor="#00e5ff"
                     android:textSize="12sp"
                     android:paddingLeft="8dp"
