@@ -99,7 +99,7 @@ public class MainActivity extends Activity {
     private ImageView ivBottomCover;
     private Button btnToggleQueue, btnCloseQueue;
     private Button btnBottomFav, btnDetailFav, btnDetailDownload;
-    private Button btnDetailDlna; // 核心新增：DLNA 投播按钮
+    private Button btnDetailDlna;
     private Button btnLyricDec, btnLyricInc;
     private LinearLayout layoutConfigPanel, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime, tvCacheUsed;
@@ -240,6 +240,7 @@ public class MainActivity extends Activity {
                 int bufferPercent = intent.getIntExtra("bufferPercent", 0);
                 int retryCount = intent.getIntExtra("retryCount", 0);
                 int maxRetries = intent.getIntExtra("maxRetries", 3);
+                boolean isCastMuted = intent.getBooleanExtra("isCastMuted", false);
 
                 String songId = intent.getStringExtra("songId");
                 String title = intent.getStringExtra("title");
@@ -258,6 +259,10 @@ public class MainActivity extends Activity {
                         if (isBuffering && bufferPercent < 100) {
                             tvCurrentSong.setText(title + " - " + artist + " (缓冲 " + bufferPercent + "%)");
                             tvDetailBuffer.setText("(缓冲 " + bufferPercent + "%)");
+                            tvDetailBuffer.setVisibility(View.VISIBLE);
+                        } else if (isCastMuted) {
+                            tvCurrentSong.setText("[投播中] " + title + " - " + artist);
+                            tvDetailBuffer.setText("(DLNA 投播)");
                             tvDetailBuffer.setVisibility(View.VISIBLE);
                         } else {
                             tvCurrentSong.setText(title + " - " + artist);
@@ -283,7 +288,7 @@ public class MainActivity extends Activity {
                         refreshQueueList();
                         updateCacheSizeDisplay();
 
-                        // 若正处于 DLNA 投播状态，切歌时自动将新曲目直链推送给音箱
+                        // 投播状态下切歌：音箱同步更新曲目
                         DlnaManager.Device castDev = DlnaManager.getInstance(MainActivity.this).getCurrentCastDevice();
                         if (castDev != null) {
                             DlnaManager.getInstance(MainActivity.this).playMedia(
@@ -302,6 +307,7 @@ public class MainActivity extends Activity {
                 int position = intent.getIntExtra("position", 0);
                 int duration = intent.getIntExtra("duration", 0);
 
+                // 核心：即使处于静音投播，本地时间轴持续跳动，歌词和进度条 100% 同步滚动
                 if (!isUserSeeking && duration > 0) {
                     seekBar.setMax(duration);
                     seekBar.setProgress(position);
@@ -2019,7 +2025,7 @@ public class MainActivity extends Activity {
         return Math.max(1, inSampleSize);
     }
 
-    // 核心新增：显示 DLNA 局域网设备扫描与投播对话框
+    // 方案A核心：显示 DLNA 局域网设备扫描与投播管理对话框
     private void showDlnaCastDialog() {
         final DlnaManager dlna = DlnaManager.getInstance(this);
         final DlnaManager.Device currentCast = dlna.getCurrentCastDevice();
@@ -2027,17 +2033,20 @@ public class MainActivity extends Activity {
         if (currentCast != null) {
             new AlertDialog.Builder(this)
                     .setTitle("当前正在投播")
-                    .setMessage("正在投播至: " + currentCast.friendlyName)
+                    .setMessage("正在投播至: " + currentCast.friendlyName + "\n(平板伴随静音模式，歌词同步滚动)")
                     .setPositiveButton("断开投播并切回本机", new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialog, int which) {
                             dlna.stopMedia(currentCast, null);
                             btnDetailDlna.setText("投播 ⎘");
                             btnDetailDlna.setTextColor(0xFF00E5FF);
-                            Toast.makeText(MainActivity.this, "已断开投播，切回本机播放", Toast.LENGTH_SHORT).show();
+
+                            // 方案A恢复：恢复本机正常音量
+                            startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_UNMUTE));
+                            Toast.makeText(MainActivity.this, "已断开投播，切回本机扬声器播放", Toast.LENGTH_SHORT).show();
                         }
                     })
-                    .setNeutralButton("重新选择设备", new DialogInterface.OnClickListener() {
+                    .setNeutralButton("更换设备", new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialog, int which) {
                             startDlnaDeviceDiscovery();
@@ -2072,7 +2081,7 @@ public class MainActivity extends Activity {
                 if (devices == null || devices.isEmpty()) {
                     new AlertDialog.Builder(MainActivity.this)
                             .setTitle("未发现 DLNA 设备")
-                            .setMessage("未在当前局域网中发现支持 DLNA/UPnP 的音频设备。\n请确保手机与音箱/电视连接在同一个 Wi-Fi 网络下。")
+                            .setMessage("未在当前局域网中发现支持 DLNA/UPnP 的音频设备。\n请确保手机/平板与音箱处于同一 Wi-Fi 网络下。")
                             .setPositiveButton("重试", new DialogInterface.OnClickListener() {
                                 @Override
                                 public void onClick(DialogInterface dialog, int which) {
@@ -2122,10 +2131,10 @@ public class MainActivity extends Activity {
             public void onSuccess() {
                 btnDetailDlna.setText("投播中: " + device.friendlyName);
                 btnDetailDlna.setTextColor(0xFF00FF7F);
-                Toast.makeText(MainActivity.this, "投播成功！已推送到: " + device.friendlyName, Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this, "投播成功！已开启伴随静音模式，歌词同步滚动", Toast.LENGTH_LONG).show();
 
-                // 投播成功后暂停本机播放，避免双发重音
-                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_TOGGLE));
+                // 方案A核心：本机不暂停播放，而是发送 ACTION_MUTE 静音本机，时间轴继续跑动，驱动歌词滚动
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_MUTE));
             }
 
             @Override
@@ -2306,7 +2315,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 核心新增：DLNA 投播点击事件监听
         btnDetailDlna.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
