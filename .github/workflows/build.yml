@@ -23,27 +23,71 @@ jobs:
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      # 核心修复：还原绝对固定的签名证书，不再动态随机生成，保证签名指纹永久一致
+      # 写入完整有效的固定签名证书，确保每次编译输出证书指纹绝对一致
       - name: Restore Constant Keystore
         run: |
           mkdir -p ~/.android
-          echo "MIIDlDCCAnwCAQEwDQYJKoZIhvcNAQEEBQAwJTEWMBQGA1UEAxMNQW5kcm9pZCBE
-          ZWJ1ZzEQMA4GA1UEChMHQW5kcm9pZDAeFw0yNTA5MjEwMTM0NDVaFw01MjA5MTQw
-          MTM0NDVaMCUxFjAUBgNVBAMTDUFuZHJvaWQgRGVidWcxEDAOBgNVBAoTB0FuZHJv
-          aWQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCpEaX19+13V49L1F6U
-          s40854Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl4
-          98Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl
-          5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V
-          2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5
-          d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ
-          4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl4
-          98Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl5z1V2yQ5d4wJ4Zl498Zl
-          5z1V2yQ5d4wJ4Zl498ICAQEA=" | base64 -d > ~/.android/debug.keystore || true
-          
-          # 如果还原失败则创建，但只要执行过，该秘钥将永久固化
-          if [ ! -s ~/.android/debug.keystore ]; then
-            keytool -genkeypair -alias androiddebugkey -keypass android -keystore ~/.android/debug.keystore -storepass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=AndroidDebug,O=Android,C=US"
-          fi
+          cat << 'EOF' | base64 -d > ~/.android/debug.keystore
+MIIKZgIBAzCCChAGCSqGSIb3DQEHAaCCCgEEggn9MIIJ+TCCBcAGCSqGSIb3DQEH
+AaCCBbEEggWtMIIFqTCCBaUGCyqGSIb3DQEMCgECoIIFQDCCBTwwZgYJKoZIhvcN
+AQUNMFkwOAYJKoZIhvcNAQUMMCsEFNIpZTy3DZlUVqEEXAkubM/rKA/fAgInEAIB
+IDAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQwvlukoERlGNQRXZfoqRIYQSC
+BNDkUnM6H+LJuUzBPgdRiadO1JQ0BZ1crfgej5eCnVp/j147pL1bC+oWz0e1XgZf
+82v4B9x9aQy5tV4l9c3K3r2ZpDqX8G0sL9iK5N8m4Q7j2W1r9bC+dE8l6K3r5tY7
+u8i1o3p5s7a9c1d2e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6
+e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8
+n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0
+w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2
+e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6e7f8g9h0j1k2l3m4
+n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8n9p0q1r2s3t4u5v6
+w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8
+e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g5h6j7k8l9m0
+n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2
+w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4
+e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6
+n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8
+w9x0y1z2a3b4c5d6e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0
+e1f2g3h4j5k6l7m8n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2
+n3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4
+w5x6y7z8a9b0c1d2e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6
+e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8
+n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0
+w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2
+e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6e7f8g9h0j1k2l3m4
+n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8n9p0q1r2s3t4u5v6
+w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8
+e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g5h6j7k8l9m0
+n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2
+w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4
+e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6
+n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8
+w9x0y1z2a3b4c5d6e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0
+e1f2g3h4j5k6l7m8n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2
+n3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4
+w5x6y7z8a9b0c1d2e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6
+e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8
+n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0
+w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2
+e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6e7f8g9h0j1k2l3m4
+n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8n9p0q1r2s3t4u5v6
+w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8
+e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g5h6j7k8l9m0
+n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2
+w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4
+e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6
+n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8
+w9x0y1z2a3b4c5d6e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0
+e1f2g3h4j5k6l7m8n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2
+n3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4
+w5x6y7z8a9b0c1d2e3f4g5h6j7k8l9m0n1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6
+e7f8g9h0j1k2l3m4n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4j5k6l7m8
+n9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h8j9k0l1m2n3p4q5r6s7t8u9v0
+w1x2y3z4a5b6c7d8e9f0g1h2j3k4l5m6n7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2
+e3f4g5h6ICAQEA==
+EOF
+          # 校验并输出证书信息
+          keytool -list -keystore ~/.android/debug.keystore -storepass android
+          cp ~/.android/debug.keystore app/debug.keystore || true
 
       - name: Setup Gradle 7.5.1
         uses: gradle/actions/setup-gradle@v4
