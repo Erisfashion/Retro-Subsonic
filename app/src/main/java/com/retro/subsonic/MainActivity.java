@@ -97,7 +97,8 @@ public class MainActivity extends Activity {
     private ImageView ivBottomCover;
     private Button btnToggleQueue, btnCloseQueue;
     private Button btnBottomFav, btnDetailFav, btnDetailDownload, btnDetailDlna;
-    private Button btnLyricDec, btnLyricInc;
+    private Button btnLyricDec, btnLyricInc, btnLyricDelay, btnLyricAdvance;
+    private TextView tvLyricOffsetStatus;
     private LinearLayout layoutConfigPanel, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime, tvCacheUsed;
     private ListView listView, lvQueue;
@@ -165,7 +166,36 @@ public class MainActivity extends Activity {
     private boolean isUserTouchingLyrics = false;
     private int currentLyricIndex = -1;
     private int lyricBaseFontSize = 15;
-    private int lyricTimeOffsetMs = 0;
+    private long manualLyricOffsetMs = 0; // 手动歌词时间微调偏置毫秒
+    private String currentLoadedRawLyrics = null;
+
+    // DLNA 远端真实播放进度校准计时器
+    private Handler dlnaSyncHandler = new Handler();
+    private Runnable dlnaSyncRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (DlnaManager.isCasting() && isCurrentSongPlaying && !isUserSeeking) {
+                DlnaManager.getPositionInfo(new DlnaManager.PositionCallback() {
+                    @Override
+                    public void onPositionReceived(int positionMs, int durationMs) {
+                        if (positionMs >= 0 && !isUserSeeking) {
+                            if (durationMs > 0) {
+                                seekBar.setMax(durationMs);
+                                detailSeekBar.setMax(durationMs);
+                                String timeStr = formatTime(positionMs) + " / " + formatTime(durationMs);
+                                tvTime.setText(timeStr);
+                                tvDetailTime.setText(timeStr);
+                            }
+                            seekBar.setProgress(positionMs);
+                            detailSeekBar.setProgress(positionMs);
+                            updateLyricPosition(positionMs);
+                        }
+                    }
+                });
+                dlnaSyncHandler.postDelayed(this, 1000);
+            }
+        }
+    };
 
     private static class LyricRow {
         long timeMs;
@@ -277,13 +307,15 @@ public class MainActivity extends Activity {
 
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
                         lastLoadedSongId = songId;
+                        manualLyricOffsetMs = 0;
+                        updateLyricOffsetStatusView();
                         loadCoverArt(coverArtId != null ? coverArtId : songId);
                         loadLyrics(songId, artist, title);
                         refreshQueueList();
                         updateCacheSizeDisplay();
 
                         if (DlnaManager.isCasting() && streamUrl != null && streamUrl.length() > 0) {
-                            startDlnaCastQuietly(DlnaManager.getCurrentDevice(), streamUrl, title, artist, 0);
+                            DlnaManager.playUrl(DlnaManager.getCurrentDevice(), streamUrl, title, artist, 0);
                         }
                     }
 
@@ -293,7 +325,8 @@ public class MainActivity extends Activity {
                 int position = intent.getIntExtra("position", 0);
                 int duration = intent.getIntExtra("duration", 0);
 
-                if (!isUserSeeking && duration > 0) {
+                // 若处于 DLNA 投播状态，时间由 dlnaSyncRunnable 真实轮询直接覆盖校准；本地只作备选
+                if (!DlnaManager.isCasting() && !isUserSeeking && duration > 0) {
                     seekBar.setMax(duration);
                     seekBar.setProgress(position);
                     detailSeekBar.setMax(duration);
@@ -302,11 +335,7 @@ public class MainActivity extends Activity {
                     tvTime.setText(timeStr);
                     tvDetailTime.setText(timeStr);
 
-                    int effectivePos = position + lyricTimeOffsetMs;
-                    if (DlnaManager.isCasting()) {
-                        effectivePos -= 2500;
-                    }
-                    updateLyricPosition(effectivePos);
+                    updateLyricPosition(position);
                 }
             }
         }
@@ -1159,6 +1188,9 @@ public class MainActivity extends Activity {
 
         btnLyricDec = (Button) findViewById(R.id.btn_lyric_dec);
         btnLyricInc = (Button) findViewById(R.id.btn_lyric_inc);
+        btnLyricDelay = (Button) findViewById(R.id.btn_lyric_delay);
+        btnLyricAdvance = (Button) findViewById(R.id.btn_lyric_advance);
+        tvLyricOffsetStatus = (TextView) findViewById(R.id.tv_lyric_offset_status);
 
         layoutVinylContainer = (FrameLayout) findViewById(R.id.layout_vinyl_container);
         flVinylDisc = (FrameLayout) findViewById(R.id.fl_vinyl_disc);
@@ -1953,6 +1985,24 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "歌词字号: " + lyricBaseFontSize + "sp", Toast.LENGTH_SHORT).show();
     }
 
+    private void adjustLyricOffset(long deltaMs) {
+        manualLyricOffsetMs += deltaMs;
+        updateLyricOffsetStatusView();
+        if (currentLoadedRawLyrics != null && currentLoadedRawLyrics.length() > 0) {
+            buildLyricsView(currentLoadedRawLyrics);
+            int curPos = detailSeekBar != null ? detailSeekBar.getProgress() : 0;
+            updateLyricPosition(curPos);
+        }
+        Toast.makeText(this, "歌词偏置: " + (manualLyricOffsetMs >= 0 ? "+" : "") + (manualLyricOffsetMs / 1000.0) + "s", Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateLyricOffsetStatusView() {
+        if (tvLyricOffsetStatus != null) {
+            double sec = manualLyricOffsetMs / 1000.0;
+            tvLyricOffsetStatus.setText(String.format("%s%.1fs", (sec > 0 ? "+" : ""), sec));
+        }
+    }
+
     private Bitmap getCircularBitmap(Bitmap bitmap, int targetSize) {
         if (bitmap == null || bitmap.isRecycled()) return null;
         if (targetSize <= 0) targetSize = 240;
@@ -2014,6 +2064,560 @@ public class MainActivity extends Activity {
         return Math.max(1, inSampleSize);
     }
 
+    private void setupListeners() {
+        View.OnClickListener exitListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { performAppExit(); }
+        };
+        btnExitApp.setOnClickListener(exitListener);
+        btnDetailExitApp.setOnClickListener(exitListener);
+
+        btnTopSearch.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                targetPlaylistIdForAdd = null;
+                targetPlaylistNameForAdd = null;
+                etSearchKeyword.setHint("输入歌曲名检索...");
+                layoutSearchOverlay.setVisibility(View.VISIBLE);
+                if (searchHistoryList.isEmpty()) {
+                    layoutSearchHistoryBox.setVisibility(View.GONE);
+                } else {
+                    layoutSearchHistoryBox.setVisibility(View.VISIBLE);
+                    isSearchHistoryCollapsed = false;
+                    lvSearchHistory.setVisibility(View.VISIBLE);
+                    btnToggleSearchHistory.setText("收起 ▴");
+                }
+                etSearchKeyword.requestFocus();
+            }
+        });
+
+        btnSearchPageBack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                layoutSearchOverlay.setVisibility(View.GONE);
+                targetPlaylistIdForAdd = null;
+                targetPlaylistNameForAdd = null;
+            }
+        });
+
+        btnToggleSearchHistory.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                isSearchHistoryCollapsed = !isSearchHistoryCollapsed;
+                if (isSearchHistoryCollapsed) {
+                    lvSearchHistory.setVisibility(View.GONE);
+                    btnToggleSearchHistory.setText("展开 ▾");
+                } else {
+                    lvSearchHistory.setVisibility(View.VISIBLE);
+                    btnToggleSearchHistory.setText("收起 ▴");
+                }
+            }
+        });
+
+        btnClearSearchHistory.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                promptClearSearchHistory();
+            }
+        });
+
+        lvSearchHistory.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= 0 && position < searchHistoryList.size()) {
+                    String kw = searchHistoryList.get(position);
+                    etSearchKeyword.setText(kw);
+                    searchSongs(kw);
+                }
+            }
+        });
+
+        lvSearchHistory.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= 0 && position < searchHistoryList.size()) {
+                    removeSingleSearchHistory(searchHistoryList.get(position));
+                    return true;
+                }
+                return false;
+            }
+        });
+
+        cbDedupSongs.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                int searchTypePos = spinnerSearchType != null ? spinnerSearchType.getSelectedItemPosition() : 0;
+                if (searchTypePos == 0 && !rawSearchSongResults.isEmpty()) {
+                    applySongDeduplication(isChecked);
+                }
+            }
+        });
+
+        btnTabPlaylists.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                currentSelectedTab = TAB_PLAYLISTS;
+                btnTabPlaylists.setTextColor(0xFF00E5FF);
+                btnTabRanking.setTextColor(0xFFA0A5B5);
+                btnBack.setVisibility(View.GONE);
+                showUserPlaylists();
+            }
+        });
+
+        btnTabRanking.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                currentSelectedTab = TAB_RANKING;
+                btnTabRanking.setTextColor(0xFF00E5FF);
+                btnTabPlaylists.setTextColor(0xFFA0A5B5);
+                btnBack.setVisibility(View.GONE);
+                showRankingPlaylists();
+            }
+        });
+
+        btnSearchSubmit.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String kw = etSearchKeyword.getText().toString().trim();
+                if (kw.length() > 0) {
+                    addSearchHistory(kw);
+                }
+                searchSongs(kw);
+            }
+        });
+
+        btnBack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                btnBack.setVisibility(View.GONE);
+                showCurrentTabContent();
+            }
+        });
+
+        btnLyricDec.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { applyLyricFontSize(-2); }
+        });
+
+        btnLyricInc.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { applyLyricFontSize(2); }
+        });
+
+        // 歌词偏置微调监听：-0.5s（歌词提早）与 +0.5s（歌词延后）
+        btnLyricDelay.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { adjustLyricOffset(-500); }
+        });
+
+        btnLyricAdvance.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { adjustLyricOffset(500); }
+        });
+
+        View.OnClickListener favClickListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ArrayList<MusicService.SongItem> q = MusicService.getPlaylist();
+                int idx = MusicService.getCurrentIndex();
+                if (q != null && idx >= 0 && idx < q.size()) {
+                    String sid = q.get(idx).id;
+                    serverStarSong(sid, !isFav(sid));
+                } else {
+                    Toast.makeText(MainActivity.this, "当前无播放中的歌曲可收藏", Toast.LENGTH_SHORT).show();
+                }
+            }
+        };
+        btnBottomFav.setOnClickListener(favClickListener);
+        btnDetailFav.setOnClickListener(favClickListener);
+
+        btnDetailDownload.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ArrayList<MusicService.SongItem> q = MusicService.getPlaylist();
+                int idx = MusicService.getCurrentIndex();
+                if (q != null && idx >= 0 && idx < q.size()) {
+                    MusicService.SongItem cur = q.get(idx);
+                    DisplayEntry dummy = new DisplayEntry(cur.id, cur.title, cur.artist, "", "", cur.quality, true);
+                    downloadSongItem(dummy);
+                } else {
+                    Toast.makeText(MainActivity.this, "当前无播放中的歌曲可下载", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+        if (btnDetailDlna != null) {
+            btnDetailDlna.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (DlnaManager.isCasting()) {
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("DLNA 投播管理")
+                                .setMessage("当前正在投播至: " + DlnaManager.getCurrentDevice().name + "\n\n是否断开投播并恢复平板扬声器？")
+                                .setPositiveButton("断开投播", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog, int which) {
+                                        DlnaManager.disconnect();
+                                        dlnaSyncHandler.removeCallbacks(dlnaSyncRunnable);
+                                        btnDetailDlna.setText("⛶ 投播");
+                                        btnDetailDlna.setTextColor(0xFF00E5FF);
+
+                                        Intent muteIntent = new Intent(MainActivity.this, MusicService.class);
+                                        muteIntent.setAction(MusicService.ACTION_SET_MUTE);
+                                        muteIntent.putExtra("is_muted", false);
+                                        startService(muteIntent);
+
+                                        Toast.makeText(MainActivity.this, "已断开投播，恢复本地发声", Toast.LENGTH_SHORT).show();
+                                    }
+                                })
+                                .setNegativeButton("取消", null)
+                                .show();
+                    } else {
+                        Toast.makeText(MainActivity.this, "正在扫描局域网 DLNA 音响/电视设备...", Toast.LENGTH_SHORT).show();
+                        final ArrayList<DlnaManager.Device> foundDevices = new ArrayList<DlnaManager.Device>();
+                        final ArrayList<String> deviceNames = new ArrayList<String>();
+
+                        final ArrayAdapter<String> devAdapter = new ArrayAdapter<String>(MainActivity.this, android.R.layout.simple_list_item_1, deviceNames);
+
+                        final AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("选择投播设备 (局域网 DLNA)")
+                                .setAdapter(devAdapter, new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface d, int which) {
+                                        if (which >= 0 && which < foundDevices.size()) {
+                                            DlnaManager.Device targetDev = foundDevices.get(which);
+                                            startDlnaCast(targetDev);
+                                        }
+                                    }
+                                })
+                                .setNegativeButton("取消", null)
+                                .show();
+
+                        DlnaManager.searchDevices(new DlnaManager.DiscoveryCallback() {
+                            @Override
+                            public void onDeviceFound(DlnaManager.Device device) {
+                                for (DlnaManager.Device d : foundDevices) {
+                                    if (d.location.equals(device.location)) return;
+                                }
+                                foundDevices.add(device);
+                                deviceNames.add("🔊 " + device.name);
+                                devAdapter.notifyDataSetChanged();
+                            }
+                        });
+                    }
+                }
+            });
+        }
+
+        View.OnClickListener coverToggleListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleCoverDisplayMode();
+            }
+        };
+        layoutVinylContainer.setOnClickListener(coverToggleListener);
+        ivVinylCircularCover.setOnClickListener(coverToggleListener);
+        viewTonearm.setOnClickListener(coverToggleListener);
+        ivSquareCover.setOnClickListener(coverToggleListener);
+
+        layoutDetailBottomBlank.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleDetailQueueView();
+            }
+        });
+
+        btnToggleConfig.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (layoutConfigPanel.getVisibility() == View.VISIBLE) {
+                    layoutConfigPanel.setVisibility(View.GONE);
+                } else {
+                    updateCacheSizeDisplay();
+                    layoutConfigPanel.setVisibility(View.VISIBLE);
+                }
+            }
+        });
+
+        btnConnect.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                saveConfig();
+                layoutConfigPanel.setVisibility(View.GONE);
+                fetchPlaylists();
+                syncServerFavoritesQuietly();
+            }
+        });
+
+        btnClearCache.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                long bytes = CacheManager.getUsedCacheBytes(MainActivity.this);
+                double mb = bytes / (1024.0 * 1024.0);
+                CacheManager.clearAllCache(MainActivity.this);
+                updateCacheSizeDisplay();
+                Toast.makeText(MainActivity.this, String.format("已清理缓存，释放 %.1f MB 空间", mb), Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        View.OnClickListener eqListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { new EqualizerDialog(MainActivity.this).show(); }
+        };
+        btnOpenEq.setOnClickListener(eqListener);
+        btnDetailEq.setOnClickListener(eqListener);
+
+        btnToggleQueue.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (layoutQueuePanel.getVisibility() == View.VISIBLE) {
+                    layoutQueuePanel.setVisibility(View.GONE);
+                } else {
+                    refreshQueueList();
+                    layoutQueuePanel.setVisibility(View.VISIBLE);
+                    scrollQueueToCenter(lvQueue);
+                }
+            }
+        });
+
+        btnCloseQueue.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { layoutQueuePanel.setVisibility(View.GONE); }
+        });
+
+        View.OnClickListener openDetailListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { layoutDetailOverlay.setVisibility(View.VISIBLE); }
+        };
+        ivBottomCover.setOnClickListener(openDetailListener);
+
+        btnCloseDetail.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { layoutDetailOverlay.setVisibility(View.GONE); }
+        });
+
+        btnDetailKeepScreen.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                isKeepScreenOn = !isKeepScreenOn;
+                if (isKeepScreenOn) {
+                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    btnDetailKeepScreen.setText("常亮: 开");
+                    Toast.makeText(MainActivity.this, "已开启屏幕常亮", Toast.LENGTH_SHORT).show();
+                } else {
+                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    btnDetailKeepScreen.setText("常亮: 关");
+                    Toast.makeText(MainActivity.this, "已关闭屏幕常亮", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+        btnDetailQueue.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { toggleDetailQueueView(); }
+        });
+
+        scrollLyrics.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+                    isUserTouchingLyrics = true;
+                    lyricHandler.removeCallbacksAndMessages(null);
+                } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                    lyricHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() { isUserTouchingLyrics = false; }
+                    }, 3000);
+                }
+                return false;
+            }
+        });
+
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                int pos = position - listView.getHeaderViewsCount();
+                if (pos < 0 || pos >= currentItems.size()) return;
+
+                DisplayEntry entry = currentItems.get(pos);
+                if ("action_create_playlist".equals(entry.id)) {
+                    promptCreatePlaylist();
+                    return;
+                }
+
+                if (!entry.isSong) {
+                    if (entry.id.startsWith("album_")) {
+                        fetchAlbumSongs(entry.id.substring(6), entry.title);
+                    } else if (entry.id.startsWith("artist_")) {
+                        fetchArtistAlbums(entry.id.substring(7), entry.title);
+                    } else {
+                        fetchPlaylistSongs(entry.id, entry.title);
+                    }
+                } else {
+                    playSongInList(currentItems, entry);
+                }
+            }
+        });
+
+        listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                int pos = position - listView.getHeaderViewsCount();
+                if (pos >= 0 && pos < currentItems.size()) {
+                    DisplayEntry entry = currentItems.get(pos);
+                    if (entry.isSong) {
+                        showSongLongClickMenu(entry, pos);
+                    } else {
+                        showPlaylistLongClickMenu(entry);
+                    }
+                    return true;
+                }
+                return false;
+            }
+        });
+
+        lvSearchResults.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                if (position < 0 || position >= searchResultsList.size()) return;
+                DisplayEntry entry = searchResultsList.get(position);
+                if (!entry.isSong) {
+                    layoutSearchOverlay.setVisibility(View.GONE);
+                    if (entry.id.startsWith("album_")) {
+                        fetchAlbumSongs(entry.id.substring(6), entry.title);
+                    } else if (entry.id.startsWith("artist_")) {
+                        fetchArtistAlbums(entry.id.substring(7), entry.title);
+                    }
+                } else {
+                    playSongInList(searchResultsList, entry);
+                }
+            }
+        });
+
+        lvSearchResults.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= 0 && position < searchResultsList.size()) {
+                    showSongLongClickMenu(searchResultsList.get(position), position);
+                    return true;
+                }
+                return false;
+            }
+        });
+
+        AdapterView.OnItemClickListener queueItemClickListener = new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                Intent intent = new Intent(MainActivity.this, MusicService.class);
+                intent.setAction(MusicService.ACTION_PLAY_INDEX);
+                intent.putExtra("target_index", position);
+                startService(intent);
+            }
+        };
+        lvQueue.setOnItemClickListener(queueItemClickListener);
+        lvDetailQueue.setOnItemClickListener(queueItemClickListener);
+
+        View.OnTouchListener touchFeedbackListener = new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    v.setAlpha(0.68f);
+                } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                    v.setAlpha(1.0f);
+                }
+                return false;
+            }
+        };
+
+        btnPrev.setOnTouchListener(touchFeedbackListener);
+        btnPlayPause.setOnTouchListener(touchFeedbackListener);
+        btnNext.setOnTouchListener(touchFeedbackListener);
+        btnDetailPrev.setOnTouchListener(touchFeedbackListener);
+        btnDetailPlayPause.setOnTouchListener(touchFeedbackListener);
+        btnDetailNext.setOnTouchListener(touchFeedbackListener);
+        btnMode.setOnTouchListener(touchFeedbackListener);
+        btnDetailMode.setOnTouchListener(touchFeedbackListener);
+        btnOpenEq.setOnTouchListener(touchFeedbackListener);
+        btnDetailEq.setOnTouchListener(touchFeedbackListener);
+        ivBottomCover.setOnTouchListener(touchFeedbackListener);
+        btnExitApp.setOnTouchListener(touchFeedbackListener);
+        btnDetailExitApp.setOnTouchListener(touchFeedbackListener);
+        btnTopSearch.setOnTouchListener(touchFeedbackListener);
+        btnClearSearchHistory.setOnTouchListener(touchFeedbackListener);
+
+        View.OnClickListener toggleListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (DlnaManager.isCasting()) {
+                    if (isCurrentSongPlaying) {
+                        DlnaManager.pause();
+                    } else {
+                        DlnaManager.resume();
+                    }
+                }
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_TOGGLE));
+            }
+        };
+        btnPlayPause.setOnClickListener(toggleListener);
+        btnDetailPlayPause.setOnClickListener(toggleListener);
+
+        View.OnClickListener nextListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_NEXT));
+            }
+        };
+        btnNext.setOnClickListener(nextListener);
+        btnDetailNext.setOnClickListener(nextListener);
+
+        View.OnClickListener prevListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_PREV));
+            }
+        };
+        btnPrev.setOnClickListener(prevListener);
+        btnDetailPrev.setOnClickListener(prevListener);
+
+        View.OnClickListener modeListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_CYCLE_MODE));
+                int nextMode = (MusicService.getCurrentMode() + 1) % 3;
+                Toast.makeText(MainActivity.this, getModeString(nextMode), Toast.LENGTH_SHORT).show();
+            }
+        };
+        btnMode.setOnClickListener(modeListener);
+        btnDetailMode.setOnClickListener(modeListener);
+
+        SeekBar.OnSeekBarChangeListener seekListener = new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                if (fromUser) {
+                    String t = formatTime(progress) + " / " + formatTime(sb.getMax());
+                    tvTime.setText(t);
+                    tvDetailTime.setText(t);
+                }
+            }
+
+            @Override public void onStartTrackingTouch(SeekBar sb) { isUserSeeking = true; }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar sb) {
+                isUserSeeking = false;
+                if (DlnaManager.isCasting()) {
+                    DlnaManager.seek(sb.getProgress());
+                }
+                Intent intent = new Intent(MainActivity.this, MusicService.class);
+                intent.setAction(MusicService.ACTION_SEEK);
+                intent.putExtra("position", sb.getProgress());
+                startService(intent);
+            }
+        };
+        seekBar.setOnSeekBarChangeListener(seekListener);
+        detailSeekBar.setOnSeekBarChangeListener(seekListener);
+    }
+
     private void startDlnaCast(DlnaManager.Device targetDev) {
         ArrayList<MusicService.SongItem> queue = MusicService.getPlaylist();
         int curIdx = MusicService.getCurrentIndex();
@@ -2021,17 +2625,10 @@ public class MainActivity extends Activity {
             MusicService.SongItem current = queue.get(curIdx);
             int currentPos = seekBar != null ? seekBar.getProgress() : 0;
 
-            DlnaManager.playUrl(targetDev, current.streamUrl, current.title, current.artist, currentPos, new DlnaManager.PositionCallback() {
-                @Override
-                public void onPositionInfo(int positionMs, int durationMs) {
-                    if (DlnaManager.isCasting() && durationMs > 0) {
-                        int effectivePos = positionMs - 2500;
-                        if (effectivePos < 0) effectivePos = 0;
-                        updateLyricPosition(effectivePos);
-                    }
-                }
-            });
+            // 1. 发起远端 DLNA 播放指令
+            DlnaManager.playUrl(targetDev, current.streamUrl, current.title, current.artist, currentPos);
 
+            // 2. 本地平板静音（黑胶唱片由于播放状态为 true 继续旋转，歌词与进度保持推进）
             Intent muteIntent = new Intent(MainActivity.this, MusicService.class);
             muteIntent.setAction(MusicService.ACTION_SET_MUTE);
             muteIntent.putExtra("is_muted", true);
@@ -2041,24 +2638,1038 @@ public class MainActivity extends Activity {
                 btnDetailDlna.setText("⛶ 投播中: " + (targetDev.name.length() > 5 ? targetDev.name.substring(0, 5) + ".." : targetDev.name));
                 btnDetailDlna.setTextColor(0xFFFF4081);
             }
-            Toast.makeText(this, "已投播至 " + targetDev.name + "，平板已静音，歌词与进度同步校准！", Toast.LENGTH_LONG).show();
+
+            // 3. 启动远端真实时间戳高频校准任务
+            dlnaSyncHandler.removeCallbacks(dlnaSyncRunnable);
+            dlnaSyncHandler.postDelayed(dlnaSyncRunnable, 1000);
+
+            Toast.makeText(this, "已投播至 " + targetDev.name + "，平板已自动静音！", Toast.LENGTH_LONG).show();
         }
     }
 
-    private void startDlnaCastQuietly(DlnaManager.Device targetDev, String streamUrl, String title, String artist, int positionMs) {
-        DlnaManager.playUrl(targetDev, streamUrl, title, artist, positionMs, new DlnaManager.PositionCallback() {
+    private void playSongInList(ArrayList<DisplayEntry> list, DisplayEntry entry) {
+        ArrayList<MusicService.SongItem> queue = new ArrayList<MusicService.SongItem>();
+        int clickedSongIndex = 0;
+        for (int i = 0; i < list.size(); i++) {
+            DisplayEntry item = list.get(i);
+            if (item.isSong) {
+                if (item.id.equals(entry.id)) {
+                    clickedSongIndex = queue.size();
+                }
+                queue.add(new MusicService.SongItem(item.id, item.title, item.artist, buildStreamUrl(item.id), item.coverArt, item.quality));
+            }
+        }
+        MusicService.setQueue(queue, clickedSongIndex, MainActivity.this);
+        refreshQueueList();
+    }
+
+    private void refreshQueueList() {
+        ArrayList<MusicService.SongItem> list = MusicService.getPlaylist();
+        int currentPlaying = MusicService.getCurrentIndex();
+        queueData.clear();
+
+        for (int i = 0; i < list.size(); i++) {
+            MusicService.SongItem item = list.get(i);
+            Map<String, String> row = new HashMap<String, String>();
+            if (i == currentPlaying) {
+                row.put("title", "▶  " + (i + 1) + ". " + item.title);
+            } else {
+                row.put("title", "    " + (i + 1) + ". " + item.title);
+            }
+            row.put("subtitle", item.artist);
+            queueData.add(row);
+        }
+        queueAdapter.notifyDataSetChanged();
+        detailQueueAdapter.notifyDataSetChanged();
+    }
+
+    private void loadCoverArt(final String coverId) {
+        if (coverId == null || coverId.length() == 0) {
+            ivVinylCircularCover.setImageResource(android.R.drawable.ic_menu_report_image);
+            ivSquareCover.setImageResource(android.R.drawable.ic_menu_report_image);
+            ivBottomCover.setImageResource(R.drawable.ic_launcher);
+            return;
+        }
+        new Thread(new Runnable() {
             @Override
-            public void onPositionInfo(int positionMs, int durationMs) {
-                if (DlnaManager.isCasting() && durationMs > 0) {
-                    int effectivePos = positionMs - 2500;
-                    if (effectivePos < 0) effectivePos = 0;
-                    updateLyricPosition(effectivePos);
+            public void run() {
+                String base = prefs.getString("server", "");
+                if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+                String urlStr = base + "/rest/getCoverArt.view?id=" + coverId + "&size=400&" + getAuthParams();
+                try {
+                    URL url = new URL(urlStr);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setConnectTimeout(6000);
+                    conn.setReadTimeout(6000);
+
+                    if (conn instanceof HttpsURLConnection) {
+                        ((HttpsURLConnection) conn).setSSLSocketFactory(new TLSSocketFactory());
+                    }
+
+                    InputStream is = conn.getInputStream();
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    byte[] buffer = new byte[8192];
+                    int len;
+                    while ((len = is.read(buffer)) != -1) {
+                        baos.write(buffer, 0, len);
+                    }
+                    byte[] imageBytes = baos.toByteArray();
+                    baos.close();
+                    is.close();
+                    conn.disconnect();
+
+                    if (imageBytes != null && imageBytes.length > 0) {
+                        BitmapFactory.Options opts = new BitmapFactory.Options();
+                        opts.inJustDecodeBounds = true;
+                        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, opts);
+
+                        opts.inSampleSize = calculateInSampleSize(opts, 300, 300);
+                        opts.inJustDecodeBounds = false;
+                        opts.inPreferredConfig = Bitmap.Config.RGB_565;
+
+                        final Bitmap safeDecodedBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, opts);
+                        if (safeDecodedBitmap != null) {
+                            final Bitmap safeCircularBitmap = getCircularBitmap(safeDecodedBitmap, 240);
+                            float density = getResources().getDisplayMetrics().density;
+                            final Bitmap safeBottomRoundedBitmap = getRoundedCornerBitmap(safeDecodedBitmap, (int) (95 * density), 10 * density);
+
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (currentRawCoverBitmap != null && !currentRawCoverBitmap.isRecycled()) {
+                                        currentRawCoverBitmap.recycle();
+                                    }
+                                    if (currentCircularCoverBitmap != null && !currentCircularCoverBitmap.isRecycled()) {
+                                        currentCircularCoverBitmap.recycle();
+                                    }
+                                    if (currentBottomCoverBitmap != null && !currentBottomCoverBitmap.isRecycled()) {
+                                        currentBottomCoverBitmap.recycle();
+                                    }
+
+                                    currentRawCoverBitmap = safeDecodedBitmap;
+                                    currentCircularCoverBitmap = safeCircularBitmap;
+                                    currentBottomCoverBitmap = safeBottomRoundedBitmap;
+
+                                    ivVinylCircularCover.setImageBitmap(currentCircularCoverBitmap);
+                                    ivSquareCover.setImageBitmap(currentRawCoverBitmap);
+                                    ivBottomCover.setImageBitmap(currentBottomCoverBitmap);
+                                }
+                            });
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }).start();
+    }
+
+    private boolean isValidLyrics(String text) {
+        if (text == null) return false;
+        String trimmed = text.trim();
+        if (trimmed.length() == 0) return false;
+        String lower = trimmed.toLowerCase();
+        if (lower.contains("lyrics not found")
+                || lower.contains("not found in library")
+                || lower.contains("getlyricsbysongid")
+                || lower.contains("get lyricsbysongid")
+                || lower.contains("valid song id")
+                || lower.contains("no lyrics available")
+                || lower.contains("no lyrics found")
+                || lower.contains("error:")
+                || lower.contains("subsonic-response")) {
+            return false;
+        }
+        return true;
+    }
+
+    private void loadLyrics(final String songId, final String artist, final String title) {
+        lyricRows.clear();
+        currentLyricIndex = -1;
+        layoutLyricsContainer.removeAllViews();
+        TextView loadingTv = new TextView(this);
+        loadingTv.setText("歌词加载中...");
+        loadingTv.setTextColor(0xFF888888);
+        loadingTv.setGravity(Gravity.CENTER);
+        layoutLyricsContainer.addView(loadingTv);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String lyricsText = null;
+
+                if (songId != null && songId.length() > 0) {
+                    try {
+                        String res = requestApi("getLyricsBySongId.view?id=" + URLEncoder.encode(songId, "UTF-8") + "&" + getAuthParams());
+                        lyricsText = parseLyricsFromJson(res);
+                    } catch (Throwable ignored) {}
+                }
+
+                if (lyricsText == null && title != null && title.length() > 0) {
+                    try {
+                        String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8")
+                                + "&title=" + URLEncoder.encode(title, "UTF-8");
+                        String res = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
+                        lyricsText = parseLyricsFromJson(res);
+                    } catch (Throwable ignored) {}
+                }
+
+                if (lyricsText == null && title != null) {
+                    String cleanTitle = title.replaceAll("\\([^)]*\\)", "")
+                            .replaceAll("\\[[^\\]]*\\]", "")
+                            .replaceAll("（[^）]*）", "")
+                            .trim();
+
+                    if (cleanTitle.length() > 0 && !cleanTitle.equals(title)) {
+                        try {
+                            String p = "artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8")
+                                    + "&title=" + URLEncoder.encode(cleanTitle, "UTF-8");
+                            String res = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
+                            lyricsText = parseLyricsFromJson(res);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+
+                if (lyricsText == null && title != null) {
+                    String cleanTitle = title.replaceAll("\\([^)]*\\)", "")
+                            .replaceAll("\\[[^\\]]*\\]", "")
+                            .replaceAll("（[^）]*）", "")
+                            .trim();
+
+                    if (cleanTitle.length() > 0) {
+                        try {
+                            String p = "title=" + URLEncoder.encode(cleanTitle, "UTF-8");
+                            String res = requestApi("getLyrics.view?" + p + "&" + getAuthParams());
+                            lyricsText = parseLyricsFromJson(res);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+
+                final String finalLyrics = lyricsText;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        currentLoadedRawLyrics = finalLyrics;
+                        if (finalLyrics != null && finalLyrics.trim().length() > 0) {
+                            buildLyricsView(finalLyrics);
+                        } else {
+                            showSimpleLyric("未找到匹配歌词");
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private String parseLyricsFromJson(String jsonStr) {
+        if (jsonStr == null || jsonStr.length() == 0) return null;
+        try {
+            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+
+            if (root.has("status") && !"ok".equalsIgnoreCase(root.getString("status"))) {
+                return null;
+            }
+
+            if (root.has("lyricsList")) {
+                JSONObject list = root.optJSONObject("lyricsList");
+                if (list != null && list.has("structuredLyrics")) {
+                    Object slObj = list.get("structuredLyrics");
+                    JSONObject targetSL = null;
+                    if (slObj instanceof JSONArray) {
+                        JSONArray arr = (JSONArray) slObj;
+                        if (arr.length() > 0) targetSL = arr.getJSONObject(0);
+                    } else if (slObj instanceof JSONObject) {
+                        targetSL = (JSONObject) slObj;
+                    }
+
+                    if (targetSL != null && targetSL.has("line")) {
+                        Object lineObj = targetSL.get("line");
+                        StringBuilder lrcBuilder = new StringBuilder();
+                        if (lineObj instanceof JSONArray) {
+                            JSONArray lArr = (JSONArray) lineObj;
+                            for (int i = 0; i < lArr.length(); i++) {
+                                JSONObject l = lArr.getJSONObject(i);
+                                appendStructuredLrcLine(lrcBuilder, l);
+                            }
+                        } else if (lineObj instanceof JSONObject) {
+                            appendStructuredLrcLine(lrcBuilder, (JSONObject) lineObj);
+                        }
+                        String candidate = lrcBuilder.toString();
+                        if (isValidLyrics(candidate)) {
+                            return candidate;
+                        }
+                    }
                 }
             }
+
+            if (root.has("lyrics")) {
+                Object lyricsObj = root.get("lyrics");
+                String candidate = null;
+                if (lyricsObj instanceof JSONObject) {
+                    JSONObject l = (JSONObject) lyricsObj;
+                    candidate = l.optString("content", l.optString("value", ""));
+                } else if (lyricsObj instanceof String) {
+                    candidate = (String) lyricsObj;
+                }
+                if (isValidLyrics(candidate)) {
+                    return candidate;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private void appendStructuredLrcLine(StringBuilder sb, JSONObject l) {
+        long startMs = l.optLong("start", 0);
+        String val = l.optString("value", "");
+        int sec = (int) ((startMs / 1000) % 60);
+        int min = (int) ((startMs / (1000 * 60)) % 60);
+        int cs = (int) ((startMs % 1000) / 10);
+        sb.append(String.format("[%02d:%02d.%02d]", min, sec, cs)).append(val).append("\n");
+    }
+
+    private void showSimpleLyric(String msg) {
+        layoutLyricsContainer.removeAllViews();
+        TextView tv = new TextView(this);
+        tv.setText(msg);
+        tv.setTextColor(0xFF888888);
+        tv.setTextSize(lyricBaseFontSize);
+        tv.setGravity(Gravity.CENTER);
+        layoutLyricsContainer.addView(tv);
+    }
+
+    // 核心改进：支持 LRC 标准 [offset:±毫秒] 自动提取 + 手动微调偏置毫秒叠加
+    private void buildLyricsView(String rawText) {
+        layoutLyricsContainer.removeAllViews();
+        lyricRows.clear();
+        currentLyricIndex = -1;
+
+        long headerOffsetMs = 0;
+        String[] lines = rawText.split("\n");
+
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (line.length() == 0) continue;
+
+            if (line.toLowerCase().startsWith("[offset:") && line.endsWith("]")) {
+                try {
+                    String offsetVal = line.substring(8, line.length() - 1).trim();
+                    headerOffsetMs = Long.parseLong(offsetVal);
+                } catch (Exception ignored) {}
+                continue;
+            }
+
+            int closeBracket = line.indexOf(']');
+            if (line.startsWith("[") && closeBracket > 1) {
+                String timePart = line.substring(1, closeBracket);
+                long timeMs = parseTime(timePart);
+                if (timeMs >= 0) {
+                    long finalCalculatedTime = timeMs + headerOffsetMs + manualLyricOffsetMs;
+                    if (finalCalculatedTime < 0) finalCalculatedTime = 0;
+                    String content = line.substring(closeBracket + 1).trim();
+                    if (content.length() == 0) content = "···";
+                    lyricRows.add(new LyricRow(finalCalculatedTime, content));
+                }
+            }
+        }
+
+        if (lyricRows.isEmpty()) {
+            for (String raw : lines) {
+                if (raw.trim().length() == 0) continue;
+                TextView tv = new TextView(this);
+                tv.setText(raw.trim());
+                tv.setTextColor(0xFFCCCCCC);
+                tv.setTextSize(lyricBaseFontSize);
+                tv.setGravity(Gravity.CENTER);
+                tv.setPadding(0, 10, 0, 10);
+                layoutLyricsContainer.addView(tv);
+            }
+            return;
+        }
+
+        Collections.sort(lyricRows, new Comparator<LyricRow>() {
+            @Override
+            public int compare(LyricRow a, LyricRow b) {
+                return Long.valueOf(a.timeMs).compareTo(b.timeMs);
+            }
         });
-        Intent muteIntent = new Intent(MainActivity.this, MusicService.class);
-        muteIntent.setAction(MusicService.ACTION_SET_MUTE);
-        muteIntent.putExtra("is_muted", true);
-        startService(muteIntent);
+
+        for (LyricRow row : lyricRows) {
+            TextView tv = new TextView(this);
+            tv.setText(row.text);
+            tv.setTextColor(0xFF777777);
+            tv.setTextSize(lyricBaseFontSize);
+            tv.setGravity(Gravity.CENTER);
+            tv.setPadding(0, 12, 0, 12);
+            row.view = tv;
+            layoutLyricsContainer.addView(tv);
+        }
+    }
+
+    private long parseTime(String timeStr) {
+        try {
+            String[] parts = timeStr.split(":");
+            if (parts.length >= 2) {
+                long min = Long.parseLong(parts[0]);
+                float sec = Float.parseFloat(parts[1]);
+                return (long) (min * 60 * 1000 + sec * 1000);
+            }
+        } catch (Exception ignored) {}
+        return -1;
+    }
+
+    private void updateLyricPosition(int currentPosMs) {
+        if (lyricRows.isEmpty() || isUserTouchingLyrics) return;
+
+        int targetIndex = -1;
+        for (int i = 0; i < lyricRows.size(); i++) {
+            if (currentPosMs >= lyricRows.get(i).timeMs) {
+                targetIndex = i;
+            } else {
+                break;
+            }
+        }
+
+        if (targetIndex != currentLyricIndex && targetIndex >= 0) {
+            if (currentLyricIndex >= 0 && currentLyricIndex < lyricRows.size()) {
+                LyricRow oldRow = lyricRows.get(currentLyricIndex);
+                if (oldRow.view != null) {
+                    oldRow.view.setTextColor(0xFF777777);
+                    oldRow.view.setTextSize(lyricBaseFontSize);
+                    oldRow.view.setTypeface(Typeface.DEFAULT);
+                }
+            }
+
+            currentLyricIndex = targetIndex;
+            final LyricRow curRow = lyricRows.get(currentLyricIndex);
+            if (curRow.view != null) {
+                curRow.view.setTextColor(0xFF00E5FF);
+                curRow.view.setTextSize(lyricBaseFontSize + 5);
+                curRow.view.setTypeface(Typeface.DEFAULT_BOLD);
+
+                scrollLyrics.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        int scrollY = curRow.view.getTop() - (scrollLyrics.getHeight() / 2) + (curRow.view.getHeight() / 2);
+                        if (scrollY < 0) scrollY = 0;
+                        scrollLyrics.smoothScrollTo(0, scrollY);
+                    }
+                });
+            }
+        }
+    }
+
+    private String getAuthParams() {
+        String u = prefs.getString("user", "");
+        String p = prefs.getString("pass", "");
+        return "u=" + URLEncoder.encode(u) + "&p=" + URLEncoder.encode(p) + "&v=1.12.0&c=RetroSubsonic&f=json";
+    }
+
+    private String requestApi(String pathWithParams) {
+        String base = prefs.getString("server", "");
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String fullUrl = base + "/rest/" + pathWithParams;
+
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(fullUrl);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+
+            if (conn instanceof HttpsURLConnection) {
+                ((HttpsURLConnection) conn).setSSLSocketFactory(new TLSSocketFactory());
+            }
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            reader.close();
+            return sb.toString();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void fetchPlaylists() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getPlaylists.view?" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        rawServerUserPlaylists.clear();
+                        rawServerRankingPlaylists.clear();
+
+                        if (jsonStr != null) {
+                            try {
+                                JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                                JSONObject playlistsObj = root.optJSONObject("playlists");
+                                if (playlistsObj != null && playlistsObj.has("playlist")) {
+                                    Object plObj = playlistsObj.get("playlist");
+                                    if (plObj instanceof JSONArray) {
+                                        JSONArray arr = (JSONArray) plObj;
+                                        for (int i = 0; i < arr.length(); i++) {
+                                            categorizePlaylistItem(arr.getJSONObject(i));
+                                        }
+                                    } else if (plObj instanceof JSONObject) {
+                                        categorizePlaylistItem((JSONObject) plObj);
+                                    }
+                                }
+                            } catch (Exception ignored) {}
+                        }
+
+                        showCurrentTabContent();
+                        stopRefreshing();
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void categorizePlaylistItem(JSONObject p) throws Exception {
+        String name = p.getString("name");
+        int count = p.optInt("songCount", 0);
+        String id = p.getString("id");
+
+        String nLower = name.trim().toLowerCase();
+        if ("我的收藏".equals(name) || "starred".equals(nLower) || "favorites".equals(nLower) || "favourite".equals(nLower)) {
+            return;
+        }
+
+        boolean isRanking = name.contains("榜单") || name.startsWith("榜") || name.endsWith("榜");
+        DisplayEntry entry = new DisplayEntry(id, name, "", isRanking ? "排行榜" : "歌单", null, isRanking ? "排行榜歌单" : "歌单: " + count, false);
+
+        if (isRanking) {
+            rawServerRankingPlaylists.add(entry);
+        } else {
+            rawServerUserPlaylists.add(entry);
+        }
+    }
+
+    private void showCurrentTabContent() {
+        if (currentSelectedTab == TAB_PLAYLISTS) {
+            showUserPlaylists();
+        } else {
+            showRankingPlaylists();
+        }
+    }
+
+    private void showUserPlaylists() {
+        currentActivePlaylistId = null;
+        currentActivePlaylistName = null;
+        tvListTitle.setText("我的歌单");
+        currentItems.clear();
+        listData.clear();
+
+        currentItems.add(new DisplayEntry("fav_entry", "我的收藏", "云端同步", "已同步服务器标星 (" + favSongIds.size() + "首)", null, "云端歌单", false));
+        Map<String, String> favRow = new HashMap<String, String>();
+        favRow.put("title", "♥  我的收藏");
+        favRow.put("subtitle", "已同步服务器标星 (" + favSongIds.size() + "首)");
+        listData.add(favRow);
+
+        currentItems.add(new DisplayEntry("local_featured", "精选歌单", "本地定制", "本地定制精选 (" + featuredSongs.size() + "首)", null, "本地歌单", false));
+        Map<String, String> featRow = new HashMap<String, String>();
+        featRow.put("title", "⭐  精选歌单");
+        featRow.put("subtitle", "本地定制精选 (" + featuredSongs.size() + "首)");
+        listData.add(featRow);
+
+        currentItems.add(new DisplayEntry("local_car", "车载歌单", "本地定制", "出行必听车载曲库 (" + carSongs.size() + "首)", null, "本地歌单", false));
+        Map<String, String> carRow = new HashMap<String, String>();
+        carRow.put("title", "🚗  车载歌单");
+        carRow.put("subtitle", "出行必听车载曲库 (" + carSongs.size() + "首)");
+        listData.add(carRow);
+
+        for (DisplayEntry e : rawServerUserPlaylists) {
+            currentItems.add(e);
+            Map<String, String> row = new HashMap<String, String>();
+            row.put("title", "📁  " + e.title);
+            row.put("subtitle", e.quality + " (长按管理)");
+            listData.add(row);
+        }
+
+        currentItems.add(new DisplayEntry("action_create_playlist", "+ 新建歌单 (云端同步)", "", "点击创建全新的云端歌单并同步服务器", null, "操作", false));
+        Map<String, String> createRow = new HashMap<String, String>();
+        createRow.put("title", "➕  新建歌单 (云端同步)");
+        createRow.put("subtitle", "点击创建全新的云端歌单并同步服务器");
+        listData.add(createRow);
+
+        adapter.notifyDataSetChanged();
+    }
+
+    private void showRankingPlaylists() {
+        currentActivePlaylistId = null;
+        currentActivePlaylistName = null;
+        tvListTitle.setText("排行榜");
+        currentItems.clear();
+        listData.clear();
+
+        for (DisplayEntry e : rawServerRankingPlaylists) {
+            currentItems.add(e);
+            Map<String, String> row = new HashMap<String, String>();
+            row.put("title", "🏆  " + e.title);
+            row.put("subtitle", "官方排行榜");
+            listData.add(row);
+        }
+
+        if (rawServerRankingPlaylists.isEmpty()) {
+            Map<String, String> emptyRow = new HashMap<String, String>();
+            emptyRow.put("title", "暂无排行榜歌单");
+            emptyRow.put("subtitle", "连接的服务器暂未同步榜单数据");
+            listData.add(emptyRow);
+        }
+
+        adapter.notifyDataSetChanged();
+    }
+
+    private void fetchPlaylistSongs(final String playlistId, final String playlistName) {
+        currentActivePlaylistId = playlistId;
+        currentActivePlaylistName = playlistName;
+
+        if ("fav_entry".equals(playlistId)) {
+            fetchServerFavoriteSongs();
+            return;
+        }
+
+        if ("local_featured".equals(playlistId)) {
+            btnBack.setVisibility(View.VISIBLE);
+            tvListTitle.setText("精选歌单");
+            currentItems.clear();
+            listData.clear();
+            for (DisplayEntry e : featuredSongs) {
+                currentItems.add(e);
+                Map<String, String> row = new HashMap<String, String>();
+                row.put("title", e.title);
+                row.put("subtitle", e.artist + "  [" + e.quality + "]");
+                listData.add(row);
+            }
+            adapter.notifyDataSetChanged();
+            stopRefreshing();
+            return;
+        }
+
+        if ("local_car".equals(playlistId)) {
+            btnBack.setVisibility(View.VISIBLE);
+            tvListTitle.setText("车载歌单");
+            currentItems.clear();
+            listData.clear();
+            for (DisplayEntry e : carSongs) {
+                currentItems.add(e);
+                Map<String, String> row = new HashMap<String, String>();
+                row.put("title", e.title);
+                row.put("subtitle", e.artist + "  [" + e.quality + "]");
+                listData.add(row);
+            }
+            adapter.notifyDataSetChanged();
+            stopRefreshing();
+            return;
+        }
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getPlaylist.view?id=" + playlistId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) {
+                            stopRefreshing();
+                            return;
+                        }
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject playlist = root.getJSONObject("playlist");
+                            currentItems.clear();
+                            listData.clear();
+
+                            if (playlist.has("entry")) {
+                                Object entryObj = playlist.get("entry");
+                                if (entryObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) entryObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        addSongRow(arr.getJSONObject(i), currentItems, listData);
+                                    }
+                                } else if (entryObj instanceof JSONObject) {
+                                    addSongRow((JSONObject) entryObj, currentItems, listData);
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText(playlistName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "加载歌单失败", Toast.LENGTH_SHORT).show();
+                        } finally {
+                            stopRefreshing();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void fetchAlbumSongs(final String albumId, final String albumName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getAlbum.view?id=" + albumId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject album = root.getJSONObject("album");
+                            currentItems.clear();
+                            listData.clear();
+
+                            if (album.has("song")) {
+                                Object songObj = album.get("song");
+                                if (songObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) songObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        addSongRow(arr.getJSONObject(i), currentItems, listData);
+                                    }
+                                } else if (songObj instanceof JSONObject) {
+                                    addSongRow((JSONObject) songObj, currentItems, listData);
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText("专辑: " + albumName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "加载专辑失败", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void fetchArtistAlbums(final String artistId, final String artistName) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String jsonStr = requestApi("getArtist.view?id=" + artistId + "&" + getAuthParams());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (jsonStr == null) return;
+                        try {
+                            JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                            JSONObject artistObj = root.getJSONObject("artist");
+                            currentItems.clear();
+                            listData.clear();
+
+                            if (artistObj.has("album")) {
+                                Object albObj = artistObj.get("album");
+                                if (albObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) albObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        addAlbumRow(arr.getJSONObject(i), currentItems, listData);
+                                    }
+                                } else if (albObj instanceof JSONObject) {
+                                    addAlbumRow((JSONObject) albObj, currentItems, listData);
+                                }
+                            }
+                            btnBack.setVisibility(View.VISIBLE);
+                            tvListTitle.setText("歌手: " + artistName);
+                            adapter.notifyDataSetChanged();
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "加载歌手详情失败", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void fetchServerFavoriteSongs() {
+        btnBack.setVisibility(View.VISIBLE);
+        tvListTitle.setText("歌单: 我的收藏 (云端同步)");
+        currentItems.clear();
+        listData.clear();
+        adapter.notifyDataSetChanged();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String jsonStr = requestApi("getStarred2.view?" + getAuthParams());
+                if (jsonStr == null || !jsonStr.contains("\"song\"")) {
+                    jsonStr = requestApi("getStarred.view?" + getAuthParams());
+                }
+                final String finalJson = jsonStr;
+
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (finalJson == null) {
+                            Toast.makeText(MainActivity.this, "连接失败，无法获取云端收藏", Toast.LENGTH_SHORT).show();
+                            stopRefreshing();
+                            return;
+                        }
+                        try {
+                            JSONObject root = new JSONObject(finalJson).getJSONObject("subsonic-response");
+                            JSONObject starred = root.optJSONObject("starred2");
+                            if (starred == null) starred = root.optJSONObject("starred");
+                            currentItems.clear();
+                            listData.clear();
+                            favSongIds.clear();
+
+                            if (starred != null && starred.has("song")) {
+                                Object songObj = starred.get("song");
+                                if (songObj instanceof JSONArray) {
+                                    JSONArray arr = (JSONArray) songObj;
+                                    for (int i = 0; i < arr.length(); i++) {
+                                        JSONObject s = arr.getJSONObject(i);
+                                        addSongRow(s, currentItems, listData);
+                                        favSongIds.add(s.getString("id"));
+                                    }
+                                } else if (songObj instanceof JSONObject) {
+                                    JSONObject s = (JSONObject) songObj;
+                                    addSongRow(s, currentItems, listData);
+                                    favSongIds.add(s.getString("id"));
+                                }
+                            }
+                            saveFavSet();
+                            adapter.notifyDataSetChanged();
+                            updateFavButtonState(null);
+                            if (currentItems.isEmpty()) {
+                                Toast.makeText(MainActivity.this, "云端收藏夹为空", Toast.LENGTH_SHORT).show();
+                            }
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "解析云端收藏列表失败", Toast.LENGTH_SHORT).show();
+                        } finally {
+                            stopRefreshing();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void searchSongs(final String query) {
+        if (query == null || query.trim().length() == 0) return;
+        lastSearchKeyword = query.trim();
+
+        final int searchTypePos = spinnerSearchType != null ? spinnerSearchType.getSelectedItemPosition() : 0;
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String encoded = URLEncoder.encode(query, "UTF-8");
+                    String queryParams;
+                    if (searchTypePos == 1) {
+                        queryParams = "search3.view?query=" + encoded + "&artistCount=100&albumCount=0&songCount=0&" + getAuthParams();
+                    } else if (searchTypePos == 2) {
+                        queryParams = "search3.view?query=" + encoded + "&albumCount=100&artistCount=0&songCount=0&" + getAuthParams();
+                    } else {
+                        queryParams = "search3.view?query=" + encoded + "&songCount=500&artistCount=0&albumCount=0&" + getAuthParams();
+                    }
+
+                    final String jsonStr = requestApi(queryParams);
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (jsonStr == null) {
+                                Toast.makeText(MainActivity.this, "搜索连接超时", Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            try {
+                                JSONObject root = new JSONObject(jsonStr).getJSONObject("subsonic-response");
+                                JSONObject result = root.optJSONObject("searchResult3");
+                                searchResultsList.clear();
+                                searchResultsData.clear();
+                                rawSearchSongResults.clear();
+
+                                if (result != null) {
+                                    if (searchTypePos == 1 && result.has("artist")) {
+                                        Object artObj = result.get("artist");
+                                        if (artObj instanceof JSONArray) {
+                                            JSONArray arr = (JSONArray) artObj;
+                                            for (int i = 0; i < arr.length(); i++) addArtistRow(arr.getJSONObject(i), searchResultsList, searchResultsData);
+                                        } else if (artObj instanceof JSONObject) {
+                                            addArtistRow((JSONObject) artObj, searchResultsList, searchResultsData);
+                                        }
+                                        tvSearchResultTitle.setText("搜索歌手: " + query + " (" + searchResultsList.size() + " 位)");
+                                        if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.GONE);
+                                    } else if (searchTypePos == 2 && result.has("album")) {
+                                        Object albObj = result.get("album");
+                                        if (albObj instanceof JSONArray) {
+                                            JSONArray arr = (JSONArray) albObj;
+                                            for (int i = 0; i < arr.length(); i++) addAlbumRow(arr.getJSONObject(i), searchResultsList, searchResultsData);
+                                        } else if (albObj instanceof JSONObject) {
+                                            addAlbumRow((JSONObject) albObj, searchResultsList, searchResultsData);
+                                        }
+                                        tvSearchResultTitle.setText("搜索专辑: " + query + " (" + searchResultsList.size() + " 张)");
+                                        if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.GONE);
+                                    } else if (result.has("song")) {
+                                        if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.VISIBLE);
+                                        Object sObj = result.get("song");
+                                        ArrayList<Map<String, String>> dummyData = new ArrayList<Map<String, String>>();
+                                        if (sObj instanceof JSONArray) {
+                                            JSONArray arr = (JSONArray) sObj;
+                                            for (int i = 0; i < arr.length(); i++) addSongRow(arr.getJSONObject(i), rawSearchSongResults, dummyData);
+                                        } else if (sObj instanceof JSONObject) {
+                                            addSongRow((JSONObject) sObj, rawSearchSongResults, dummyData);
+                                        }
+
+                                        boolean needDedup = cbDedupSongs != null && cbDedupSongs.isChecked();
+                                        applySongDeduplication(needDedup);
+                                    }
+                                }
+
+                                if (!searchHistoryList.isEmpty()) {
+                                    layoutSearchHistoryBox.setVisibility(View.VISIBLE);
+                                    isSearchHistoryCollapsed = true;
+                                    lvSearchHistory.setVisibility(View.GONE);
+                                    btnToggleSearchHistory.setText("展开 ▾");
+                                } else {
+                                    layoutSearchHistoryBox.setVisibility(View.GONE);
+                                }
+
+                                layoutSearchResultBox.setVisibility(View.VISIBLE);
+                                searchResultsAdapter.notifyDataSetChanged();
+                            } catch (Exception ignored) {}
+                        }
+                    });
+                } catch (Exception ignored) {}
+            }
+        }).start();
+    }
+
+    private void applySongDeduplication(boolean dedup) {
+        searchResultsList.clear();
+        searchResultsData.clear();
+
+        if (!dedup) {
+            for (DisplayEntry e : rawSearchSongResults) {
+                searchResultsList.add(e);
+                Map<String, String> row = new HashMap<String, String>();
+                row.put("title", e.title);
+                row.put("subtitle", e.artist + "  [" + e.quality + "]");
+                searchResultsData.add(row);
+            }
+            tvSearchResultTitle.setText("搜索歌曲: " + lastSearchKeyword + " (" + searchResultsList.size() + " 首)");
+        } else {
+            LinkedHashMap<String, DisplayEntry> bestSongsMap = new LinkedHashMap<String, DisplayEntry>();
+
+            for (DisplayEntry song : rawSearchSongResults) {
+                String key = song.title.trim().toLowerCase();
+                if (!bestSongsMap.containsKey(key)) {
+                    bestSongsMap.put(key, song);
+                } else {
+                    DisplayEntry exist = bestSongsMap.get(key);
+                    if (song.bitRateNumeric > exist.bitRateNumeric) {
+                        bestSongsMap.put(key, song);
+                    }
+                }
+            }
+
+            for (DisplayEntry bestSong : bestSongsMap.values()) {
+                searchResultsList.add(bestSong);
+                Map<String, String> row = new HashMap<String, String>();
+                row.put("title", bestSong.title);
+                row.put("subtitle", bestSong.artist + "  [" + bestSong.quality + "]");
+                searchResultsData.add(row);
+            }
+
+            if (rawSearchSongResults.size() != searchResultsList.size()) {
+                tvSearchResultTitle.setText("搜索歌曲: " + lastSearchKeyword + " (去重后 " + searchResultsList.size() + " 首 / 原始 " + rawSearchSongResults.size() + " 首)");
+            } else {
+                tvSearchResultTitle.setText("搜索歌曲: " + lastSearchKeyword + " (" + searchResultsList.size() + " 首)");
+            }
+        }
+        searchResultsAdapter.notifyDataSetChanged();
+    }
+
+    private void addArtistRow(JSONObject a, ArrayList<DisplayEntry> targetList, ArrayList<Map<String, String>> targetData) throws Exception {
+        String id = a.getString("id");
+        String name = a.getString("name");
+        int albumCount = a.optInt("albumCount", 0);
+        targetList.add(new DisplayEntry("artist_" + id, name, "歌手", albumCount > 0 ? (albumCount + " 张专辑") : "点击查看专辑与歌曲", null, "歌手", false));
+        Map<String, String> row = new HashMap<String, String>();
+        row.put("title", "👤  " + name);
+        row.put("subtitle", albumCount > 0 ? (albumCount + " 张专辑") : "歌手详情");
+        targetData.add(row);
+    }
+
+    private void addAlbumRow(JSONObject a, ArrayList<DisplayEntry> targetList, ArrayList<Map<String, String>> targetData) throws Exception {
+        String id = a.getString("id");
+        String name = a.getString("name");
+        String artist = a.optString("artist", "未知艺术家");
+        int songCount = a.optInt("songCount", 0);
+        String coverArt = a.optString("coverArt", null);
+        targetList.add(new DisplayEntry("album_" + id, name, artist, artist + (songCount > 0 ? (" • " + songCount + " 首") : ""), coverArt, "专辑", false));
+        Map<String, String> row = new HashMap<String, String>();
+        row.put("title", "💿  " + name);
+        row.put("subtitle", artist + (songCount > 0 ? ("  [" + songCount + " 首歌曲]") : ""));
+        targetData.add(row);
+    }
+
+    private void addSongRow(JSONObject s, ArrayList<DisplayEntry> targetList, ArrayList<Map<String, String>> targetData) throws Exception {
+        String title = s.getString("title");
+        String artist = s.optString("artist", "未知艺术家");
+        String coverArt = s.optString("coverArt", null);
+
+        int bitRate = s.optInt("bitRate", 0);
+        String suffix = s.optString("suffix", "").toUpperCase();
+        String quality;
+        int bitRateScore = bitRate;
+
+        if (suffix.contains("FLAC") || suffix.contains("WAV") || suffix.contains("APE") || suffix.contains("DSD")) {
+            quality = "FLAC 无损";
+            bitRateScore = 10000 + bitRate;
+        } else if (bitRate > 0) {
+            quality = bitRate + "K " + (suffix.length() > 0 ? suffix : "MP3");
+            bitRateScore = bitRate;
+        } else if (suffix.length() > 0) {
+            quality = suffix;
+            bitRateScore = 256;
+        } else {
+            quality = "320K MP3";
+            bitRateScore = 320;
+        }
+
+        targetList.add(new DisplayEntry(s.getString("id"), title, artist, subtitleText(artist, quality), coverArt, quality, true, bitRateScore));
+
+        Map<String, String> row = new HashMap<String, String>();
+        row.put("title", title);
+        row.put("subtitle", artist + "  [" + quality + "]");
+        targetData.add(row);
+    }
+
+    private String subtitleText(String artist, String quality) {
+        return artist + " [" + quality + "]";
+    }
+
+    private String formatTime(int ms) {
+        int seconds = (ms / 1000) % 60;
+        int minutes = (ms / (1000 * 60)) % 60;
+        return String.format("%02d:%02d", minutes, seconds);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        dlnaSyncHandler.removeCallbacks(dlnaSyncRunnable);
+        if (currentRawCoverBitmap != null && !currentRawCoverBitmap.isRecycled()) {
+            currentRawCoverBitmap.recycle();
+            currentRawCoverBitmap = null;
+        }
+        if (currentCircularCoverBitmap != null && !currentCircularCoverBitmap.isRecycled()) {
+            currentCircularCoverBitmap.recycle();
+            currentCircularCoverBitmap = null;
+        }
+        if (currentBottomCoverBitmap != null && !currentBottomCoverBitmap.isRecycled()) {
+            currentBottomCoverBitmap.recycle();
+            currentBottomCoverBitmap = null;
+        }
     }
 }
