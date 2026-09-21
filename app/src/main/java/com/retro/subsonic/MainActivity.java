@@ -2,6 +2,7 @@ package com.retro.subsonic;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -68,6 +69,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -97,6 +99,7 @@ public class MainActivity extends Activity {
     private ImageView ivBottomCover;
     private Button btnToggleQueue, btnCloseQueue;
     private Button btnBottomFav, btnDetailFav, btnDetailDownload;
+    private Button btnDetailDlna; // 核心新增：DLNA 投播按钮
     private Button btnLyricDec, btnLyricInc;
     private LinearLayout layoutConfigPanel, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime, tvCacheUsed;
@@ -279,6 +282,18 @@ public class MainActivity extends Activity {
                         loadLyrics(songId, artist, title);
                         refreshQueueList();
                         updateCacheSizeDisplay();
+
+                        // 若正处于 DLNA 投播状态，切歌时自动将新曲目直链推送给音箱
+                        DlnaManager.Device castDev = DlnaManager.getInstance(MainActivity.this).getCurrentCastDevice();
+                        if (castDev != null) {
+                            DlnaManager.getInstance(MainActivity.this).playMedia(
+                                    castDev,
+                                    buildStreamUrl(songId),
+                                    title,
+                                    artist,
+                                    null
+                            );
+                        }
                     }
 
                     updateFavButtonState(songId);
@@ -1143,6 +1158,7 @@ public class MainActivity extends Activity {
         btnCloseDetail = (Button) findViewById(R.id.btn_close_detail);
         btnDetailFav = (Button) findViewById(R.id.btn_detail_fav);
         btnDetailDownload = (Button) findViewById(R.id.btn_detail_download);
+        btnDetailDlna = (Button) findViewById(R.id.btn_detail_dlna);
         btnDetailKeepScreen = (Button) findViewById(R.id.btn_detail_keep_screen);
         btnDetailQueue = (Button) findViewById(R.id.btn_detail_queue);
 
@@ -2003,6 +2019,122 @@ public class MainActivity extends Activity {
         return Math.max(1, inSampleSize);
     }
 
+    // 核心新增：显示 DLNA 局域网设备扫描与投播对话框
+    private void showDlnaCastDialog() {
+        final DlnaManager dlna = DlnaManager.getInstance(this);
+        final DlnaManager.Device currentCast = dlna.getCurrentCastDevice();
+
+        if (currentCast != null) {
+            new AlertDialog.Builder(this)
+                    .setTitle("当前正在投播")
+                    .setMessage("正在投播至: " + currentCast.friendlyName)
+                    .setPositiveButton("断开投播并切回本机", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            dlna.stopMedia(currentCast, null);
+                            btnDetailDlna.setText("投播 ⎘");
+                            btnDetailDlna.setTextColor(0xFF00E5FF);
+                            Toast.makeText(MainActivity.this, "已断开投播，切回本机播放", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNeutralButton("重新选择设备", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            startDlnaDeviceDiscovery();
+                        }
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+            return;
+        }
+
+        startDlnaDeviceDiscovery();
+    }
+
+    private void startDlnaDeviceDiscovery() {
+        final DlnaManager dlna = DlnaManager.getInstance(this);
+        final ProgressDialog pd = new ProgressDialog(this);
+        pd.setTitle("局域网设备探测");
+        pd.setMessage("正在搜索支持 DLNA 的音箱与播放设备...");
+        pd.setCancelable(true);
+        pd.show();
+
+        dlna.startDiscovery(new DlnaManager.DiscoveryCallback() {
+            @Override
+            public void onDeviceFound(DlnaManager.Device device) {}
+
+            @Override
+            public void onDiscoveryFinished(final List<DlnaManager.Device> devices) {
+                if (pd.isShowing()) {
+                    pd.dismiss();
+                }
+
+                if (devices == null || devices.isEmpty()) {
+                    new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("未发现 DLNA 设备")
+                            .setMessage("未在当前局域网中发现支持 DLNA/UPnP 的音频设备。\n请确保手机与音箱/电视连接在同一个 Wi-Fi 网络下。")
+                            .setPositiveButton("重试", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    startDlnaDeviceDiscovery();
+                                }
+                            })
+                            .setNegativeButton("取消", null)
+                            .show();
+                    return;
+                }
+
+                String[] devNames = new String[devices.size()];
+                for (int i = 0; i < devices.size(); i++) {
+                    devNames[i] = "🔊 " + devices.get(i).friendlyName;
+                }
+
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("选择投播音频设备")
+                        .setItems(devNames, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                DlnaManager.Device selected = devices.get(which);
+                                castCurrentSongToDevice(selected);
+                            }
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
+            }
+        });
+    }
+
+    private void castCurrentSongToDevice(final DlnaManager.Device device) {
+        ArrayList<MusicService.SongItem> queue = MusicService.getPlaylist();
+        int idx = MusicService.getCurrentIndex();
+        if (queue == null || idx < 0 || idx >= queue.size()) {
+            Toast.makeText(this, "当前无播放中的歌曲可投播", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        MusicService.SongItem current = queue.get(idx);
+        String streamUrl = buildStreamUrl(current.id);
+
+        Toast.makeText(this, "正在向【" + device.friendlyName + "】推送音频...", Toast.LENGTH_SHORT).show();
+
+        DlnaManager.getInstance(this).playMedia(device, streamUrl, current.title, current.artist, new DlnaManager.ActionCallback() {
+            @Override
+            public void onSuccess() {
+                btnDetailDlna.setText("投播中: " + device.friendlyName);
+                btnDetailDlna.setTextColor(0xFF00FF7F);
+                Toast.makeText(MainActivity.this, "投播成功！已推送到: " + device.friendlyName, Toast.LENGTH_LONG).show();
+
+                // 投播成功后暂停本机播放，避免双发重音
+                startService(new Intent(MainActivity.this, MusicService.class).setAction(MusicService.ACTION_TOGGLE));
+            }
+
+            @Override
+            public void onError(String error) {
+                Toast.makeText(MainActivity.this, "投播失败: " + error, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
     private void setupListeners() {
         View.OnClickListener exitListener = new View.OnClickListener() {
             @Override
@@ -2039,7 +2171,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 需求2：修复歌曲搜索历史收起/展开功能按钮
         btnToggleSearchHistory.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2172,6 +2303,14 @@ public class MainActivity extends Activity {
                 } else {
                     Toast.makeText(MainActivity.this, "当前无播放中的歌曲可下载", Toast.LENGTH_SHORT).show();
                 }
+            }
+        });
+
+        // 核心新增：DLNA 投播点击事件监听
+        btnDetailDlna.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showDlnaCastDialog();
             }
         });
 
@@ -3337,7 +3476,6 @@ public class MainActivity extends Activity {
                                     }
                                 }
 
-                                // 关键修复：搜索完成后保持历史栏可见，但将历史列表置为折叠状态，用户可随时点击“展开 ▾”恢复
                                 if (!searchHistoryList.isEmpty()) {
                                     layoutSearchHistoryBox.setVisibility(View.VISIBLE);
                                     isSearchHistoryCollapsed = true;
