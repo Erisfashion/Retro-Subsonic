@@ -606,7 +606,7 @@ public class MainActivity extends Activity {
         spinnerSearchType.setAdapter(typeAdapter);
         spinnerSearchType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
-            public void动作OnItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 if (position == 0) {
                     etSearchKeyword.setHint("输入歌曲名检索...");
                     if (cbDedupSongs != null) cbDedupSongs.setVisibility(View.VISIBLE);
@@ -2181,7 +2181,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 核心新增：DLNA 投播按钮逻辑处理
+        // 核心支持：DLNA 投播按钮逻辑处理
         if (btnDetailDlna != null) {
             btnDetailDlna.setOnClickListener(new View.OnClickListener() {
                 @Override
