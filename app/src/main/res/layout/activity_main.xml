@@ -847,6 +847,50 @@
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_alignParentRight="true"
+                android:layout_centerVertical="true"
+                android:orientation="horizontal">
+
+                <!-- 核心新增：DLNA 音频投播按钮 -->
+                <Button
+                    android:id="@+id/btn_detail_dlna"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:background="@drawable/bg_btn_default"
+                    android:text="投播 ⎘"
+                    android:textColor="#00e5ff"
+                    android:textSize="12sp"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp" />
+
+                <Button
+                    android:id="@+id/btn_detail_keep_screen"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:background="@drawable/bg_btn_default"
+                    android:text="常亮: 关"
+                    android:textColor="#e0e0e0"
+                    android:textSize="12sp"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:layout_marginLeft="6dp" />
+
+                <Button
+                    android:id="@+id/btn_detail_queue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:background="@drawable/bg_btn_default"
+                    android:text="播放列表"
+                    android:textColor="#e0e0e0"
+                    android:textSize="12sp"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:layout_marginLeft="6dp" />
+            </LinearLayout>
+            
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:layout_alignParentLeft="true"
                 android:layout_centerVertical="true"
                 android:gravity="center_vertical"
