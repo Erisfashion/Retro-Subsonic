@@ -105,7 +105,7 @@ public class MainActivity extends Activity {
 
     private LinearLayout layoutSearchOverlay;
     private Button btnSearchPageBack;
-    private Button btnToggleSearchHistory; // 搜索历史收起/展开按钮
+    private Button btnToggleSearchHistory;
     private ImageView btnClearSearchHistory;
     private LinearLayout layoutSearchHistoryBox, layoutSearchResultBox;
     private TextView tvSearchResultTitle;
@@ -115,7 +115,6 @@ public class MainActivity extends Activity {
     private ArrayAdapter<String> searchHistoryAdapter;
     private boolean isSearchHistoryCollapsed = false;
 
-    // 当从“歌单长按菜单 -> 添加歌曲”进入搜索页时，记录目标歌单，方便一键加入
     private String targetPlaylistIdForAdd = null;
     private String targetPlaylistNameForAdd = null;
 
@@ -1630,9 +1629,7 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // 核心新增：长按某个歌单弹出管理菜单（重命名/删除歌单/添加歌曲）
     private void showPlaylistLongClickMenu(final DisplayEntry playlistEntry) {
-        // 保护特殊内置项
         if ("fav_entry".equals(playlistEntry.id)
                 || "local_featured".equals(playlistEntry.id)
                 || "local_car".equals(playlistEntry.id)
@@ -1648,7 +1645,6 @@ public class MainActivity extends Activity {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         if (which == 0) {
-                            // 添加歌曲：记录当前目标歌单并进入搜索页
                             targetPlaylistIdForAdd = playlistEntry.id;
                             targetPlaylistNameForAdd = playlistEntry.title;
                             layoutSearchOverlay.setVisibility(View.VISIBLE);
@@ -1670,7 +1666,6 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    // 新建歌单对话框与服务端同步
     private void promptCreatePlaylist() {
         final EditText input = new EditText(this);
         input.setHint("输入新歌单名称...");
@@ -2023,10 +2018,13 @@ public class MainActivity extends Activity {
                 targetPlaylistNameForAdd = null;
                 etSearchKeyword.setHint("输入歌曲名检索...");
                 layoutSearchOverlay.setVisibility(View.VISIBLE);
-                if (searchHistoryList.isEmpty() || isSearchHistoryCollapsed) {
+                if (searchHistoryList.isEmpty()) {
                     layoutSearchHistoryBox.setVisibility(View.GONE);
                 } else {
                     layoutSearchHistoryBox.setVisibility(View.VISIBLE);
+                    isSearchHistoryCollapsed = false;
+                    lvSearchHistory.setVisibility(View.VISIBLE);
+                    btnToggleSearchHistory.setText("收起 ▴");
                 }
                 etSearchKeyword.requestFocus();
             }
@@ -2041,7 +2039,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 搜索历史 收起 / 展开 功能
+        // 需求2：修复歌曲搜索历史收起/展开功能按钮
         btnToggleSearchHistory.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2074,7 +2072,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 新增：长按某个搜索历史关键词删除该词
         lvSearchHistory.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
@@ -2236,7 +2233,6 @@ public class MainActivity extends Activity {
         btnOpenEq.setOnClickListener(eqListener);
         btnDetailEq.setOnClickListener(eqListener);
 
-        // 修复：在任何界面（包括搜索页）点击底栏播放列表均能展开公共抽屉
         btnToggleQueue.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2329,7 +2325,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 核心支持：歌曲长按菜单 与 歌单长按管理菜单
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
@@ -3011,7 +3006,6 @@ public class MainActivity extends Activity {
             listData.add(row);
         }
 
-        // 核心新增：在歌单列表最后添加“+新建歌单(云同步)”入口
         currentItems.add(new DisplayEntry("action_create_playlist", "+ 新建歌单 (云端同步)", "", "点击创建全新的云端歌单并同步服务器", null, "操作", false));
         Map<String, String> createRow = new HashMap<String, String>();
         createRow.put("title", "➕  新建歌单 (云端同步)");
@@ -3343,7 +3337,16 @@ public class MainActivity extends Activity {
                                     }
                                 }
 
-                                layoutSearchHistoryBox.setVisibility(View.GONE);
+                                // 关键修复：搜索完成后保持历史栏可见，但将历史列表置为折叠状态，用户可随时点击“展开 ▾”恢复
+                                if (!searchHistoryList.isEmpty()) {
+                                    layoutSearchHistoryBox.setVisibility(View.VISIBLE);
+                                    isSearchHistoryCollapsed = true;
+                                    lvSearchHistory.setVisibility(View.GONE);
+                                    btnToggleSearchHistory.setText("展开 ▾");
+                                } else {
+                                    layoutSearchHistoryBox.setVisibility(View.GONE);
+                                }
+
                                 layoutSearchResultBox.setVisibility(View.VISIBLE);
                                 searchResultsAdapter.notifyDataSetChanged();
                             } catch (Exception ignored) {}
