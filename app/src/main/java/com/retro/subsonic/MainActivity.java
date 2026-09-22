@@ -97,7 +97,7 @@ public class MainActivity extends Activity {
     private ImageView ivBottomCover;
     private Button btnToggleQueue, btnCloseQueue;
     private Button btnBottomFav, btnDetailFav, btnDetailDownload, btnDetailDlna;
-    private Button btnLyricDec, btnLyricInc, btnLyricDelay, btnLyricAdvance;
+    private Button btnLyricDec, btnLyricInc, btnLyricDelay, btnLyricReset, btnLyricAdvance;
     private TextView tvLyricOffsetStatus;
     private LinearLayout layoutConfigPanel, layoutQueuePanel, layoutDetailOverlay, layoutBottomPlayer;
     private TextView tvListTitle, tvCurrentSong, tvTime, tvCacheUsed;
@@ -166,13 +166,17 @@ public class MainActivity extends Activity {
     private boolean isUserTouchingLyrics = false;
     private int currentLyricIndex = -1;
     private int lyricBaseFontSize = 15;
-    private long manualLyricOffsetMs = 0;
-    private String currentLoadedRawLyrics = null;
 
-    // 时间防抖：记录上次确认有效的播放时间戳
+    // 需求2：本地单曲微调偏置 与 投播全局偏置隔离
+    private long manualLyricOffsetMs = 0;
+    private long dlnaGlobalLyricOffsetMs = 0;
+    private String currentLoadedRawLyrics = null;
+    private String currentSongIdForLyric = null;
+    private String currentArtistForLyric = null;
+    private String currentTitleForLyric = null;
+
     private int lastValidProgressMs = 0;
 
-    // 核心修复：重构 DLNA 轮询心跳线程，定时器永久续期，绝不因切歌瞬态而死锁退出
     private Handler dlnaSyncHandler = new Handler();
     private Runnable dlnaSyncRunnable = new Runnable() {
         @Override
@@ -185,7 +189,6 @@ public class MainActivity extends Activity {
                             if (positionMs >= 0 && !isUserSeeking) {
                                 int totalDur = durationMs > 0 ? durationMs : (seekBar != null ? seekBar.getMax() : 0);
 
-                                // 仅过滤刚开播时音箱偶发返回的等于歌曲总时长的虚假占位帧
                                 if (totalDur > 5000 && positionMs >= totalDur - 1000 && lastValidProgressMs < totalDur * 0.70) {
                                     return;
                                 }
@@ -206,7 +209,6 @@ public class MainActivity extends Activity {
                         }
                     });
                 }
-                // 关键点：定时器放在外部，无论当前曲目是否处于缓冲缝隙，轮询循环永远不中断
                 dlnaSyncHandler.postDelayed(this, 1000);
             }
         }
@@ -320,14 +322,17 @@ public class MainActivity extends Activity {
                     String currentBitrate = getSavedBitrate();
                     tvDetailQuality.setText(getBitrateDisplay(currentBitrate, quality));
 
-                    // 核心修复：当检测到曲目变更时，第一时间将所有进度指示复位归零！
+                    // 切歌时复位归零
                     if (songId != null && !songId.equals(lastLoadedSongId)) {
                         lastLoadedSongId = songId;
                         lastValidProgressMs = 0;
-                        manualLyricOffsetMs = 0;
+
+                        // 需求2：投播模式下保留全局音响偏置，本地模式下才自动归零
+                        if (!DlnaManager.isCasting()) {
+                            manualLyricOffsetMs = 0;
+                        }
                         updateLyricOffsetStatusView();
 
-                        // 立即强制将进度条和文本归零，杜绝停在上一曲末尾
                         seekBar.setProgress(0);
                         detailSeekBar.setProgress(0);
                         tvTime.setText("00:00 / 00:00");
@@ -338,7 +343,6 @@ public class MainActivity extends Activity {
                         refreshQueueList();
                         updateCacheSizeDisplay();
 
-                        // 若处于投播状态，通知音箱切歌并重设轮询
                         if (DlnaManager.isCasting()) {
                             dlnaSyncHandler.removeCallbacks(dlnaSyncRunnable);
                             dlnaSyncHandler.postDelayed(dlnaSyncRunnable, 500);
@@ -355,7 +359,6 @@ public class MainActivity extends Activity {
                 int position = intent.getIntExtra("position", 0);
                 int duration = intent.getIntExtra("duration", 0);
 
-                // 本地播放驱动进度（投播模式下由 dlnaSyncRunnable 轮询驱动）
                 if (!DlnaManager.isCasting() && !isUserSeeking && duration > 0) {
                     if (position >= duration - 1000 && lastValidProgressMs < duration * 0.70) {
                         return;
@@ -1224,6 +1227,7 @@ public class MainActivity extends Activity {
         btnLyricDec = (Button) findViewById(R.id.btn_lyric_dec);
         btnLyricInc = (Button) findViewById(R.id.btn_lyric_inc);
         btnLyricDelay = (Button) findViewById(R.id.btn_lyric_delay);
+        btnLyricReset = (Button) findViewById(R.id.btn_lyric_reset);
         btnLyricAdvance = (Button) findViewById(R.id.btn_lyric_advance);
         tvLyricOffsetStatus = (TextView) findViewById(R.id.tv_lyric_offset_status);
 
@@ -2020,20 +2024,46 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "歌词字号: " + lyricBaseFontSize + "sp", Toast.LENGTH_SHORT).show();
     }
 
+    // 需求1与需求2：时滞微调、重置与投播全局偏置处理
+    private long getCurrentEffectiveOffsetMs() {
+        return DlnaManager.isCasting() ? dlnaGlobalLyricOffsetMs : manualLyricOffsetMs;
+    }
+
     private void adjustLyricOffset(long deltaMs) {
-        manualLyricOffsetMs += deltaMs;
+        if (DlnaManager.isCasting()) {
+            dlnaGlobalLyricOffsetMs += deltaMs;
+        } else {
+            manualLyricOffsetMs += deltaMs;
+        }
         updateLyricOffsetStatusView();
+        rebuildActiveLyricsView();
+        long currentOffset = getCurrentEffectiveOffsetMs();
+        Toast.makeText(this, (DlnaManager.isCasting() ? "投播全局补偿: " : "歌词偏置: ")
+                + (currentOffset >= 0 ? "+" : "") + (currentOffset / 1000.0) + "s", Toast.LENGTH_SHORT).show();
+    }
+
+    private void resetLyricOffset() {
+        if (DlnaManager.isCasting()) {
+            dlnaGlobalLyricOffsetMs = 0;
+        } else {
+            manualLyricOffsetMs = 0;
+        }
+        updateLyricOffsetStatusView();
+        rebuildActiveLyricsView();
+        Toast.makeText(this, "歌词时间补偿已重置归零", Toast.LENGTH_SHORT).show();
+    }
+
+    private void rebuildActiveLyricsView() {
         if (currentLoadedRawLyrics != null && currentLoadedRawLyrics.length() > 0) {
             buildLyricsView(currentLoadedRawLyrics);
             int curPos = detailSeekBar != null ? detailSeekBar.getProgress() : 0;
             updateLyricPosition(curPos);
         }
-        Toast.makeText(this, "歌词偏置: " + (manualLyricOffsetMs >= 0 ? "+" : "") + (manualLyricOffsetMs / 1000.0) + "s", Toast.LENGTH_SHORT).show();
     }
 
     private void updateLyricOffsetStatusView() {
         if (tvLyricOffsetStatus != null) {
-            double sec = manualLyricOffsetMs / 1000.0;
+            double sec = getCurrentEffectiveOffsetMs() / 1000.0;
             tvLyricOffsetStatus.setText(String.format("%s%.1fs", (sec > 0 ? "+" : ""), sec));
         }
     }
@@ -2244,6 +2274,14 @@ public class MainActivity extends Activity {
             public void onClick(View v) { adjustLyricOffset(-500); }
         });
 
+        // 需求1监听：点击重置补偿
+        if (btnLyricReset != null) {
+            btnLyricReset.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) { resetLyricOffset(); }
+            });
+        }
+
         btnLyricAdvance.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) { adjustLyricOffset(500); }
@@ -2296,12 +2334,17 @@ public class MainActivity extends Activity {
                                         btnDetailDlna.setText("⛶ 投播");
                                         btnDetailDlna.setTextColor(0xFF00E5FF);
 
+                                        // 需求2：断开投播后重置全局投播补偿归零，恢复单曲模式
+                                        dlnaGlobalLyricOffsetMs = 0;
+                                        updateLyricOffsetStatusView();
+                                        rebuildActiveLyricsView();
+
                                         Intent muteIntent = new Intent(MainActivity.this, MusicService.class);
                                         muteIntent.setAction(MusicService.ACTION_SET_MUTE);
                                         muteIntent.putExtra("is_muted", false);
                                         startService(muteIntent);
 
-                                        Toast.makeText(MainActivity.this, "已断开投播，恢复本地发声", Toast.LENGTH_SHORT).show();
+                                        Toast.makeText(MainActivity.this, "已断开投播，时间补偿归零并恢复本地发声", Toast.LENGTH_SHORT).show();
                                     }
                                 })
                                 .setNegativeButton("取消", null)
@@ -2672,7 +2715,9 @@ public class MainActivity extends Activity {
                 btnDetailDlna.setTextColor(0xFFFF4081);
             }
 
-            // 启动定时轮询线程
+            updateLyricOffsetStatusView();
+            rebuildActiveLyricsView();
+
             dlnaSyncHandler.removeCallbacks(dlnaSyncRunnable);
             dlnaSyncHandler.postDelayed(dlnaSyncRunnable, 1000);
 
@@ -2815,6 +2860,10 @@ public class MainActivity extends Activity {
     }
 
     private void loadLyrics(final String songId, final String artist, final String title) {
+        currentSongIdForLyric = songId;
+        currentArtistForLyric = artist;
+        currentTitleForLyric = title;
+
         lyricRows.clear();
         currentLyricIndex = -1;
         layoutLyricsContainer.removeAllViews();
@@ -2892,6 +2941,103 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    // 需求3：从公网开源歌词服务聚合拉取歌词（网易云公开API作为后备）
+    private void fetchOnlineThirdPartyLyrics(final String songTitle, final String artistName) {
+        layoutLyricsContainer.removeAllViews();
+        TextView loadingTv = new TextView(this);
+        loadingTv.setText("正在连接公网歌词库匹配...");
+        loadingTv.setTextColor(0xFF00E5FF);
+        loadingTv.setGravity(Gravity.CENTER);
+        layoutLyricsContainer.addView(loadingTv);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String fetchedLrc = null;
+                try {
+                    String query = (songTitle != null ? songTitle : "") + " " + (artistName != null ? artistName : "");
+                    query = query.replaceAll("\\([^)]*\\)", "").replaceAll("\\[[^\\]]*\\]", "").trim();
+
+                    // 请求网易云搜索 API 检索歌曲 ID
+                    String searchUrl = "https://music.163.com/api/search/get/web?csrf_token=&hlpretag=&hlposttag=&s="
+                            + URLEncoder.encode(query, "UTF-8") + "&type=1&offset=0&total=true&limit=1";
+                    String searchRes = executeHttpGet(searchUrl);
+
+                    if (searchRes != null && searchRes.contains("\"songs\"")) {
+                        JSONObject sRoot = new JSONObject(searchRes);
+                        JSONObject result = sRoot.optJSONObject("result");
+                        if (result != null && result.has("songs")) {
+                            JSONArray songsArr = result.getJSONArray("songs");
+                            if (songsArr.length() > 0) {
+                                long neteaseSongId = songsArr.getJSONObject(0).getLong("id");
+
+                                // 根据 ID 获取 LRC 歌词
+                                String lrcUrl = "https://music.163.com/api/song/lyric?os=pc&id=" + neteaseSongId + "&lv=-1&kv=-1&tv=-1";
+                                String lrcRes = executeHttpGet(lrcUrl);
+                                if (lrcRes != null && lrcRes.contains("\"lrc\"")) {
+                                    JSONObject lRoot = new JSONObject(lrcRes);
+                                    JSONObject lrcObj = lRoot.optJSONObject("lrc");
+                                    if (lrcObj != null && lrcObj.has("lyric")) {
+                                        String candidate = lrcObj.getString("lyric");
+                                        if (isValidLyrics(candidate)) {
+                                            fetchedLrc = candidate;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+
+                final String finalLrc = fetchedLrc;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (finalLrc != null && finalLrc.trim().length() > 0) {
+                            currentLoadedRawLyrics = finalLrc;
+                            buildLyricsView(finalLrc);
+                            int curPos = detailSeekBar != null ? detailSeekBar.getProgress() : 0;
+                            updateLyricPosition(curPos);
+                            Toast.makeText(MainActivity.this, "已从在线曲库成功匹配歌词！", Toast.LENGTH_SHORT).show();
+                        } else {
+                            showSimpleLyric("联网未找到匹配歌词");
+                            Toast.makeText(MainActivity.this, "在线曲库中未收录该曲目歌词", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private String executeHttpGet(String urlStr) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(urlStr);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(6000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+
+            if (conn instanceof HttpsURLConnection) {
+                ((HttpsURLConnection) conn).setSSLSocketFactory(new TLSSocketFactory());
+            }
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String l;
+            while ((l = reader.readLine()) != null) {
+                sb.append(l).append("\n");
+            }
+            reader.close();
+            return sb.toString();
+        } catch (Throwable e) {
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
     private String parseLyricsFromJson(String jsonStr) {
         if (jsonStr == null || jsonStr.length() == 0) return null;
         try {
@@ -2959,14 +3105,41 @@ public class MainActivity extends Activity {
         sb.append(String.format("[%02d:%02d.%02d]", min, sec, cs)).append(val).append("\n");
     }
 
+    // 需求3：歌词未找到时，右侧增加刷新按钮支持公网各大歌词库联动重新搜索
     private void showSimpleLyric(String msg) {
         layoutLyricsContainer.removeAllViews();
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+
         TextView tv = new TextView(this);
         tv.setText(msg);
         tv.setTextColor(0xFF888888);
         tv.setTextSize(lyricBaseFontSize);
         tv.setGravity(Gravity.CENTER);
-        layoutLyricsContainer.addView(tv);
+        box.addView(tv);
+
+        Button btnRetryOnline = new Button(this);
+        btnRetryOnline.setText("🔄 重新联网匹配歌词");
+        btnRetryOnline.setTextColor(0xFF00E5FF);
+        btnRetryOnline.setTextSize(12);
+        btnRetryOnline.setBackgroundResource(R.drawable.bg_btn_default);
+        btnRetryOnline.setPadding(24, 12, 24, 12);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        lp.topMargin = 20;
+        box.addView(btnRetryOnline, lp);
+
+        btnRetryOnline.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                fetchOnlineThirdPartyLyrics(currentTitleForLyric, currentArtistForLyric);
+            }
+        });
+
+        layoutLyricsContainer.addView(box);
     }
 
     private void buildLyricsView(String rawText) {
@@ -2994,7 +3167,7 @@ public class MainActivity extends Activity {
                 String timePart = line.substring(1, closeBracket);
                 long timeMs = parseTime(timePart);
                 if (timeMs >= 0) {
-                    long finalCalculatedTime = timeMs + headerOffsetMs + manualLyricOffsetMs;
+                    long finalCalculatedTime = timeMs + headerOffsetMs + getCurrentEffectiveOffsetMs();
                     if (finalCalculatedTime < 0) finalCalculatedTime = 0;
                     String content = line.substring(closeBracket + 1).trim();
                     if (content.length() == 0) content = "···";
